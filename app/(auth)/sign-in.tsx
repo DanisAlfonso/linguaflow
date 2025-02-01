@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Platform, Pressable } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { Link } from 'expo-router';
@@ -14,6 +14,36 @@ export default function SignIn() {
   const { signIn } = useAuth();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+
+  useEffect(() => {
+    if (isWeb) {
+      // Only inject styles on web platform
+      const style = document.createElement('style');
+      style.textContent = `
+        input:-webkit-autofill,
+        input:-webkit-autofill:hover,
+        input:-webkit-autofill:focus,
+        input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 30px ${theme.mode === 'dark' ? '#1A1A1A' : '#F9FAFB'} inset !important;
+          -webkit-text-fill-color: ${theme.mode === 'dark' ? '#E5E5E5' : '#111827'} !important;
+          caret-color: ${theme.mode === 'dark' ? '#E5E5E5' : '#111827'} !important;
+          border-radius: 12px !important;
+        }
+        input {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+        input:focus {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+      `;
+      document.head.appendChild(style);
+      return () => {
+        document.head.removeChild(style);
+      };
+    }
+  }, [isWeb, theme.mode]);
 
   const handleSignIn = async () => {
     if (!email || !password) {
@@ -44,32 +74,13 @@ export default function SignIn() {
         </View>
 
         <View style={styles.form}>
-          <style>
-            {`
-              input:-webkit-autofill,
-              input:-webkit-autofill:hover,
-              input:-webkit-autofill:focus,
-              input:-webkit-autofill:active {
-                -webkit-box-shadow: 0 0 0 30px #1A1A1A inset !important;
-                -webkit-text-fill-color: #E5E5E5 !important;
-                caret-color: #E5E5E5 !important;
-                border-radius: 12px !important;
-              }
-
-              input {
-                outline: none !important;
-                box-shadow: none !important;
-              }
-
-              input:focus {
-                outline: none !important;
-                box-shadow: none !important;
-              }
-            `}
-          </style>
-          
           <View style={styles.inputContainer}>
-            <MaterialIcons name="email" size={20} color={theme.colors.grey3} style={styles.inputIcon} />
+            <MaterialIcons 
+              name="email" 
+              size={20} 
+              color={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4} 
+              style={styles.inputIcon} 
+            />
             <Input
               placeholder="Email"
               value={email}
@@ -82,22 +93,25 @@ export default function SignIn() {
                 styles.inputField,
                 { 
                   borderColor: theme.colors.grey2,
-                  backgroundColor: theme.colors.grey1,
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
                 }
               ]}
               inputStyle={[
                 styles.inputText,
-                { 
-                  color: theme.colors.grey5,
-                }
+                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black }
               ]}
-              placeholderTextColor={theme.colors.grey3}
-              selectionColor={theme.colors.grey3}
+              placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+              selectionColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
             />
           </View>
 
           <View style={styles.inputContainer}>
-            <MaterialIcons name="lock" size={20} color={theme.colors.grey3} style={styles.inputIcon} />
+            <MaterialIcons 
+              name="lock" 
+              size={20} 
+              color={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4} 
+              style={styles.inputIcon} 
+            />
             <Input
               placeholder="Password"
               value={password}
@@ -109,23 +123,21 @@ export default function SignIn() {
                 styles.inputField,
                 { 
                   borderColor: theme.colors.grey2,
-                  backgroundColor: theme.colors.grey1,
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
                 }
               ]}
               inputStyle={[
                 styles.inputText,
-                { 
-                  color: theme.colors.grey5,
-                }
+                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black }
               ]}
-              placeholderTextColor={theme.colors.grey3}
-              selectionColor={theme.colors.grey3}
+              placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+              selectionColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
               rightIcon={
                 <Pressable onPress={() => setShowPassword(!showPassword)}>
                   <MaterialIcons
                     name={showPassword ? 'visibility-off' : 'visibility'}
                     size={20}
-                    color={theme.colors.grey3}
+                    color={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
                   />
                 </Pressable>
               }
@@ -151,7 +163,7 @@ export default function SignIn() {
           />
 
           <View style={styles.footer}>
-            <Text style={[styles.footerText, { color: theme.colors.grey3 }]}>
+            <Text style={[styles.footerText, { color: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey5 }]}>
               Don't have an account?{' '}
             </Text>
             <Link href="/sign-up" asChild>
@@ -207,6 +219,7 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     textAlign: 'center',
+    letterSpacing: 0.3,
   },
   form: {
     gap: 16,
