@@ -19,10 +19,20 @@ export function CharacterSizeControl({ size, onSizeChange, color = '#000' }: Cha
         minimumValue={24}
         maximumValue={72}
         step={4}
-        allowTouchTrack
+        allowTouchTrack={true}
         trackStyle={styles.track}
         thumbStyle={[styles.thumb, { backgroundColor: '#4F46E5' }]}
         style={styles.slider}
+        minimumTrackTintColor="#4F46E5"
+        maximumTrackTintColor="#E5E7EB"
+        thumbTouchSize={{ width: 40, height: 40 }}
+        orientation="horizontal"
+        disabled={false}
+        thumbProps={{
+          children: (
+            <View style={{ backgroundColor: 'transparent' }} />
+          ),
+        }}
       />
       <Text style={[styles.sizeText, { color }]}>
         {size}px
@@ -43,7 +53,6 @@ const styles = StyleSheet.create({
   },
   track: {
     height: 4,
-    backgroundColor: '#E5E7EB',
   },
   thumb: {
     height: 20,

@@ -34,7 +34,7 @@ export function MandarinCardInput({
 
   useEffect(() => {
     // Update the Mandarin data whenever either characters or pinyin changes
-    const characters = value.split('');
+    const characters = value.trim() ? value.split('') : [];
     const pinyinArray = hasChineseCharacters ? pinyin.split(' ').filter(p => p.length > 0) : [];
     
     // Make sure we have the same number of pinyin as characters
@@ -49,24 +49,26 @@ export function MandarinCardInput({
       characters,
       pinyin: pinyinArray,
     });
-  }, [value, pinyin, onMandarinDataChange, hasChineseCharacters]);
+  }, [value, pinyin, hasChineseCharacters, onMandarinDataChange]);
 
   return (
     <View style={styles.container}>
-      {label && (
+      {label ? (
         <Text style={[styles.label, { color: theme.colors.grey4 }]}>
           {label}
         </Text>
-      )}
-      
+      ) : null}
       <View style={styles.inputContainer}>
         <Input
           placeholder={placeholder}
           value={value}
           onChangeText={onChangeText}
+          multiline
+          numberOfLines={3}
           containerStyle={styles.input}
           inputContainerStyle={[
             styles.inputField,
+            styles.textArea,
             {
               borderColor: theme.colors.grey2,
               backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
@@ -78,8 +80,12 @@ export function MandarinCardInput({
           ]}
           placeholderTextColor={theme.colors.grey3}
         />
-
-        {hasChineseCharacters && (
+      </View>
+      {hasChineseCharacters ? (
+        <View style={styles.pinyinContainer}>
+          <Text style={[styles.pinyinLabel, { color: theme.colors.grey4 }]}>
+            Pinyin
+          </Text>
           <Input
             placeholder="Enter pinyin (space-separated)"
             value={pinyin}
@@ -98,29 +104,25 @@ export function MandarinCardInput({
             ]}
             placeholderTextColor={theme.colors.grey3}
           />
-        )}
-      </View>
-
-      {showPreview && value && hasChineseCharacters && pinyin && (
+        </View>
+      ) : null}
+      {showPreview && value ? (
         <View style={styles.preview}>
           <Text style={[styles.previewLabel, { color: theme.colors.grey4 }]}>
             Preview
           </Text>
-          <View style={[styles.previewCard, { 
-            backgroundColor: theme.colors.grey0,
-            borderColor: theme.colors.grey2,
-          }]}>
+          <View style={[styles.previewContent, { backgroundColor: theme.colors.grey0 }]}>
             <MandarinText
               data={{
-                characters: value.split(''),
-                pinyin: pinyin.split(' ').filter(p => p.length > 0),
+                characters: value.trim() ? value.split('') : [],
+                pinyin: hasChineseCharacters ? pinyin.split(' ').filter(p => p.length > 0) : [],
               }}
               characterSize={characterSize}
-              color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black}
+              color={theme.colors.grey5}
             />
           </View>
         </View>
-      )}
+      ) : null}
     </View>
   );
 }
@@ -135,7 +137,7 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   inputContainer: {
-    gap: 8,
+    marginBottom: 8,
   },
   input: {
     paddingHorizontal: 0,
@@ -150,18 +152,30 @@ const styles = StyleSheet.create({
   inputText: {
     fontSize: 16,
   },
+  textArea: {
+    minHeight: 100,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+  pinyinContainer: {
+    gap: 4,
+  },
+  pinyinLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
   preview: {
-    gap: 8,
+    marginTop: 8,
+    gap: 4,
   },
   previewLabel: {
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 4,
   },
-  previewCard: {
+  previewContent: {
     padding: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
   },
-}); 
+});
