@@ -7,10 +7,13 @@ import { MaterialIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { Container } from '../../../components/layout/Container';
 import { createDeck } from '../../../lib/api/flashcards';
+import { LanguageSelector } from '../../../components/flashcards/LanguageSelector';
+import type { Language } from '../../../types/flashcards';
 
 export default function CreateDeckScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [language, setLanguage] = useState<Language>('General');
   const [tags, setTags] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -32,6 +35,11 @@ export default function CreateDeckScreen() {
       const deck = await createDeck({
         name: name.trim(),
         description: description.trim() || undefined,
+        language,
+        settings: language === 'Mandarin' ? {
+          showPinyin: true,
+          defaultCharacterSize: 24,
+        } : {},
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
       });
 
@@ -130,6 +138,12 @@ export default function CreateDeckScreen() {
                 placeholderTextColor={theme.colors.grey3}
               />
             </View>
+
+            <LanguageSelector
+              value={language}
+              onChange={setLanguage}
+              color={theme.colors.grey4}
+            />
 
             <View style={styles.inputContainer}>
               <Text style={[styles.label, { color: theme.colors.grey4 }]}>

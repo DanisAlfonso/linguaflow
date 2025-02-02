@@ -1,11 +1,13 @@
 import { supabase } from '../supabase/client';
-import type { Card, Deck } from '../../types/flashcards';
+import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
 
 export async function createDeck(
   data: {
     name: string;
     description?: string;
+    language?: string;
+    settings?: Record<string, any>;
     tags?: string[];
   }
 ): Promise<Deck> {
@@ -20,6 +22,8 @@ export async function createDeck(
       user_id: session.data.session.user.id,
       name: data.name,
       description: data.description || null,
+      language: data.language || 'General',
+      settings: data.settings || {},
       tags: data.tags || [],
     })
     .select()
@@ -39,6 +43,12 @@ export async function createCard(
     back: string;
     notes?: string;
     tags?: string[];
+    language_specific_data?: {
+      mandarin?: {
+        front: MandarinCardData;
+        back: MandarinCardData;
+      };
+    };
   }
 ): Promise<Card> {
   const { data: card, error } = await supabase
@@ -49,6 +59,7 @@ export async function createCard(
       back: data.back,
       notes: data.notes || null,
       tags: data.tags || [],
+      language_specific_data: data.language_specific_data || {},
       state: CardState.New,
       difficulty: 0,
       stability: 0,
@@ -99,7 +110,7 @@ export async function getCards(deckId: string): Promise<Card[]> {
 
 export async function updateCard(
   id: string,
-  data: Partial<Pick<Card, 'front' | 'back' | 'notes' | 'tags'>>
+  data: Partial<Pick<Card, 'front' | 'back' | 'notes' | 'tags' | 'language_specific_data'>>
 ): Promise<Card> {
   const { data: card, error } = await supabase
     .from('cards')
@@ -155,7 +166,7 @@ export async function getCard(id: string): Promise<Card | null> {
 
 export async function updateDeck(
   id: string,
-  data: Partial<Pick<Deck, 'name' | 'description' | 'tags'>>
+  data: Partial<Pick<Deck, 'name' | 'description' | 'tags' | 'language' | 'settings'>>
 ): Promise<Deck> {
   const { data: deck, error } = await supabase
     .from('decks')
@@ -182,6 +193,27 @@ export async function deleteDeck(id: string): Promise<void> {
   }
 }
 
+export async function getDueCards(deckId: string, limit: number = 20): Promise<Card[]> {
+  try {
+    // Use the new get_due_cards function
+    const { data: cards, error } = await supabase
+      .rpc('get_due_cards', {
+        p_deck_id: deckId,
+        p_limit: limit,
+      });
+
+    if (error) {
+      console.error('Error getting due cards:', error);
+      throw error;
+    }
+
+    return cards || [];
+  } catch (error) {
+    console.error('Error in getDueCards:', error);
+    throw error;
+  }
+}
+
 export async function reviewCard(
   id: string,
   rating: Rating
@@ -189,134 +221,121 @@ export async function reviewCard(
   try {
     console.log('Reviewing card:', id, 'with rating:', rating);
     
-    // Get the current card data
-    const { data: card, error: getError } = await supabase
+    // First get the card
+    const { data: currentCard, error: getCardError } = await supabase
       .from('cards')
-      .select()
+      .select('*')  // Explicitly select all columns
       .eq('id', id)
       .single();
 
-    if (getError) {
-      console.error('Error fetching card:', getError);
-      throw getError;
+    if (getCardError) {
+      console.error('Error fetching card:', getCardError);
+      throw getCardError;
     }
 
-    if (!card) {
+    if (!currentCard) {
       console.error('Card not found:', id);
       throw new Error('Card not found');
     }
 
-    // Calculate the next review schedule
+    console.log('Current card data:', currentCard);
+
+    // Then get the deck
+    const { data: deck, error: getDeckError } = await supabase
+      .from('decks')
+      .select('*')  // Explicitly select all columns
+      .eq('id', currentCard.deck_id)
+      .single();
+
+    if (getDeckError) {
+      console.error('Error fetching deck:', getDeckError);
+      throw getDeckError;
+    }
+
+    console.log('Deck data:', deck);
+
+    // Calculate the next schedule using FSRS
     const now = new Date();
-    console.log('Current card state:', {
-      state: card.state,
-      difficulty: card.difficulty || 0,
-      stability: card.stability || 0,
-      retrievability: card.retrievability || 1,
-      elapsed_days: card.elapsed_days || 0,
-      last_reviewed_at: card.last_reviewed_at,
-    });
+    const cardState = {
+      state: currentCard.state,
+      difficulty: currentCard.difficulty || 0,
+      stability: currentCard.stability || 0,
+      retrievability: currentCard.retrievability || 1,
+      elapsed_days: currentCard.elapsed_days || 0,
+      last_reviewed_at: currentCard.last_reviewed_at,
+      reps: currentCard.reps || 0,
+      lapses: currentCard.lapses || 0,
+    };
+
+    console.log('Card state for FSRS:', cardState);
     
-    const schedule = scheduleReview(
-      {
-        state: card.state,
-        difficulty: card.difficulty || 0,
-        stability: card.stability || 0,
-        retrievability: card.retrievability || 1,
-        elapsed_days: card.elapsed_days || 0,
-        last_reviewed_at: card.last_reviewed_at,
-      },
-      rating
-    );
-    
+    const schedule = scheduleReview(cardState, rating);
     console.log('New schedule:', schedule);
+
+    // Determine the queue based on the state
+    let queue: 'new' | 'learn' | 'review';
+    if (schedule.state === CardState.New) {
+      queue = 'new';
+    } else if (schedule.state === CardState.Learning || schedule.state === CardState.Relearning) {
+      queue = 'learn';
+    } else {
+      queue = 'review';
+    }
+
+    const updateData = {
+      state: schedule.state,
+      difficulty: schedule.difficulty,
+      stability: schedule.stability,
+      retrievability: schedule.retrievability,
+      elapsed_days: 0, // Reset elapsed days since we're reviewing now
+      scheduled_days: schedule.scheduled_days,
+      scheduled_in_minutes: schedule.scheduled_in_minutes,
+      queue,
+      last_reviewed_at: now.toISOString(),
+      next_review_at: schedule.scheduled_in_minutes
+        ? new Date(now.getTime() + schedule.scheduled_in_minutes * 60 * 1000).toISOString()
+        : new Date(now.getTime() + schedule.scheduled_days * 24 * 60 * 60 * 1000).toISOString(),
+      review_count: (currentCard.review_count || 0) + 1,
+      consecutive_correct: rating === Rating.Again ? 0 : (currentCard.consecutive_correct || 0) + 1,
+      reps: (currentCard.reps || 0) + 1,
+      lapses: rating === Rating.Again ? (currentCard.lapses || 0) + 1 : (currentCard.lapses || 0),
+    };
+
+    console.log('Update data:', updateData);
 
     // Update the card with new spaced repetition data
     const { data: updatedCard, error: updateError } = await supabase
       .from('cards')
-      .update({
-        state: schedule.state,
-        difficulty: schedule.difficulty,
-        stability: schedule.stability,
-        retrievability: schedule.retrievability,
-        elapsed_days: 0, // Reset elapsed days since we're reviewing now
-        scheduled_days: schedule.scheduled_days,
-        last_reviewed_at: now.toISOString(),
-        next_review_at: new Date(now.getTime() + schedule.scheduled_days * 24 * 60 * 60 * 1000).toISOString(),
-        review_count: (card.review_count || 0) + 1,
-        consecutive_correct: rating === Rating.Again ? 0 : (card.consecutive_correct || 0) + 1,
-        reps: (card.reps || 0) + 1,
-        lapses: rating === Rating.Again ? (card.lapses || 0) + 1 : (card.lapses || 0),
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single();
 
     if (updateError) {
       console.error('Error updating card:', updateError);
+      console.error('Update data that caused error:', updateData);
       throw updateError;
     }
 
+    console.log('Card updated successfully:', updatedCard);
+
     // Update deck statistics
-    const { error: deckError } = await supabase.rpc('update_deck_review_stats', {
-      p_deck_id: card.deck_id,
+    const { error: statsError } = await supabase.rpc('update_deck_review_stats', {
+      p_deck_id: currentCard.deck_id,
     });
 
-    if (deckError) {
-      console.error('Error updating deck stats:', deckError);
-      throw deckError;
+    if (statsError) {
+      console.error('Error updating deck stats:', statsError);
+      throw statsError;
     }
 
     return updatedCard;
   } catch (error) {
     console.error('Error in reviewCard:', error);
-    throw error;
-  }
-}
-
-export async function getDueCards(deckId: string, limit: number = 20): Promise<Card[]> {
-  try {
-    const now = new Date().toISOString();
-    console.log('Getting due cards for deck:', deckId);
-    console.log('Current time:', now);
-    
-    // First try to get new cards
-    const { data: newCards, error: newError } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('deck_id', deckId)
-      .eq('state', CardState.New)
-      .limit(limit);
-
-    if (newError) {
-      console.error('Error getting new cards:', newError);
-      throw newError;
+    if (error instanceof Error) {
+      console.error('Error message:', error.message);
+      console.error('Error stack:', error.stack);
     }
-
-    // If we have new cards, return them
-    if (newCards && newCards.length > 0) {
-      console.log('Found new cards:', newCards.length);
-      return newCards;
-    }
-
-    // Otherwise, get cards that are due for review
-    const { data: dueCards, error: dueError } = await supabase
-      .from('cards')
-      .select('*')
-      .eq('deck_id', deckId)
-      .or(`state.in.(${CardState.Learning},${CardState.Relearning}),and(state.eq.${CardState.Review},next_review_at.lte.${now})`)
-      .order('next_review_at', { ascending: true })
-      .limit(limit);
-
-    if (dueError) {
-      console.error('Error getting due cards:', dueError);
-      throw dueError;
-    }
-
-    console.log('Found due cards:', dueCards?.length ?? 0);
-    return dueCards || [];
-  } catch (error) {
-    console.error('Error in getDueCards:', error);
     throw error;
   }
 } 

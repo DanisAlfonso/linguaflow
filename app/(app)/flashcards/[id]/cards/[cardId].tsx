@@ -5,12 +5,16 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../../components/layout/Container';
-import { getCard, updateCard, deleteCard } from '../../../../../lib/api/flashcards';
-import type { Card } from '../../../../../types/flashcards';
+import { getCard, updateCard, deleteCard, getDeck } from '../../../../../lib/api/flashcards';
+import { MandarinCardInput } from '../../../../../components/flashcards/MandarinCardInput';
+import { CharacterSizeControl } from '../../../../../components/flashcards/CharacterSizeControl';
+import { MandarinText } from '../../../../../components/flashcards/MandarinText';
+import type { Card, Deck, MandarinCardData } from '../../../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 
 export default function CardDetailsScreen() {
   const [card, setCard] = useState<Card | null>(null);
+  const [deck, setDeck] = useState<Deck | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
@@ -19,15 +23,23 @@ export default function CardDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [characterSize, setCharacterSize] = useState(24);
+  const [frontMandarinData, setFrontMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
+  const [backMandarinData, setBackMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
   
   const router = useRouter();
   const { id, cardId } = useLocalSearchParams();
   const { theme } = useTheme();
+  const isMandarin = deck?.language === 'Mandarin';
 
   const loadCard = useCallback(async () => {
     try {
-      const data = await getCard(cardId as string);
-      if (!data) {
+      const [cardData, deckData] = await Promise.all([
+        getCard(cardId as string),
+        getDeck(id as string),
+      ]);
+
+      if (!cardData) {
         Toast.show({
           type: 'error',
           text1: 'Error',
@@ -37,11 +49,24 @@ export default function CardDetailsScreen() {
         return;
       }
 
-      setCard(data);
-      setFront(data.front);
-      setBack(data.back);
-      setNotes(data.notes || '');
-      setTags(data.tags?.join(', ') || '');
+      setCard(cardData);
+      setDeck(deckData);
+      setFront(cardData.front);
+      setBack(cardData.back);
+      setNotes(cardData.notes || '');
+      setTags(cardData.tags?.join(', ') || '');
+
+      if (deckData?.language === 'Mandarin') {
+        if (deckData.settings?.defaultCharacterSize) {
+          setCharacterSize(deckData.settings.defaultCharacterSize);
+        }
+        
+        const mandarinData = cardData.language_specific_data?.mandarin;
+        if (mandarinData) {
+          setFrontMandarinData(mandarinData.front);
+          setBackMandarinData(mandarinData.back);
+        }
+      }
     } catch (error) {
       console.error('Error loading card:', error);
       Toast.show({
@@ -53,7 +78,7 @@ export default function CardDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [cardId, router]);
+  }, [cardId, id, router]);
 
   useEffect(() => {
     loadCard();
@@ -76,6 +101,12 @@ export default function CardDetailsScreen() {
         back: back.trim(),
         notes: notes.trim() || undefined,
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+        language_specific_data: isMandarin ? {
+          mandarin: {
+            front: frontMandarinData,
+            back: backMandarinData,
+          },
+        } : undefined,
       });
 
       Toast.show({
@@ -174,71 +205,143 @@ export default function CardDetailsScreen() {
           contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                Front
-              </Text>
-              {isEditing ? (
-                <Input
-                  placeholder="Front side of the card"
-                  value={front}
-                  onChangeText={setFront}
-                  multiline
-                  numberOfLines={3}
-                  containerStyle={styles.input}
-                  inputContainerStyle={[
-                    styles.inputField,
-                    styles.textArea,
-                    {
-                      borderColor: theme.colors.grey2,
-                      backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                    },
-                  ]}
-                  inputStyle={[
-                    styles.inputText,
-                    { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                  ]}
-                  placeholderTextColor={theme.colors.grey3}
+            {isMandarin && (
+              <View style={styles.characterSizeControl}>
+                <CharacterSizeControl
+                  size={characterSize}
+                  onSizeChange={setCharacterSize}
+                  color={theme.colors.grey4}
                 />
-              ) : (
-                <Text style={[styles.content, { color: theme.colors.grey5 }]}>
-                  {card.front}
-                </Text>
-              )}
-            </View>
+              </View>
+            )}
 
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                Back
-              </Text>
-              {isEditing ? (
-                <Input
-                  placeholder="Back side of the card"
-                  value={back}
-                  onChangeText={setBack}
-                  multiline
-                  numberOfLines={3}
-                  containerStyle={styles.input}
-                  inputContainerStyle={[
-                    styles.inputField,
-                    styles.textArea,
-                    {
-                      borderColor: theme.colors.grey2,
-                      backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                    },
-                  ]}
-                  inputStyle={[
-                    styles.inputText,
-                    { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                  ]}
-                  placeholderTextColor={theme.colors.grey3}
-                />
-              ) : (
-                <Text style={[styles.content, { color: theme.colors.grey5 }]}>
-                  {card.back}
-                </Text>
-              )}
-            </View>
+            {isMandarin ? (
+              <>
+                {isEditing ? (
+                  <>
+                    <MandarinCardInput
+                      label="Front"
+                      value={front}
+                      onChangeText={setFront}
+                      onMandarinDataChange={setFrontMandarinData}
+                      placeholder="Front side of the card"
+                      characterSize={characterSize}
+                    />
+
+                    <MandarinCardInput
+                      label="Back"
+                      value={back}
+                      onChangeText={setBack}
+                      onMandarinDataChange={setBackMandarinData}
+                      placeholder="Back side of the card"
+                      characterSize={characterSize}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.inputContainer}>
+                      <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        Front
+                      </Text>
+                      <View style={[styles.contentCard, { 
+                        backgroundColor: theme.colors.grey0,
+                        borderColor: theme.colors.grey2,
+                      }]}>
+                        <MandarinText
+                          data={card.language_specific_data?.mandarin?.front || frontMandarinData}
+                          characterSize={characterSize}
+                          color={theme.colors.grey5}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                      <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        Back
+                      </Text>
+                      <View style={[styles.contentCard, { 
+                        backgroundColor: theme.colors.grey0,
+                        borderColor: theme.colors.grey2,
+                      }]}>
+                        <MandarinText
+                          data={card.language_specific_data?.mandarin?.back || backMandarinData}
+                          characterSize={characterSize}
+                          color={theme.colors.grey5}
+                        />
+                      </View>
+                    </View>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                    Front
+                  </Text>
+                  {isEditing ? (
+                    <Input
+                      placeholder="Front side of the card"
+                      value={front}
+                      onChangeText={setFront}
+                      multiline
+                      numberOfLines={3}
+                      containerStyle={styles.input}
+                      inputContainerStyle={[
+                        styles.inputField,
+                        styles.textArea,
+                        {
+                          borderColor: theme.colors.grey2,
+                          backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                        },
+                      ]}
+                      inputStyle={[
+                        styles.inputText,
+                        { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                      ]}
+                      placeholderTextColor={theme.colors.grey3}
+                    />
+                  ) : (
+                    <Text style={[styles.content, { color: theme.colors.grey5 }]}>
+                      {card.front}
+                    </Text>
+                  )}
+                </View>
+
+                <View style={styles.inputContainer}>
+                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                    Back
+                  </Text>
+                  {isEditing ? (
+                    <Input
+                      placeholder="Back side of the card"
+                      value={back}
+                      onChangeText={setBack}
+                      multiline
+                      numberOfLines={3}
+                      containerStyle={styles.input}
+                      inputContainerStyle={[
+                        styles.inputField,
+                        styles.textArea,
+                        {
+                          borderColor: theme.colors.grey2,
+                          backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                        },
+                      ]}
+                      inputStyle={[
+                        styles.inputText,
+                        { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                      ]}
+                      placeholderTextColor={theme.colors.grey3}
+                    />
+                  ) : (
+                    <Text style={[styles.content, { color: theme.colors.grey5 }]}>
+                      {card.back}
+                    </Text>
+                  )}
+                </View>
+              </>
+            )}
 
             <View style={styles.inputContainer}>
               <Text style={[styles.label, { color: theme.colors.grey4 }]}>
@@ -267,11 +370,9 @@ export default function CardDetailsScreen() {
                   placeholderTextColor={theme.colors.grey3}
                 />
               ) : (
-                card.notes && (
-                  <Text style={[styles.content, { color: theme.colors.grey3 }]}>
-                    {card.notes}
-                  </Text>
-                )
+                <Text style={[styles.content, { color: theme.colors.grey5 }]}>
+                  {card.notes || 'No notes'}
+                </Text>
               )}
             </View>
 
@@ -299,20 +400,18 @@ export default function CardDetailsScreen() {
                   placeholderTextColor={theme.colors.grey3}
                 />
               ) : (
-                card.tags && card.tags.length > 0 && (
-                  <View style={styles.tags}>
-                    {card.tags.map((tag, index) => (
-                      <View
-                        key={index}
-                        style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
-                      >
-                        <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
-                          {tag}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )
+                <View style={styles.tags}>
+                  {card.tags?.map((tag, index) => (
+                    <View
+                      key={index}
+                      style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
+                    >
+                      <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
+                        {tag}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
               )}
             </View>
 
@@ -326,21 +425,21 @@ export default function CardDetailsScreen() {
                       <MaterialIcons
                         name="close"
                         size={20}
-                        color="#4F46E5"
+                        color="#DC2626"
                         style={styles.buttonIcon}
                       />
                     }
                     buttonStyle={styles.secondaryButton}
-                    containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}
-                    titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
+                    containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#DC262615' }]}
+                    titleStyle={{ color: '#DC2626', fontWeight: '600' }}
                     onPress={() => setIsEditing(false)}
                   />
                   <Button
-                    title="Save Changes"
+                    title="Save"
                     loading={saving}
                     icon={
                       <MaterialIcons
-                        name="save"
+                        name="check"
                         size={20}
                         color="white"
                         style={styles.buttonIcon}
@@ -356,27 +455,27 @@ export default function CardDetailsScreen() {
               ) : (
                 <>
                   <Button
-                    title="Edit Card"
-                    type="clear"
-                    icon={
-                      <MaterialIcons
-                        name="edit"
-                        size={20}
-                        color="#4F46E5"
-                        style={styles.buttonIcon}
-                      />
-                    }
-                    buttonStyle={styles.secondaryButton}
-                    containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}
-                    titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-                    onPress={() => setIsEditing(true)}
-                  />
-                  <Button
-                    title="Delete Card"
+                    title="Delete"
                     loading={deleting}
                     icon={
                       <MaterialIcons
                         name="delete"
+                        size={20}
+                        color="#DC2626"
+                        style={styles.buttonIcon}
+                      />
+                    }
+                    type="clear"
+                    buttonStyle={styles.secondaryButton}
+                    containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#DC262615' }]}
+                    titleStyle={{ color: '#DC2626', fontWeight: '600' }}
+                    onPress={handleDelete}
+                  />
+                  <Button
+                    title="Edit"
+                    icon={
+                      <MaterialIcons
+                        name="edit"
                         size={20}
                         color="white"
                         style={styles.buttonIcon}
@@ -384,9 +483,9 @@ export default function CardDetailsScreen() {
                     }
                     type="clear"
                     buttonStyle={styles.primaryButton}
-                    containerStyle={[styles.primaryButtonContainer, { backgroundColor: '#DC2626' }]}
+                    containerStyle={[styles.primaryButtonContainer, { backgroundColor: '#4F46E5' }]}
                     titleStyle={styles.primaryButtonText}
-                    onPress={handleDelete}
+                    onPress={() => setIsEditing(true)}
                   />
                 </>
               )}
@@ -420,6 +519,9 @@ const styles = StyleSheet.create({
   form: {
     gap: 24,
   },
+  characterSizeControl: {
+    marginBottom: 8,
+  },
   inputContainer: {
     gap: 8,
   },
@@ -432,6 +534,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
     marginLeft: 4,
+  },
+  contentCard: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
   },
   input: {
     paddingHorizontal: 0,

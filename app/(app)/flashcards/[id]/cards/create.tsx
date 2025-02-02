@@ -1,11 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Platform, ScrollView, Pressable } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../../components/layout/Container';
-import { createCard } from '../../../../../lib/api/flashcards';
+import { createCard, getDeck } from '../../../../../lib/api/flashcards';
+import { MandarinCardInput } from '../../../../../components/flashcards/MandarinCardInput';
+import { CharacterSizeControl } from '../../../../../components/flashcards/CharacterSizeControl';
+import { MandarinText } from '../../../../../components/flashcards/MandarinText';
+import type { Deck, MandarinCardData } from '../../../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 
 export default function CreateCardScreen() {
@@ -15,11 +19,36 @@ export default function CreateCardScreen() {
   const [tags, setTags] = useState('');
   const [isPreview, setIsPreview] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [deck, setDeck] = useState<Deck | null>(null);
+  const [characterSize, setCharacterSize] = useState(24);
+  const [frontMandarinData, setFrontMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
+  const [backMandarinData, setBackMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+  const isMandarin = deck?.language === 'Mandarin';
+
+  useEffect(() => {
+    const loadDeck = async () => {
+      try {
+        const deckData = await getDeck(id as string);
+        setDeck(deckData);
+        if (deckData?.language === 'Mandarin' && deckData.settings?.defaultCharacterSize) {
+          setCharacterSize(deckData.settings.defaultCharacterSize);
+        }
+      } catch (error) {
+        console.error('Error loading deck:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to load deck information',
+        });
+      }
+    };
+    loadDeck();
+  }, [id]);
 
   const handleCreateCard = async () => {
     if (!front.trim() || !back.trim()) {
@@ -38,6 +67,12 @@ export default function CreateCardScreen() {
         back: back.trim(),
         notes: notes.trim() || undefined,
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+        language_specific_data: isMandarin ? {
+          mandarin: {
+            front: frontMandarinData,
+            back: backMandarinData,
+          },
+        } : undefined,
       });
 
       Toast.show({
@@ -91,59 +126,93 @@ export default function CreateCardScreen() {
           <View style={styles.form}>
             {!isPreview ? (
               <>
-                <View style={styles.inputContainer}>
-                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                    Front
-                  </Text>
-                  <Input
-                    placeholder="Front side of the card"
-                    value={front}
-                    onChangeText={setFront}
-                    multiline
-                    numberOfLines={3}
-                    containerStyle={styles.input}
-                    inputContainerStyle={[
-                      styles.inputField,
-                      styles.textArea,
-                      {
-                        borderColor: theme.colors.grey2,
-                        backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                      },
-                    ]}
-                    inputStyle={[
-                      styles.inputText,
-                      { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                    ]}
-                    placeholderTextColor={theme.colors.grey3}
-                  />
-                </View>
+                {isMandarin && (
+                  <View style={styles.characterSizeControl}>
+                    <CharacterSizeControl
+                      size={characterSize}
+                      onSizeChange={setCharacterSize}
+                      color={theme.colors.grey4}
+                    />
+                  </View>
+                )}
 
-                <View style={styles.inputContainer}>
-                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                    Back
-                  </Text>
-                  <Input
-                    placeholder="Back side of the card"
-                    value={back}
-                    onChangeText={setBack}
-                    multiline
-                    numberOfLines={3}
-                    containerStyle={styles.input}
-                    inputContainerStyle={[
-                      styles.inputField,
-                      styles.textArea,
-                      {
-                        borderColor: theme.colors.grey2,
-                        backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                      },
-                    ]}
-                    inputStyle={[
-                      styles.inputText,
-                      { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                    ]}
-                    placeholderTextColor={theme.colors.grey3}
-                  />
-                </View>
+                {isMandarin ? (
+                  <>
+                    <MandarinCardInput
+                      label="Front"
+                      value={front}
+                      onChangeText={setFront}
+                      onMandarinDataChange={setFrontMandarinData}
+                      placeholder="Front side of the card"
+                      characterSize={characterSize}
+                    />
+
+                    <MandarinCardInput
+                      label="Back"
+                      value={back}
+                      onChangeText={setBack}
+                      onMandarinDataChange={setBackMandarinData}
+                      placeholder="Back side of the card"
+                      characterSize={characterSize}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.inputContainer}>
+                      <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        Front
+                      </Text>
+                      <Input
+                        placeholder="Front side of the card"
+                        value={front}
+                        onChangeText={setFront}
+                        multiline
+                        numberOfLines={3}
+                        containerStyle={styles.input}
+                        inputContainerStyle={[
+                          styles.inputField,
+                          styles.textArea,
+                          {
+                            borderColor: theme.colors.grey2,
+                            backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                          },
+                        ]}
+                        inputStyle={[
+                          styles.inputText,
+                          { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                        ]}
+                        placeholderTextColor={theme.colors.grey3}
+                      />
+                    </View>
+
+                    <View style={styles.inputContainer}>
+                      <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        Back
+                      </Text>
+                      <Input
+                        placeholder="Back side of the card"
+                        value={back}
+                        onChangeText={setBack}
+                        multiline
+                        numberOfLines={3}
+                        containerStyle={styles.input}
+                        inputContainerStyle={[
+                          styles.inputField,
+                          styles.textArea,
+                          {
+                            borderColor: theme.colors.grey2,
+                            backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                          },
+                        ]}
+                        inputStyle={[
+                          styles.inputText,
+                          { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                        ]}
+                        placeholderTextColor={theme.colors.grey3}
+                      />
+                    </View>
+                  </>
+                )}
 
                 <View style={styles.inputContainer}>
                   <Text style={[styles.label, { color: theme.colors.grey4 }]}>
@@ -207,9 +276,17 @@ export default function CreateCardScreen() {
                     },
                   ]}
                 >
-                  <Text style={[styles.previewText, { color: theme.colors.grey5 }]}>
-                    {front || 'Front side preview'}
-                  </Text>
+                  {isMandarin ? (
+                    <MandarinText
+                      data={frontMandarinData}
+                      characterSize={characterSize}
+                      color={theme.colors.grey5}
+                    />
+                  ) : (
+                    <Text style={[styles.previewText, { color: theme.colors.grey5 }]}>
+                      {front || 'Front side preview'}
+                    </Text>
+                  )}
                   {tags && (
                     <View style={styles.previewTags}>
                       {tags.split(',').map((tag, index) => (
@@ -247,9 +324,17 @@ export default function CreateCardScreen() {
                     },
                   ]}
                 >
-                  <Text style={[styles.previewText, { color: theme.colors.grey5 }]}>
-                    {back || 'Back side preview'}
-                  </Text>
+                  {isMandarin ? (
+                    <MandarinText
+                      data={backMandarinData}
+                      characterSize={characterSize}
+                      color={theme.colors.grey5}
+                    />
+                  ) : (
+                    <Text style={[styles.previewText, { color: theme.colors.grey5 }]}>
+                      {back || 'Back side preview'}
+                    </Text>
+                  )}
                   {notes && (
                     <Text style={[styles.previewNotes, { color: theme.colors.grey3 }]}>
                       {notes}
@@ -322,6 +407,9 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 24,
+  },
+  characterSizeControl: {
+    marginBottom: 8,
   },
   inputContainer: {
     gap: 8,

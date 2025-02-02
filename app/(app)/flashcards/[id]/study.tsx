@@ -5,13 +5,25 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import { getDueCards, reviewCard } from '../../../../lib/api/flashcards';
+import { getDueCards, reviewCard, getDeck } from '../../../../lib/api/flashcards';
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
-import type { Card } from '../../../../types/flashcards';
+import { MandarinText } from '../../../../components/flashcards/MandarinText';
+import { CharacterSizeControl } from '../../../../components/flashcards/CharacterSizeControl';
+import type { Card, Deck } from '../../../../types/flashcards';
 import Toast from 'react-native-toast-message';
+
+// Keyboard shortcuts for web
+const KEYBOARD_SHORTCUTS = {
+  '1': Rating.Again,
+  '2': Rating.Hard,
+  '3': Rating.Good,
+  '4': Rating.Easy,
+  ' ': 'flip', // Space bar to flip card
+} as const;
 
 export default function StudyScreen() {
   const [cards, setCards] = useState<Card[]>([]);
+  const [deck, setDeck] = useState<Deck | null>(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [flipAnim] = useState(new Animated.Value(0));
@@ -20,16 +32,42 @@ export default function StudyScreen() {
   const [startTime] = useState(new Date());
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
+  const [characterSize, setCharacterSize] = useState(24);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+  const isMandarin = deck?.language === 'Mandarin';
 
-  const loadCards = useCallback(async () => {
+  // Handle keyboard shortcuts on web
+  useEffect(() => {
+    if (!isWeb) return;
+
+    const handleKeyPress = (event: KeyboardEvent) => {
+      const key = event.key;
+      if (key in KEYBOARD_SHORTCUTS) {
+        event.preventDefault();
+        const action = KEYBOARD_SHORTCUTS[key as keyof typeof KEYBOARD_SHORTCUTS];
+        if (action === 'flip') {
+          flipCard();
+        } else if (isFlipped && !reviewing) {
+          handleResponse(action);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isWeb, isFlipped, reviewing]);
+
+  const loadData = useCallback(async () => {
     try {
-      console.log('Loading cards for deck:', id);
-      const dueCards = await getDueCards(id as string);
+      console.log('Loading deck and cards:', id);
+      const [dueCards, deckData] = await Promise.all([
+        getDueCards(id as string),
+        getDeck(id as string),
+      ]);
       console.log('Loaded due cards:', dueCards);
       
       if (!dueCards || dueCards.length === 0) {
@@ -44,8 +82,13 @@ export default function StudyScreen() {
       }
 
       setCards(dueCards);
+      setDeck(deckData);
+
+      if (deckData?.language === 'Mandarin' && deckData.settings?.defaultCharacterSize) {
+        setCharacterSize(deckData.settings.defaultCharacterSize);
+      }
     } catch (error) {
-      console.error('Error in loadCards:', error);
+      console.error('Error in loadData:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -58,8 +101,8 @@ export default function StudyScreen() {
   }, [id, router]);
 
   useEffect(() => {
-    loadCards();
-  }, [loadCards]);
+    loadData();
+  }, [loadData]);
 
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
@@ -213,6 +256,16 @@ export default function StudyScreen() {
           </View>
         </View>
 
+        {isMandarin && (
+          <View style={styles.characterSizeControl}>
+            <CharacterSizeControl
+              size={characterSize}
+              onSizeChange={setCharacterSize}
+              color={theme.colors.grey4}
+            />
+          </View>
+        )}
+
         <View style={styles.cardContainer}>
           <Pressable onPress={flipCard}>
             <View style={styles.cardWrapper}>
@@ -226,9 +279,17 @@ export default function StudyScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                  {currentCard.front}
-                </Text>
+                {isMandarin && currentCard.language_specific_data?.mandarin ? (
+                  <MandarinText
+                    data={currentCard.language_specific_data.mandarin.front}
+                    characterSize={characterSize}
+                    color={theme.colors.grey5}
+                  />
+                ) : (
+                  <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
+                    {currentCard.front}
+                  </Text>
+                )}
                 {currentCard.tags && currentCard.tags.length > 0 && (
                   <View style={styles.cardTags}>
                     {currentCard.tags.map((tag, index) => (
@@ -255,9 +316,17 @@ export default function StudyScreen() {
                   },
                 ]}
               >
-                <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                  {currentCard.back}
-                </Text>
+                {isMandarin && currentCard.language_specific_data?.mandarin ? (
+                  <MandarinText
+                    data={currentCard.language_specific_data.mandarin.back}
+                    characterSize={characterSize}
+                    color={theme.colors.grey5}
+                  />
+                ) : (
+                  <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
+                    {currentCard.back}
+                  </Text>
+                )}
                 {currentCard.notes && (
                   <Text style={[styles.notes, { color: theme.colors.grey3 }]}>
                     {currentCard.notes}
@@ -269,7 +338,7 @@ export default function StudyScreen() {
 
           <View style={styles.controls}>
             <Button
-              title="Again"
+              title={isWeb ? "Again (1)" : "Again"}
               icon={
                 <MaterialIcons
                   name="refresh"
@@ -286,7 +355,7 @@ export default function StudyScreen() {
               onPress={() => handleResponse(Rating.Again)}
             />
             <Button
-              title="Hard"
+              title={isWeb ? "Hard (2)" : "Hard"}
               icon={
                 <MaterialIcons
                   name="trending-down"
@@ -303,7 +372,7 @@ export default function StudyScreen() {
               onPress={() => handleResponse(Rating.Hard)}
             />
             <Button
-              title="Good"
+              title={isWeb ? "Good (3)" : "Good"}
               icon={
                 <MaterialIcons
                   name="check"
@@ -320,7 +389,7 @@ export default function StudyScreen() {
               onPress={() => handleResponse(Rating.Good)}
             />
             <Button
-              title="Easy"
+              title={isWeb ? "Easy (4)" : "Easy"}
               icon={
                 <MaterialIcons
                   name="trending-up"
@@ -338,6 +407,14 @@ export default function StudyScreen() {
             />
           </View>
         </View>
+
+        {isWeb && (
+          <View style={styles.shortcuts}>
+            <Text style={[styles.shortcutText, { color: theme.colors.grey3 }]}>
+              Keyboard shortcuts: Space to flip • 1-4 to rate card
+            </Text>
+          </View>
+        )}
       </Container>
     </SafeAreaView>
   );
@@ -378,6 +455,9 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  characterSizeControl: {
+    marginBottom: 24,
   },
   cardContainer: {
     flex: 1,
@@ -443,5 +523,13 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 12,
     overflow: 'hidden',
+  },
+  shortcuts: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  shortcutText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 }); 

@@ -1,154 +1,144 @@
-import { differenceInDays } from 'date-fns';
+import { FSRS, Rating, State as CardState, Card as FSRSCard } from 'ts-fsrs';
+import { generatorParameters } from 'ts-fsrs';
+import { createEmptyCard } from 'ts-fsrs';
+import type { RecordLogItem, ReviewLog } from 'ts-fsrs';
+import { DEFAULT_PARAMETERS } from 'ts-fsrs/lib/constants';
 
-// Card states
-export enum CardState {
-  New = 0,
-  Learning = 1,
-  Review = 2,
-  Relearning = 3,
-}
+// Re-export Rating enum from ts-fsrs
+export { Rating, CardState };
 
-// Rating values for card reviews
-export enum Rating {
-  Again = 1,
-  Hard = 2,
-  Good = 3,
-  Easy = 4,
-}
-
-// Parameters for the FSRS algorithm
-// These values are based on the default parameters from the FSRS research
-const FSRS_PARAMETERS = {
+// Default parameters for FSRS
+const DEFAULT_PARAMETERS_OBJ = generatorParameters({
   request_retention: 0.9,
   maximum_interval: 36500,
-  w: [0.4, 0.6, 2.4, 5.8, 4.93, 0.94, 0.86, 0.01, 1.49, 0.14, 0.94, 2.18, 0.05, 0.34, 1.26, 0.29, 2.61],
-};
+  enable_fuzz: true,
+});
 
-// Calculate the stability after a successful review
-function nextStability(
-  difficulty: number,
-  stability: number,
-  retrievability: number,
-  rating: Rating,
-  state: CardState,
-): number {
-  const w = FSRS_PARAMETERS.w;
-  
-  // Hard rating
-  if (rating === Rating.Hard) {
-    return stability * (1 + w[0] * (difficulty ** w[1]) * (stability ** w[2]) * (retrievability ** w[3]));
-  }
-  
-  // Good rating
-  if (rating === Rating.Good) {
-    return stability * (1 + w[4] * (difficulty ** w[5]) * (stability ** w[6]) * (retrievability ** w[7]));
-  }
-  
-  // Easy rating
-  if (rating === Rating.Easy) {
-    return stability * (1 + w[8] * (difficulty ** w[9]) * (stability ** w[10]) * (retrievability ** w[11]));
-  }
-  
-  // Again rating - start over with initial stability
-  return initialStability(difficulty);
+// Initialize FSRS with default parameters
+const fsrs = new FSRS(DEFAULT_PARAMETERS_OBJ);
+
+// Learning and relearning steps (in minutes)
+const LEARNING_STEPS = [1, 10];
+const RELEARNING_STEPS = [10];
+
+// Interface for card scheduling info
+export interface SchedulingInfo {
+  due: Date;
+  state: CardState;
+  difficulty: number;
+  stability: number;
+  retrievability: number;
+  elapsed_days: number;
+  scheduled_days: number;
+  reps: number;
+  lapses: number;
+  scheduled_in_minutes?: number; // For learning/relearning cards
 }
 
-// Calculate initial stability for new cards or after forgetting
-function initialStability(difficulty: number): number {
-  const w = FSRS_PARAMETERS.w;
-  return w[12] * (difficulty ** w[13]);
+// Convert our card data to FSRS card format
+function toFSRSCard(card: {
+  state: CardState;
+  difficulty: number;
+  stability: number;
+  retrievability: number;
+  elapsed_days: number;
+  last_reviewed_at: Date | null;
+  reps?: number;
+  lapses?: number;
+}): FSRSCard {
+  return {
+    due: card.last_reviewed_at || new Date(),
+    stability: card.stability,
+    difficulty: card.difficulty,
+    elapsed_days: card.elapsed_days,
+    scheduled_days: 0,
+    reps: card.reps || 0,
+    lapses: card.lapses || 0,
+    state: card.state,
+    last_review: card.last_reviewed_at || new Date(),
+  };
 }
 
-// Update difficulty based on rating
-function nextDifficulty(difficulty: number, rating: Rating): number {
-  const w = FSRS_PARAMETERS.w;
-  
-  // Calculate new difficulty
-  let nextD = difficulty;
-  if (rating === Rating.Again) {
-    nextD += w[14];
-  } else if (rating === Rating.Hard) {
-    nextD += w[15];
-  } else if (rating === Rating.Easy) {
-    nextD -= w[16];
-  }
-  
-  // Constrain difficulty between 0 and 1
-  return Math.min(Math.max(nextD, 0), 1);
-}
-
-// Calculate retrievability given stability and elapsed time
-function retrievability(stability: number, elapsedDays: number): number {
-  return Math.exp(Math.log(0.9) * elapsedDays / stability);
-}
-
-// Calculate next interval based on stability and desired retention
-function nextInterval(stability: number): number {
-  const interval = Math.ceil(stability * Math.log(FSRS_PARAMETERS.request_retention) / Math.log(0.9));
-  return Math.min(interval, FSRS_PARAMETERS.maximum_interval);
+// Clamp a number between min and max values
+function clamp(num: number, min: number, max: number): number {
+  return Math.min(Math.max(num, min), max);
 }
 
 // Main function to schedule a card review
 export function scheduleReview(
   card: {
-    state: CardState;
+    state: number;
     difficulty: number;
     stability: number;
     retrievability: number;
     elapsed_days: number;
     last_reviewed_at: Date | null;
+    reps: number;
+    lapses: number;
   },
-  rating: Rating,
+  rating: Rating
 ): {
-  state: CardState;
+  state: number;
   difficulty: number;
   stability: number;
   retrievability: number;
   scheduled_days: number;
+  scheduled_in_minutes?: number;
 } {
   const now = new Date();
-  const elapsedDays = card.last_reviewed_at
-    ? differenceInDays(now, card.last_reviewed_at)
-    : 0;
   
-  // Update difficulty
-  const newDifficulty = nextDifficulty(card.difficulty, rating);
-  
-  // Calculate current retrievability
-  const currentRetrievability = card.state === CardState.New
-    ? 1
-    : retrievability(card.stability, elapsedDays);
-  
-  // Calculate new stability
-  const newStability = nextStability(
-    newDifficulty,
-    card.stability,
-    currentRetrievability,
-    rating,
-    card.state,
-  );
-  
-  // Determine new state
-  let newState: CardState;
-  if (rating === Rating.Again) {
-    newState = CardState.Relearning;
-  } else if (card.state === CardState.New || card.state === CardState.Learning) {
-    newState = rating === Rating.Easy ? CardState.Review : CardState.Learning;
-  } else {
-    newState = CardState.Review;
+  // Convert our card to FSRS format
+  const fsrsCard: FSRSCard = {
+    due: now,
+    stability: card.stability || 0,
+    difficulty: clamp(card.difficulty || 0, 0, 1),
+    elapsed_days: card.elapsed_days || 0,
+    scheduled_days: 0,
+    reps: card.reps || 0,
+    lapses: card.lapses || 0,
+    state: card.state,
+    last_review: card.last_reviewed_at || now,
+  };
+
+  const results = fsrs.repeat(fsrsCard, now);
+  const result = results[rating];
+
+  // Ensure difficulty stays within valid range (0-1)
+  const difficulty = clamp(result.card.difficulty, 0, 1);
+
+  // For learning/relearning cards, schedule in minutes
+  if (result.card.state === CardState.Learning || result.card.state === CardState.Relearning) {
+    return {
+      state: result.card.state,
+      difficulty,
+      stability: result.card.stability,
+      retrievability: result.retrievability,
+      scheduled_days: 0,
+      scheduled_in_minutes: 10, // Default to 10 minutes for learning/relearning
+    };
   }
-  
-  // Calculate next interval
-  const scheduledDays = nextInterval(newStability);
-  
-  // Calculate new retrievability for the scheduled interval
-  const newRetrievability = retrievability(newStability, scheduledDays);
-  
+
+  // For review cards, schedule in days
   return {
-    state: newState,
-    difficulty: newDifficulty,
-    stability: newStability,
-    retrievability: newRetrievability,
-    scheduled_days: scheduledDays,
+    state: result.card.state,
+    difficulty,
+    stability: result.card.stability,
+    retrievability: result.retrievability,
+    scheduled_days: Math.max(1, Math.round(result.card.scheduled_days)), // Ensure minimum 1 day interval
+  };
+}
+
+// Create a new card with initial FSRS state
+export function createNewCard(): Pick<SchedulingInfo, 'state' | 'difficulty' | 'stability' | 'retrievability' | 'elapsed_days' | 'scheduled_days' | 'reps' | 'lapses'> {
+  const card = createEmptyCard();
+  return {
+    state: card.state,
+    difficulty: card.difficulty,
+    stability: card.stability,
+    retrievability: 1,
+    elapsed_days: 0,
+    scheduled_days: 0,
+    reps: 0,
+    lapses: 0,
   };
 } 
