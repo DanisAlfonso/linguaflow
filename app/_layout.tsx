@@ -3,6 +3,7 @@ import { useColorScheme } from 'react-native';
 import { Stack } from 'expo-router';
 import { ThemeProvider } from '@rneui/themed';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import Toast from 'react-native-toast-message';
 import { AuthProvider } from '../contexts/AuthContext';
 import { lightTheme, darkTheme } from '../theme';
 
@@ -17,6 +18,7 @@ export default function RootLayout() {
             headerShown: false,
             animation: 'fade',
           }} />
+          <Toast />
         </AuthProvider>
       </SafeAreaProvider>
     </ThemeProvider>

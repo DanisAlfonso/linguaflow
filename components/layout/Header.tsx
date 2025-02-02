@@ -61,6 +61,20 @@ export function Header() {
               />
               <Button
                 type="clear"
+                title="Flashcards"
+                icon={
+                  <MaterialIcons
+                    name="library-books"
+                    size={20}
+                    color="#059669"
+                    style={styles.buttonIcon}
+                  />
+                }
+                titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
+                onPress={() => router.push('/flashcards')}
+              />
+              <Button
+                type="clear"
                 title="Progress"
                 icon={
                   <MaterialIcons

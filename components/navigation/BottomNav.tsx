@@ -18,6 +18,11 @@ export function BottomNav() {
       route: '/',
     },
     {
+      label: 'Flashcards',
+      icon: 'library-books',
+      route: '/flashcards',
+    },
+    {
       label: 'Progress',
       icon: 'trending-up',
       route: '/progress',
