@@ -1,37 +1,147 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform, ScrollView } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
+import { getDeck, updateDeck, deleteDeck } from '../../../../lib/api/flashcards';
+import type { Deck } from '../../../../types/flashcards';
+import Toast from 'react-native-toast-message';
 
 export default function EditDeckScreen() {
-  const [name, setName] = useState('Spanish Vocabulary');
-  const [description, setDescription] = useState('Essential Spanish words and phrases');
-  const [tags, setTags] = useState('spanish,beginner');
-  const [loading, setLoading] = useState(false);
+  const [deck, setDeck] = useState<Deck | null>(null);
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
 
-  const handleSave = async () => {
-    if (!name.trim()) {
-      // Show error
-      return;
-    }
-
-    setLoading(true);
+  const loadDeck = useCallback(async () => {
     try {
-      // TODO: Implement save logic
-      router.back();
+      const data = await getDeck(id as string);
+      if (!data) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Deck not found',
+        });
+        router.back();
+        return;
+      }
+
+      setDeck(data);
+      setName(data.name);
+      setDescription(data.description || '');
+      setTags(data.tags?.join(', ') || '');
     } catch (error) {
-      // Show error
+      console.error('Error loading deck:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load deck',
+      });
+      router.back();
     } finally {
       setLoading(false);
     }
+  }, [id, router]);
+
+  useEffect(() => {
+    loadDeck();
+  }, [loadDeck]);
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Deck name is required',
+      });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await updateDeck(id as string, {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+      });
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Deck updated successfully',
+      });
+
+      router.back();
+    } catch (error) {
+      console.error('Error updating deck:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to update deck',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteDeck(id as string);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Deck deleted successfully',
+      });
+
+      router.replace('/(app)/flashcards/');
+    } catch (error) {
+      console.error('Error deleting deck:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete deck',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  if (loading || !deck) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <Container>
+          <View style={styles.header}>
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name="arrow-back"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+              }
+              onPress={() => router.back()}
+              containerStyle={styles.backButton}
+            />
+            <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
+              Loading...
+            </Text>
+          </View>
+        </Container>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -134,23 +244,42 @@ export default function EditDeckScreen() {
               />
             </View>
 
-            <Button
-              title="Save Changes"
-              loading={loading}
-              icon={
-                <MaterialIcons
-                  name="save"
-                  size={20}
-                  color="white"
-                  style={styles.buttonIcon}
-                />
-              }
-              type="clear"
-              buttonStyle={styles.saveButton}
-              containerStyle={[styles.saveButtonContainer, { backgroundColor: '#4F46E5' }]}
-              titleStyle={styles.saveButtonText}
-              onPress={handleSave}
-            />
+            <View style={styles.actions}>
+              <Button
+                title="Delete Deck"
+                loading={deleting}
+                icon={
+                  <MaterialIcons
+                    name="delete"
+                    size={20}
+                    color="white"
+                    style={styles.buttonIcon}
+                  />
+                }
+                type="clear"
+                buttonStyle={styles.deleteButton}
+                containerStyle={[styles.deleteButtonContainer, { backgroundColor: '#DC2626' }]}
+                titleStyle={styles.buttonText}
+                onPress={handleDelete}
+              />
+              <Button
+                title="Save Changes"
+                loading={saving}
+                icon={
+                  <MaterialIcons
+                    name="save"
+                    size={20}
+                    color="white"
+                    style={styles.buttonIcon}
+                  />
+                }
+                type="clear"
+                buttonStyle={styles.saveButton}
+                containerStyle={[styles.saveButtonContainer, { backgroundColor: '#4F46E5' }]}
+                titleStyle={styles.buttonText}
+                onPress={handleSave}
+              />
+            </View>
           </View>
         </ScrollView>
       </Container>
@@ -206,19 +335,33 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
   },
+  actions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
   buttonIcon: {
     marginRight: 8,
+  },
+  deleteButton: {
+    height: 48,
+    borderWidth: 0,
+  },
+  deleteButtonContainer: {
+    flex: 1,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   saveButton: {
     height: 48,
     borderWidth: 0,
   },
   saveButtonContainer: {
+    flex: 1,
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 8,
   },
-  saveButtonText: {
+  buttonText: {
     fontSize: 16,
     fontWeight: '600',
     color: 'white',

@@ -1,61 +1,68 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Platform, Pressable, Animated } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, Platform, Pressable, Animated, ViewStyle } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import type { Card, ReviewResponse } from '../../../../types/flashcards';
-
-// Temporary mock data - we'll replace this with real data later
-const mockCards: Card[] = [
-  {
-    id: '1',
-    deckId: '1',
-    front: 'Hello',
-    back: 'Hola',
-    notes: 'Basic greeting',
-    tags: ['greetings'],
-    createdAt: new Date(),
-    consecutiveCorrect: 0,
-  },
-  {
-    id: '2',
-    deckId: '1',
-    front: 'Good morning',
-    back: 'Buenos días',
-    notes: 'Morning greeting',
-    tags: ['greetings', 'time'],
-    createdAt: new Date(),
-    consecutiveCorrect: 2,
-  },
-  {
-    id: '3',
-    deckId: '1',
-    front: 'Thank you',
-    back: 'Gracias',
-    notes: 'Basic courtesy',
-    tags: ['courtesy'],
-    createdAt: new Date(),
-    consecutiveCorrect: 1,
-  },
-];
+import { getDueCards, reviewCard } from '../../../../lib/api/flashcards';
+import { Rating } from '../../../../lib/spaced-repetition/fsrs';
+import type { Card } from '../../../../types/flashcards';
+import Toast from 'react-native-toast-message';
 
 export default function StudyScreen() {
+  const [cards, setCards] = useState<Card[]>([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [flipAnim] = useState(new Animated.Value(0));
   const [cardsStudied, setCardsStudied] = useState(0);
   const [correctResponses, setCorrectResponses] = useState(0);
   const [startTime] = useState(new Date());
+  const [loading, setLoading] = useState(true);
+  const [reviewing, setReviewing] = useState(false);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
-  const currentCard = mockCards[currentCardIndex];
-  const progress = ((currentCardIndex) / mockCards.length) * 100;
+  const loadCards = useCallback(async () => {
+    try {
+      console.log('Loading cards for deck:', id);
+      const dueCards = await getDueCards(id as string);
+      console.log('Loaded due cards:', dueCards);
+      
+      if (!dueCards || dueCards.length === 0) {
+        console.log('No cards to review');
+        Toast.show({
+          type: 'info',
+          text1: 'No cards to review',
+          text2: 'All caught up! Come back later.',
+        });
+        router.back();
+        return;
+      }
+
+      setCards(dueCards);
+    } catch (error) {
+      console.error('Error in loadCards:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: error instanceof Error ? error.message : 'Failed to load cards',
+      });
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  }, [id, router]);
+
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
+  const currentCard = cards[currentCardIndex];
+  const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
 
   const flipCard = () => {
     setIsFlipped(!isFlipped);
@@ -67,35 +74,59 @@ export default function StudyScreen() {
     }).start();
   };
 
-  const handleResponse = (response: ReviewResponse) => {
-    // Update statistics
-    setCardsStudied(prev => prev + 1);
-    if (response === 'good' || response === 'easy') {
-      setCorrectResponses(prev => prev + 1);
-    }
+  const handleResponse = async (rating: Rating) => {
+    if (reviewing) return;
+    setReviewing(true);
 
-    // Move to next card
-    if (currentCardIndex < mockCards.length - 1) {
-      setCurrentCardIndex(prev => prev + 1);
-      // Reset flip state for next card
-      setIsFlipped(false);
-      flipAnim.setValue(0);
-    } else {
-      // End of deck
-      const endTime = new Date();
-      const timeSpent = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
-      
-      // TODO: Save study session
-      console.log({
-        deckId: id,
-        startedAt: startTime,
-        cardsStudied,
-        correctResponses,
-        timeSpent,
+    try {
+      await reviewCard(currentCard.id, rating);
+
+      // Update statistics
+      setCardsStudied(prev => prev + 1);
+      if (rating === Rating.Good || rating === Rating.Easy) {
+        setCorrectResponses(prev => prev + 1);
+      }
+
+      if (rating === Rating.Again) {
+        // Move current card to the end of the deck
+        setCards(prevCards => {
+          const newCards = [...prevCards];
+          const currentCard = newCards.splice(currentCardIndex, 1)[0];
+          return [...newCards, currentCard];
+        });
+        // Stay on the same index (which will now show the next card)
+        setIsFlipped(false);
+        flipAnim.setValue(0);
+      } else {
+        // For other ratings, move to next card
+        if (currentCardIndex < cards.length - 1) {
+          setCurrentCardIndex(prev => prev + 1);
+          setIsFlipped(false);
+          flipAnim.setValue(0);
+        } else {
+          // End of deck
+          const endTime = new Date();
+          const timeSpent = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
+          
+          Toast.show({
+            type: 'success',
+            text1: 'Study session complete!',
+            text2: `You reviewed ${cardsStudied} cards in ${Math.floor(timeSpent / 60)}m ${timeSpent % 60}s`,
+          });
+
+          // Navigate back to deck view
+          router.back();
+        }
+      }
+    } catch (error) {
+      console.error('Error reviewing card:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to save review',
       });
-
-      // Navigate back to deck view
-      router.back();
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -116,6 +147,33 @@ export default function StudyScreen() {
   const backAnimatedStyle = {
     transform: [{ rotateY: backInterpolate }],
   };
+
+  if (loading || !currentCard) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+        <Container>
+          <View style={styles.header}>
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name="close"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+              }
+              onPress={() => router.back()}
+            />
+          </View>
+          <View style={styles.loadingContainer}>
+            <Text style={[styles.loadingText, { color: theme.colors.grey5 }]}>
+              Loading cards...
+            </Text>
+          </View>
+        </Container>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -150,7 +208,7 @@ export default function StudyScreen() {
               />
             </View>
             <Text style={[styles.progressText, { color: theme.colors.grey4 }]}>
-              {currentCardIndex + 1} / {mockCards.length}
+              {currentCardIndex + 1} / {cards.length}
             </Text>
           </View>
         </View>
@@ -171,7 +229,7 @@ export default function StudyScreen() {
                 <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
                   {currentCard.front}
                 </Text>
-                {currentCard.tags && (
+                {currentCard.tags && currentCard.tags.length > 0 && (
                   <View style={styles.cardTags}>
                     {currentCard.tags.map((tag, index) => (
                       <View
@@ -221,10 +279,11 @@ export default function StudyScreen() {
                 />
               }
               type="clear"
+              loading={reviewing}
               buttonStyle={[styles.responseButton]}
               containerStyle={[styles.responseButtonContainer, { backgroundColor: '#DC262615' }]}
               titleStyle={{ color: '#DC2626', fontWeight: '600' }}
-              onPress={() => handleResponse('again')}
+              onPress={() => handleResponse(Rating.Again)}
             />
             <Button
               title="Hard"
@@ -237,10 +296,11 @@ export default function StudyScreen() {
                 />
               }
               type="clear"
+              loading={reviewing}
               buttonStyle={[styles.responseButton]}
               containerStyle={[styles.responseButtonContainer, { backgroundColor: '#D9770615' }]}
               titleStyle={{ color: '#D97706', fontWeight: '600' }}
-              onPress={() => handleResponse('hard')}
+              onPress={() => handleResponse(Rating.Hard)}
             />
             <Button
               title="Good"
@@ -253,10 +313,11 @@ export default function StudyScreen() {
                 />
               }
               type="clear"
+              loading={reviewing}
               buttonStyle={[styles.responseButton]}
               containerStyle={[styles.responseButtonContainer, { backgroundColor: '#05966915' }]}
               titleStyle={{ color: '#059669', fontWeight: '600' }}
-              onPress={() => handleResponse('good')}
+              onPress={() => handleResponse(Rating.Good)}
             />
             <Button
               title="Easy"
@@ -269,10 +330,11 @@ export default function StudyScreen() {
                 />
               }
               type="clear"
+              loading={reviewing}
               buttonStyle={[styles.responseButton]}
               containerStyle={[styles.responseButtonContainer, { backgroundColor: '#4F46E515' }]}
               titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-              onPress={() => handleResponse('easy')}
+              onPress={() => handleResponse(Rating.Easy)}
             />
           </View>
         </View>
@@ -288,17 +350,14 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
     marginBottom: 32,
   },
   progress: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    marginLeft: 16,
+    gap: 8,
   },
   progressBar: {
-    flex: 1,
     height: 4,
     borderRadius: 2,
     overflow: 'hidden',
@@ -311,59 +370,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  cardContainer: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  cardContainer: {
+    flex: 1,
     gap: 32,
   },
-  cardWrapper: {
-    height: 400,
-    ...Platform.select({
-      web: {
+  cardWrapper: Platform.OS === 'web' 
+    ? {
+        // @ts-ignore - React Native Web supports perspective
         perspective: 1000,
-      },
-      default: {},
-    }),
-  },
+      } 
+    : {} as ViewStyle,
   card: {
-    position: 'absolute',
-    width: '100%',
-    height: '100%',
-    borderRadius: 20,
-    borderWidth: 1,
+    minHeight: 300,
     padding: 24,
+    borderRadius: 24,
+    borderWidth: 1,
     backfaceVisibility: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      web: {
-        cursor: 'pointer',
-      },
-      default: {
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-    }),
+    gap: 16,
   },
   cardBack: {
-    transform: [{ rotateY: '180deg' }],
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   cardText: {
     fontSize: 24,
     fontWeight: '600',
     textAlign: 'center',
   },
-  notes: {
-    marginTop: 16,
-    fontSize: 16,
-    textAlign: 'center',
-  },
   cardTags: {
-    position: 'absolute',
-    bottom: 24,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
@@ -378,18 +423,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
   },
+  notes: {
+    fontSize: 16,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   controls: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    paddingHorizontal: 16,
+    gap: 8,
   },
   buttonIcon: {
     marginRight: 8,
   },
   responseButton: {
-    borderWidth: 0,
     height: 48,
+    borderWidth: 0,
   },
   responseButtonContainer: {
     flex: 1,

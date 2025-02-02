@@ -66,6 +66,14 @@ export default function DeckScreen() {
   );
 
   const handleStartStudy = () => {
+    if (!hasCardsToStudy) {
+      Toast.show({
+        type: 'info',
+        text1: 'No cards to study',
+        text2: 'All caught up! Come back later.',
+      });
+      return;
+    }
     router.push(`/flashcards/${id}/study`);
   };
 
@@ -90,7 +98,7 @@ export default function DeckScreen() {
   );
 
   const hasCards = (deck?.total_cards ?? 0) > 0;
-  const hasCardsToStudy = (deck?.new_cards ?? 0) + (deck?.cards_to_review ?? 0) > 0;
+  const hasCardsToStudy = hasCards && ((deck?.new_cards ?? 0) + (deck?.cards_to_review ?? 0) > 0);
 
   if (loading || !deck) {
     return (
