@@ -1,123 +1,103 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter, useSegments } from 'expo-router';
 import { supabase } from '../lib/supabase';
-import { useRouter } from 'expo-router';
+import type { User } from '@supabase/supabase-js';
 
 type AuthContextType = {
   user: User | null;
-  session: Session | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signIn: (email: string, password: string) => Promise<void>;
+  signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  error: string | null;
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+type Props = {
+  children: React.ReactNode;
+  initialPathname?: string;
+};
+
+export function AuthProvider({ children, initialPathname }: Props) {
   const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
-
-  const handleAuthStateChange = useCallback(async (_event: string, session: Session | null) => {
-    setSession(session);
-    setUser(session?.user ?? null);
-    setLoading(false);
-
-    if (session?.user) {
-      router.replace('/(app)');
-    } else {
-      router.replace('/sign-in');
-    }
-  }, [router]);
+  const segments = useSegments();
 
   useEffect(() => {
-    // Check active sessions and sets the user
+    console.log('AuthContext - Initial pathname:', initialPathname);
+    console.log('AuthContext - Current segments:', segments);
+    console.log('AuthContext - Auth state:', { user: !!user, loading });
+
+    if (loading) return;
+
+    const inProtectedRoute = segments[0] === '(app)';
+    const isRootPath = segments.length === 0 || (segments.length === 1 && segments[0] === '');
+
+    if (!user && inProtectedRoute) {
+      // If not authenticated and trying to access protected route, redirect to sign in
+      console.log('AuthContext - Not authenticated, redirecting to sign in');
+      router.replace('/sign-in');
+    } else if (user && !inProtectedRoute && !isRootPath) {
+      // If authenticated and accessing non-root public route, redirect to app version
+      const targetPath = initialPathname || '/';
+      const appPath = targetPath === '/' ? '/(app)' : `/(app)${targetPath}`;
+      console.log('AuthContext - Authenticated, redirecting to:', appPath);
+      router.replace(appPath);
+    } else if (user && isRootPath) {
+      // If authenticated and at root, redirect to app home
+      console.log('AuthContext - At root, redirecting to app home');
+      router.replace('/(app)');
+    }
+  }, [user, loading, segments, initialPathname]);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      handleAuthStateChange('INITIAL', session);
+      setUser(session?.user ?? null);
+      setLoading(false);
     });
 
-    // Listen for changes on auth state
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(handleAuthStateChange);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
     return () => subscription.unsubscribe();
-  }, [handleAuthStateChange]);
-
-  const signUp = useCallback(async (email: string, password: string) => {
-    try {
-      setError(null);
-      setLoading(true);
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
-      setError(message);
-      return { error: error as Error };
-    } finally {
-      setLoading(false);
-    }
   }, []);
 
-  const signIn = useCallback(async (email: string, password: string) => {
-    try {
-      setError(null);
-      setLoading(true);
+  const value = {
+    user,
+    loading,
+    signIn: async (email: string, password: string) => {
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
       if (error) throw error;
-      return { error: null };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'An unexpected error occurred';
-      setError(message);
-      return { error: error as Error };
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const signOut = useCallback(async () => {
-    try {
-      setError(null);
-      setLoading(true);
+    },
+    signUp: async (email: string, password: string) => {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+      if (error) throw error;
+    },
+    signOut: async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'An unexpected error occurred');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const value = React.useMemo(() => ({
-    user,
-    session,
-    loading,
-    signUp,
-    signIn,
-    signOut,
-    error,
-  }), [user, session, loading, signUp, signIn, signOut, error]);
+    },
+  };
 
   return (
     <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}; 
+} 

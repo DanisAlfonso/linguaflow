@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { View, StyleSheet, Platform } from 'react-native';
-import { Redirect, Stack } from 'expo-router';
+import { Redirect, Stack, usePathname } from 'expo-router';
 import { useTheme } from '@rneui/themed';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
@@ -10,20 +10,30 @@ import { BottomNav } from '../../components/navigation/BottomNav';
 export default function AppLayout() {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
+  const pathname = usePathname();
+
+  console.log('AppLayout - Current pathname:', pathname);
+  console.log('AppLayout - Auth state:', { user: !!user, loading });
 
   // You can show a loading screen while checking authentication
   if (loading) {
+    console.log('AppLayout - Still loading auth state');
     return null;
   }
 
   // If user is not authenticated, redirect to sign in
   if (!user) {
+    console.log('AppLayout - User not authenticated, redirecting to /sign-in');
     return <Redirect href="/sign-in" />;
   }
 
+  console.log('AppLayout - Rendering app layout');
   return (
     <LinearGradient
-      colors={[theme.colors.backgroundGradientStart, theme.colors.backgroundGradientEnd]}
+      colors={[
+        (theme.colors as any).backgroundGradientStart,
+        (theme.colors as any).backgroundGradientEnd
+      ]}
       style={styles.container}
     >
       <Header />

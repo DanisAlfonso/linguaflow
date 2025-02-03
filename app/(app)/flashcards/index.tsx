@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Platform, Pressable } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
@@ -17,25 +17,26 @@ export default function FlashcardsScreen() {
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
-  useEffect(() => {
-    const loadDecks = async () => {
-      try {
-        const data = await getDecks();
-        setDecks(data);
-      } catch (error) {
-        console.error('Error loading decks:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Failed to load decks',
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
+  useFocusEffect(
+    React.useCallback(() => {
+      const loadDecks = async () => {
+        try {
+          const data = await getDecks();
+          setDecks(data);
+        } catch (error) {
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to load decks',
+          });
+        } finally {
+          setLoading(false);
+        }
+      };
 
-    loadDecks();
-  }, []);
+      loadDecks();
+    }, [])
+  );
 
   const handleCreateDeck = () => {
     router.push('/flashcards/create');

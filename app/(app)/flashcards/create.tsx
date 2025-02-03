@@ -43,9 +43,8 @@ export default function CreateDeckScreen() {
         text2: 'Deck created successfully',
       });
 
-      router.back();
+      router.replace('/flashcards');
     } catch (error) {
-      console.error('Error creating deck:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
