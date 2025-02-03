@@ -2,6 +2,7 @@ import { supabase } from '../supabase/client';
 import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
 import { createNewCard } from '@/lib/spaced-repetition/fsrs';
+import { getCardAudioSegments, deleteAudioFile } from './audio';
 
 export async function createDeck(
   data: {
@@ -110,6 +111,7 @@ export async function deleteCard(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) {
+    console.error('Error in deleteCard:', error);
     throw error;
   }
 }
@@ -166,6 +168,7 @@ export async function deleteDeck(id: string): Promise<void> {
     .eq('id', id);
 
   if (error) {
+    console.error('Error in deleteDeck:', error);
     throw error;
   }
 }
