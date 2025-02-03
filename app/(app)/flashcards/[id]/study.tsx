@@ -334,13 +334,22 @@ export default function StudyScreen() {
                 ]}
               >
                 {isMandarin && currentCard.language_specific_data?.mandarin ? (
-                  <MandarinText
-                    data={currentCard.language_specific_data.mandarin.front}
-                    characterSize={characterSize}
-                    color={theme.colors.grey5}
-                  />
+                  <View style={styles.mandarinContainer}>
+                    <MandarinText
+                      data={currentCard.language_specific_data.mandarin.front}
+                      characterSize={characterSize}
+                      color={theme.colors.grey5}
+                      audioUrl={frontAudioSegments.length > 0 ? frontAudioSegments[0].audio_file_path : undefined}
+                      isStudyMode={true}
+                    />
+                    {frontAudioSegments.length > 0 && (
+                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                        Click text or press Ctrl+Space to play audio
+                      </Text>
+                    )}
+                  </View>
                 ) : frontAudioSegments.length > 0 ? (
-                  <View>
+                  <View style={styles.textContainer}>
                     <AudioEnabledText
                       text={currentCard.front}
                       audioSegments={frontAudioSegments}
@@ -353,9 +362,11 @@ export default function StudyScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                    {currentCard.front}
-                  </Text>
+                  <View style={styles.textContainer}>
+                    <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
+                      {currentCard.front}
+                    </Text>
+                  </View>
                 )}
                 {currentCard.tags && currentCard.tags.length > 0 && (
                   <View style={styles.cardTags}>
@@ -384,13 +395,22 @@ export default function StudyScreen() {
                 ]}
               >
                 {isMandarin && currentCard.language_specific_data?.mandarin ? (
-                  <MandarinText
-                    data={currentCard.language_specific_data.mandarin.back}
-                    characterSize={characterSize}
-                    color={theme.colors.grey5}
-                  />
+                  <View style={styles.mandarinContainer}>
+                    <MandarinText
+                      data={currentCard.language_specific_data.mandarin.back}
+                      characterSize={characterSize}
+                      color={theme.colors.grey5}
+                      audioUrl={backAudioSegments.length > 0 ? backAudioSegments[0].audio_file_path : undefined}
+                      isStudyMode={true}
+                    />
+                    {backAudioSegments.length > 0 && (
+                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                        Click text or press Ctrl+Space to play audio
+                      </Text>
+                    )}
+                  </View>
                 ) : backAudioSegments.length > 0 ? (
-                  <View>
+                  <View style={styles.textContainer}>
                     <AudioEnabledText
                       text={currentCard.back}
                       audioSegments={backAudioSegments}
@@ -403,9 +423,11 @@ export default function StudyScreen() {
                     </Text>
                   </View>
                 ) : (
-                  <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                    {currentCard.back}
-                  </Text>
+                  <View style={styles.textContainer}>
+                    <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
+                      {currentCard.back}
+                    </Text>
+                  </View>
                 )}
                 {currentCard.notes && (
                   <Text style={[styles.notes, { color: theme.colors.grey3 }]}>
@@ -618,6 +640,26 @@ const styles = StyleSheet.create({
   audioHint: {
     fontSize: 12,
     marginTop: 8,
+    textAlign: 'center',
+  },
+  mandarinContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  textContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  cardContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  cardText: {
+    fontSize: 32,
     textAlign: 'center',
   },
 }); 
