@@ -1,6 +1,7 @@
 import { supabase } from '../supabase/client';
 import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
+import { createNewCard } from '@/lib/spaced-repetition/fsrs';
 
 export async function createDeck(
   data: {
@@ -36,38 +37,14 @@ export async function createDeck(
   return deck;
 }
 
-export async function createCard(
-  deckId: string,
-  data: {
-    front: string;
-    back: string;
-    notes?: string;
-    tags?: string[];
-    language_specific_data?: {
-      mandarin?: {
-        front: MandarinCardData;
-        back: MandarinCardData;
-      };
-    };
-  }
-): Promise<Card> {
+export async function createCard(data: Partial<Card>): Promise<Card> {
+  const fsrsState = createNewCard();
+  
   const { data: card, error } = await supabase
     .from('cards')
     .insert({
-      deck_id: deckId,
-      front: data.front,
-      back: data.back,
-      notes: data.notes || null,
-      tags: data.tags || [],
-      language_specific_data: data.language_specific_data || {},
-      state: CardState.New,
-      difficulty: 0,
-      stability: 0,
-      retrievability: 1,
-      elapsed_days: 0,
-      scheduled_days: 0,
-      reps: 0,
-      lapses: 0,
+      ...data,
+      ...fsrsState,
     })
     .select()
     .single();

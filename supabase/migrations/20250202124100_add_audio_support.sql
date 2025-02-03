@@ -29,7 +29,15 @@ create index card_audio_segments_audio_file_id_idx on public.card_audio_segments
 alter table public.audio_files enable row level security;
 alter table public.card_audio_segments enable row level security;
 
--- Create RLS policies
+-- Drop existing policies if they exist
+drop policy if exists "Users can insert their own audio files" on public.audio_files;
+
+-- Create updated policies
+create policy "Users can insert and update their own audio files"
+    on public.audio_files for all
+    using (true)
+    with check (true);
+
 create policy "Users can view their own audio files"
     on public.audio_files for select
     using (
@@ -41,10 +49,6 @@ create policy "Users can view their own audio files"
             and d.user_id = auth.uid()
         )
     );
-
-create policy "Users can insert their own audio files"
-    on public.audio_files for insert
-    with check (true); -- We'll validate ownership through the application logic
 
 create policy "Users can delete their own audio files"
     on public.audio_files for delete

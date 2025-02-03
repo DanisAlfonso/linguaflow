@@ -9,7 +9,10 @@ import { getDueCards, reviewCard, getDeck } from '../../../../lib/api/flashcards
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
 import { MandarinText } from '../../../../components/flashcards/MandarinText';
 import { CharacterSizeControl } from '../../../../components/flashcards/CharacterSizeControl';
+import { AudioEnabledText } from '../../../../components/flashcards/AudioEnabledText';
+import { getCardAudioSegments } from '../../../../lib/api/audio';
 import type { Card, Deck } from '../../../../types/flashcards';
+import type { CardAudioSegment } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
 
 // Keyboard shortcuts for web
@@ -19,6 +22,7 @@ const KEYBOARD_SHORTCUTS = {
   '3': Rating.Good,
   '4': Rating.Easy,
   ' ': 'flip', // Space bar to flip card
+  'Control+ ': 'playAudio', // Ctrl+Space to play audio
 } as const;
 
 export default function StudyScreen() {
@@ -33,12 +37,16 @@ export default function StudyScreen() {
   const [loading, setLoading] = useState(true);
   const [reviewing, setReviewing] = useState(false);
   const [characterSize, setCharacterSize] = useState(24);
+  const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
+  const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
   const isMandarin = deck?.language === 'Mandarin';
+  const currentCard = cards[currentCardIndex];
+  const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
 
   // Handle keyboard shortcuts on web
   useEffect(() => {
@@ -46,20 +54,41 @@ export default function StudyScreen() {
 
     const handleKeyPress = (event: KeyboardEvent) => {
       const key = event.key;
+      const ctrlKey = event.ctrlKey;
+      
+      if (ctrlKey && key === ' ') {
+        event.preventDefault();
+        // Play audio of current side
+        const currentSegments = isFlipped ? backAudioSegments : frontAudioSegments;
+        if (currentSegments.length > 0) {
+          console.log('Playing audio:', currentSegments[0].audio_file_path);
+          const audioElement = document.getElementById(`audio-${currentSegments[0].audio_file_path}`);
+          if (audioElement instanceof HTMLAudioElement) {
+            audioElement.currentTime = 0; // Reset to start
+            audioElement.play().catch(error => {
+              console.error('Error playing audio:', error);
+            });
+          } else {
+            console.warn('Audio element not found:', `audio-${currentSegments[0].audio_file_path}`);
+          }
+        }
+        return;
+      }
+
       if (key in KEYBOARD_SHORTCUTS) {
         event.preventDefault();
         const action = KEYBOARD_SHORTCUTS[key as keyof typeof KEYBOARD_SHORTCUTS];
         if (action === 'flip') {
           flipCard();
         } else if (isFlipped && !reviewing) {
-          handleResponse(action);
+          handleResponse(action as Rating);
         }
       }
     };
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isWeb, isFlipped, reviewing]);
+  }, [isWeb, isFlipped, reviewing, frontAudioSegments, backAudioSegments]);
 
   const loadData = useCallback(async () => {
     try {
@@ -100,12 +129,37 @@ export default function StudyScreen() {
     }
   }, [id, router]);
 
+  const loadAudioSegments = async (cardId: string) => {
+    try {
+      const segments = await getCardAudioSegments(cardId);
+      setFrontAudioSegments(segments.filter(s => s.side === 'front'));
+      setBackAudioSegments(segments.filter(s => s.side === 'back'));
+    } catch (error) {
+      console.error('Error loading audio segments:', error);
+    }
+  };
+
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  const currentCard = cards[currentCardIndex];
-  const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
+  useEffect(() => {
+    if (currentCard) {
+      // Load audio segments when card changes
+      const loadAudioSegments = async () => {
+        try {
+          console.log('Loading audio segments for card:', currentCard.id);
+          const segments = await getCardAudioSegments(currentCard.id);
+          console.log('Loaded audio segments:', segments);
+          setFrontAudioSegments(segments.filter(s => s.side === 'front'));
+          setBackAudioSegments(segments.filter(s => s.side === 'back'));
+        } catch (error) {
+          console.error('Error loading audio segments:', error);
+        }
+      };
+      loadAudioSegments();
+    }
+  }, [currentCard]);
 
   const flipCard = () => {
     setIsFlipped(!isFlipped);
@@ -113,7 +167,7 @@ export default function StudyScreen() {
       toValue: isFlipped ? 0 : 1,
       friction: 8,
       tension: 10,
-      useNativeDriver: true,
+      useNativeDriver: false,
     }).start();
   };
 
@@ -285,6 +339,19 @@ export default function StudyScreen() {
                     characterSize={characterSize}
                     color={theme.colors.grey5}
                   />
+                ) : frontAudioSegments.length > 0 ? (
+                  <View>
+                    <AudioEnabledText
+                      text={currentCard.front}
+                      audioSegments={frontAudioSegments}
+                      isStudyMode={true}
+                      color={theme.colors.primary}
+                      style={styles.audioEnabledText}
+                    />
+                    <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                      Click text or press Ctrl+Space to play audio
+                    </Text>
+                  </View>
                 ) : (
                   <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
                     {currentCard.front}
@@ -322,6 +389,19 @@ export default function StudyScreen() {
                     characterSize={characterSize}
                     color={theme.colors.grey5}
                   />
+                ) : backAudioSegments.length > 0 ? (
+                  <View>
+                    <AudioEnabledText
+                      text={currentCard.back}
+                      audioSegments={backAudioSegments}
+                      isStudyMode={true}
+                      color={theme.colors.primary}
+                      style={styles.audioEnabledText}
+                    />
+                    <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                      Click text or press Ctrl+Space to play audio
+                    </Text>
+                  </View>
                 ) : (
                   <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
                     {currentCard.back}
@@ -531,5 +611,13 @@ const styles = StyleSheet.create({
   shortcutText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  audioEnabledText: {
+    textDecorationLine: 'underline',
+  },
+  audioHint: {
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
   },
 }); 

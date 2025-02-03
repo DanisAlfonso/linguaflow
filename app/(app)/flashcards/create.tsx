@@ -1,24 +1,22 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Platform, ScrollView } from 'react-native';
-import { Text, Input, Button, useTheme } from '@rneui/themed';
+import { View, StyleSheet, Platform } from 'react-native';
+import { Text, Input, Button, Switch, useTheme } from '@rneui/themed';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
-import Toast from 'react-native-toast-message';
 import { Container } from '../../../components/layout/Container';
 import { createDeck } from '../../../lib/api/flashcards';
-import { LanguageSelector } from '../../../components/flashcards/LanguageSelector';
-import type { Language } from '../../../types/flashcards';
+import Toast from 'react-native-toast-message';
 
 export default function CreateDeckScreen() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [language, setLanguage] = useState<Language>('General');
+  const [isMandarin, setIsMandarin] = useState(false);
   const [tags, setTags] = useState('');
   const [loading, setLoading] = useState(false);
+
   const router = useRouter();
   const { theme } = useTheme();
-  const isWeb = Platform.OS === 'web';
 
   const handleCreateDeck = async () => {
     if (!name.trim()) {
@@ -32,14 +30,10 @@ export default function CreateDeckScreen() {
 
     setLoading(true);
     try {
-      const deck = await createDeck({
+      await createDeck({
         name: name.trim(),
         description: description.trim() || undefined,
-        language,
-        settings: language === 'Mandarin' ? {
-          showPinyin: true,
-          defaultCharacterSize: 24,
-        } : {},
+        language: isMandarin ? 'Mandarin' : 'General',
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
       });
 
@@ -49,7 +43,7 @@ export default function CreateDeckScreen() {
         text2: 'Deck created successfully',
       });
 
-      router.push(`/flashcards/${deck.id}`);
+      router.back();
     } catch (error) {
       console.error('Error creating deck:', error);
       Toast.show({
@@ -83,103 +77,121 @@ export default function CreateDeckScreen() {
           </Text>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-        >
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                Deck Name
-              </Text>
-              <Input
-                placeholder="Enter deck name"
-                value={name}
-                onChangeText={setName}
-                containerStyle={styles.input}
-                inputContainerStyle={[
-                  styles.inputField,
-                  {
-                    borderColor: theme.colors.grey2,
-                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                  },
-                ]}
-                inputStyle={[
-                  styles.inputText,
-                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                ]}
-                placeholderTextColor={theme.colors.grey3}
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                Description
-              </Text>
-              <Input
-                placeholder="Enter deck description"
-                value={description}
-                onChangeText={setDescription}
-                multiline
-                numberOfLines={3}
-                containerStyle={styles.input}
-                inputContainerStyle={[
-                  styles.inputField,
-                  styles.textArea,
-                  {
-                    borderColor: theme.colors.grey2,
-                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                  },
-                ]}
-                inputStyle={[
-                  styles.inputText,
-                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                ]}
-                placeholderTextColor={theme.colors.grey3}
-              />
-            </View>
-
-            <LanguageSelector
-              value={language}
-              onChange={setLanguage}
-              color={theme.colors.grey4}
-            />
-
-            <View style={styles.inputContainer}>
-              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-                Tags
-              </Text>
-              <Input
-                placeholder="Enter tags (comma separated)"
-                value={tags}
-                onChangeText={setTags}
-                containerStyle={styles.input}
-                inputContainerStyle={[
-                  styles.inputField,
-                  {
-                    borderColor: theme.colors.grey2,
-                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                  },
-                ]}
-                inputStyle={[
-                  styles.inputText,
-                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                ]}
-                placeholderTextColor={theme.colors.grey3}
-              />
-            </View>
-
-            <Button
-              title="Create Deck"
-              loading={loading}
-              onPress={handleCreateDeck}
-              type="clear"
-              buttonStyle={styles.createButton}
-              containerStyle={[styles.createButtonContainer, { backgroundColor: '#4F46E5' }]}
-              titleStyle={styles.buttonText}
+        <View style={styles.form}>
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+              Deck Name
+            </Text>
+            <Input
+              placeholder="Enter deck name"
+              value={name}
+              onChangeText={setName}
+              containerStyle={styles.input}
+              inputContainerStyle={[
+                styles.inputField,
+                {
+                  borderColor: theme.colors.grey2,
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                },
+              ]}
+              inputStyle={[
+                styles.inputText,
+                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+              ]}
+              placeholderTextColor={theme.colors.grey3}
             />
           </View>
-        </ScrollView>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+              Description
+            </Text>
+            <Input
+              placeholder="Enter deck description"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={3}
+              containerStyle={styles.input}
+              inputContainerStyle={[
+                styles.inputField,
+                styles.textArea,
+                {
+                  borderColor: theme.colors.grey2,
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                },
+              ]}
+              inputStyle={[
+                styles.inputText,
+                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+              ]}
+              placeholderTextColor={theme.colors.grey3}
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+              Language
+            </Text>
+            <View style={styles.languageToggle}>
+              <Text style={[styles.toggleLabel, { color: theme.colors.grey4 }]}>
+                Mandarin Mode
+              </Text>
+              <Switch
+                value={isMandarin}
+                onValueChange={setIsMandarin}
+                color={theme.colors.primary}
+              />
+            </View>
+            {isMandarin && (
+              <Text style={[styles.helperText, { color: theme.colors.grey3 }]}>
+                Enables pinyin input and character size control
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+              Tags (Optional)
+            </Text>
+            <Input
+              placeholder="Enter tags (comma separated)"
+              value={tags}
+              onChangeText={setTags}
+              containerStyle={styles.input}
+              inputContainerStyle={[
+                styles.inputField,
+                {
+                  borderColor: theme.colors.grey2,
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                },
+              ]}
+              inputStyle={[
+                styles.inputText,
+                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+              ]}
+              placeholderTextColor={theme.colors.grey3}
+            />
+          </View>
+
+          <Button
+            title="Create Deck"
+            loading={loading}
+            icon={
+              <MaterialIcons
+                name="add"
+                size={20}
+                color="white"
+                style={styles.buttonIcon}
+              />
+            }
+            type="clear"
+            buttonStyle={styles.button}
+            containerStyle={[styles.buttonContainer, { backgroundColor: '#4F46E5' }]}
+            titleStyle={styles.buttonText}
+            onPress={handleCreateDeck}
+          />
+        </View>
       </Container>
     </SafeAreaView>
   );
@@ -200,9 +212,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-  },
-  scrollContent: {
-    flexGrow: 1,
   },
   form: {
     gap: 24,
@@ -233,14 +242,38 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 12,
   },
-  createButton: {
+  languageToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: Platform.select({
+      ios: 'rgba(0, 0, 0, 0.02)',
+      android: 'rgba(0, 0, 0, 0.04)',
+      default: 'rgba(0, 0, 0, 0.02)',
+    }),
+    borderRadius: 12,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  helperText: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginLeft: 4,
+  },
+  buttonIcon: {
+    marginRight: 8,
+  },
+  button: {
     height: 48,
     borderWidth: 0,
   },
-  createButtonContainer: {
+  buttonContainer: {
     borderRadius: 12,
     overflow: 'hidden',
-    marginTop: 8,
   },
   buttonText: {
     fontSize: 16,
