@@ -181,7 +181,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 24,
+    marginBottom: 32,
+    paddingTop: 8,
   },
   title: {
     fontSize: 32,
@@ -199,7 +200,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   scrollContent: {
-    gap: 16,
+    gap: 24,
+    paddingTop: 16,
+    paddingBottom: 24,
   },
   emptyState: {
     alignItems: 'center',
