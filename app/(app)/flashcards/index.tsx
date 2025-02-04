@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, ScrollView, StyleSheet, Platform, Pressable } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, ScrollView, StyleSheet, Platform, Pressable, RefreshControl } from 'react-native';
 import { Text, Button, useTheme, Overlay, Input } from '@rneui/themed';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +34,7 @@ const getColorPreset = (deck: Deck, index: number): GradientPreset => {
 export default function FlashcardsScreen() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showRename, setShowRename] = useState(false);
@@ -44,26 +45,32 @@ export default function FlashcardsScreen() {
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
+  const loadDecks = async () => {
+    try {
+      const data = await getDecks();
+      setDecks(data);
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load decks',
+      });
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
   useFocusEffect(
     React.useCallback(() => {
-      const loadDecks = async () => {
-        try {
-          const data = await getDecks();
-          setDecks(data);
-        } catch (error) {
-          Toast.show({
-            type: 'error',
-            text1: 'Error',
-            text2: 'Failed to load decks',
-          });
-        } finally {
-          setLoading(false);
-        }
-      };
-
       loadDecks();
     }, [])
   );
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDecks();
+  }, []);
 
   const handleCreateDeck = () => {
     router.push('/flashcards/create');
@@ -235,6 +242,17 @@ export default function FlashcardsScreen() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.colors.grey4}
+              colors={['#4F46E5']} // Android
+              progressBackgroundColor={theme.mode === 'dark' ? '#1F2937' : '#F3F4F6'} // Android
+              progressViewOffset={8} // Android
+              style={{ backgroundColor: 'transparent' }}
+            />
+          }
         >
           {decks.length === 0 ? (
             <View style={styles.emptyState}>
