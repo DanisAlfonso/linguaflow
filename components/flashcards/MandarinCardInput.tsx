@@ -3,6 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Text, Input, useTheme } from '@rneui/themed';
 import { MandarinText } from './MandarinText';
 import type { MandarinCardData } from '../../types/flashcards';
+import type { IconNode } from '@rneui/base';
 
 interface MandarinCardInputProps {
   value: string;
@@ -12,6 +13,7 @@ interface MandarinCardInputProps {
   label?: string;
   characterSize?: number;
   showPreview?: boolean;
+  audioButton?: IconNode;
 }
 
 // Function to detect if a string contains Chinese characters
@@ -27,6 +29,7 @@ export function MandarinCardInput({
   label,
   characterSize = 24,
   showPreview = true,
+  audioButton,
 }: MandarinCardInputProps) {
   const [pinyin, setPinyin] = useState('');
   const { theme } = useTheme();
@@ -79,6 +82,7 @@ export function MandarinCardInput({
             { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black },
           ]}
           placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+          rightIcon={audioButton}
         />
       </View>
       {hasChineseCharacters ? (

@@ -71,7 +71,6 @@ export default function CreateCardScreen() {
 
     setLoading(true);
     try {
-      console.log('Creating card...');
       const card = await createCard({
         deck_id: id as string,
         front: front.trim(),
@@ -85,21 +84,18 @@ export default function CreateCardScreen() {
           },
         } : undefined,
       });
-      console.log('Card created:', card);
       setCreatedCard(card.id);
-      console.log('CreatedCard state set to:', card.id);
-
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: 'Card created! You can now add audio.',
+        text2: 'Card created successfully',
       });
     } catch (error) {
       console.error('Error creating card:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to create card. Please try again.',
+        text2: 'Failed to create card',
       });
     } finally {
       setLoading(false);
@@ -234,24 +230,24 @@ export default function CreateCardScreen() {
                 {isMandarin ? (
                   <View>
                     <View style={styles.inputContainer}>
-                      <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                          Front
-                        </Text>
-                        <View style={styles.audioButton}>
-                          <AudioAttachButton
-                            cardId={createdCard || ''}
-                            side="front"
-                            onAudioAttached={handleAudioAttached}
-                          />
-                        </View>
-                      </View>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                        Front
+                      </Text>
                       <MandarinCardInput
                         value={front}
                         onChangeText={setFront}
                         onMandarinDataChange={setFrontMandarinData}
                         placeholder="Front side of the card"
                         characterSize={characterSize}
+                        audioButton={
+                          <View style={styles.audioButton}>
+                            <AudioAttachButton
+                              cardId={createdCard || ''}
+                              side="front"
+                              onAudioAttached={handleAudioAttached}
+                            />
+                          </View>
+                        }
                       />
                       {frontAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
@@ -271,24 +267,24 @@ export default function CreateCardScreen() {
                     </View>
 
                     <View style={styles.inputContainer}>
-                      <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                          Back
-                        </Text>
-                        <View style={styles.audioButton}>
-                          <AudioAttachButton
-                            cardId={createdCard || ''}
-                            side="back"
-                            onAudioAttached={handleAudioAttached}
-                          />
-                        </View>
-                      </View>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                        Back
+                      </Text>
                       <MandarinCardInput
                         value={back}
                         onChangeText={setBack}
                         onMandarinDataChange={setBackMandarinData}
                         placeholder="Back side of the card"
                         characterSize={characterSize}
+                        audioButton={
+                          <View style={styles.audioButton}>
+                            <AudioAttachButton
+                              cardId={createdCard || ''}
+                              side="back"
+                              onAudioAttached={handleAudioAttached}
+                            />
+                          </View>
+                        }
                       />
                       {backAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
@@ -310,18 +306,9 @@ export default function CreateCardScreen() {
                 ) : (
                   <View>
                     <View style={styles.inputContainer}>
-                      <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                          Front
-                        </Text>
-                        <View style={styles.audioButton}>
-                          <AudioAttachButton
-                            cardId={createdCard || ''}
-                            side="front"
-                            onAudioAttached={handleAudioAttached}
-                          />
-                        </View>
-                      </View>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                        Front
+                      </Text>
                       <View style={styles.inputWrapper}>
                         <Input
                           placeholder="Front side of the card"
@@ -343,6 +330,15 @@ export default function CreateCardScreen() {
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
                           placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                          rightIcon={
+                            <View style={styles.audioButton}>
+                              <AudioAttachButton
+                                cardId={createdCard || ''}
+                                side="front"
+                                onAudioAttached={handleAudioAttached}
+                              />
+                            </View>
+                          }
                         />
                       </View>
                       {frontAudioSegments.length > 0 && (
@@ -363,18 +359,9 @@ export default function CreateCardScreen() {
                     </View>
 
                     <View style={styles.inputContainer}>
-                      <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                          Back
-                        </Text>
-                        <View style={styles.audioButton}>
-                          <AudioAttachButton
-                            cardId={createdCard || ''}
-                            side="back"
-                            onAudioAttached={handleAudioAttached}
-                          />
-                        </View>
-                      </View>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                        Back
+                      </Text>
                       <View style={styles.inputWrapper}>
                         <Input
                           placeholder="Back side of the card"
@@ -396,6 +383,15 @@ export default function CreateCardScreen() {
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
                           placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                          rightIcon={
+                            <View style={styles.audioButton}>
+                              <AudioAttachButton
+                                cardId={createdCard || ''}
+                                side="back"
+                                onAudioAttached={handleAudioAttached}
+                              />
+                            </View>
+                          }
                         />
                       </View>
                       {backAudioSegments.length > 0 && (
@@ -573,67 +569,52 @@ export default function CreateCardScreen() {
               </Animated.View>
               
               {!createdCard ? (
-                <Pressable
-                  onPress={() => {
-                    animatePress(createButtonScale);
-                    handleCreateCard();
-                  }}
-                  style={({ pressed }) => [
-                    styles.buttonWrapper,
-                    pressed && styles.buttonPressed,
+                <Animated.View
+                  style={[
+                    styles.buttonContainer,
+                    styles.createButton,
+                    { transform: [{ scale: createButtonScale }] },
                   ]}
-                  disabled={loading}
                 >
-                  <Animated.View
-                    style={[
-                      styles.buttonContainer,
-                      styles.createButton,
-                      { transform: [{ scale: createButtonScale }] },
-                    ]}
-                  >
-                    <Button
-                      title="Create Card"
-                      loading={loading}
-                      type="clear"
-                      buttonStyle={styles.button}
-                      titleStyle={[styles.buttonTitle, { color: 'white' }]}
-                    />
-                  </Animated.View>
-                </Pressable>
+                  <Button
+                    title="Create Card"
+                    loading={loading}
+                    onPress={() => {
+                      animatePress(createButtonScale);
+                      handleCreateCard();
+                    }}
+                    type="clear"
+                    buttonStyle={styles.button}
+                    titleStyle={[styles.buttonTitle, { color: 'white' }]}
+                  />
+                </Animated.View>
               ) : (
-                <Pressable
-                  onPress={() => {
-                    animatePress(createButtonScale);
-                    handleFinish();
-                  }}
-                  style={({ pressed }) => [
-                    styles.buttonWrapper,
-                    pressed && styles.buttonPressed,
+                <Animated.View
+                  style={[
+                    styles.buttonContainer,
+                    styles.createButton,
+                    { transform: [{ scale: createButtonScale }] },
                   ]}
                 >
-                  <Animated.View
-                    style={[
-                      styles.buttonContainer,
-                      styles.createButton,
-                      { transform: [{ scale: createButtonScale }] },
-                    ]}
-                  >
-                    <Button
-                      title="Finish"
-                      icon={
-                        <MaterialIcons
-                          name="check"
-                          size={20}
-                          color="white"
-                          style={styles.buttonIcon}
-                        />
-                      }
-                      type="clear"
-                      buttonStyle={styles.button}
-                      titleStyle={[styles.buttonTitle, { color: 'white' }]}
-                    />
-                  </Animated.View>
-                </Pressable>
+                  <Button
+                    title="Finish"
+                    icon={
+                      <MaterialIcons
+                        name="check"
+                        size={20}
+                        color="white"
+                        style={styles.buttonIcon}
+                      />
+                    }
+                    onPress={() => {
+                      animatePress(createButtonScale);
+                      handleFinish();
+                    }}
+                    type="clear"
+                    buttonStyle={styles.button}
+                    titleStyle={[styles.buttonTitle, { color: 'white' }]}
+                  />
+                </Animated.View>
               )}
             </View>
           </View>
@@ -864,8 +845,25 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   audioButton: {
-    marginRight: -8,
     padding: 8,
+    marginRight: 8,
+    marginTop: Platform.OS === 'web' ? 8 : 0,
+    backgroundColor: Platform.OS === 'web' ? 'transparent' : '#FFFFFF',
+    borderRadius: 12,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: {
+          width: 0,
+          height: 1,
+        },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+      },
+      android: {
+        elevation: 2,
+      },
+    }),
   },
   audioSegments: {
     marginTop: 12,
