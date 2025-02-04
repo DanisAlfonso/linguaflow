@@ -157,7 +157,7 @@ export async function getCard(id: string): Promise<Card | null> {
 
 export async function updateDeck(
   id: string,
-  data: Partial<Pick<Deck, 'name' | 'description' | 'tags' | 'language' | 'settings'>>
+  data: Partial<Pick<Deck, 'name' | 'description' | 'tags' | 'language' | 'settings' | 'color_preset'>>
 ): Promise<Deck> {
   const { data: deck, error } = await supabase
     .from('decks')
@@ -167,6 +167,7 @@ export async function updateDeck(
     .single();
 
   if (error) {
+    console.error('Error updating deck:', error);
     throw error;
   }
 

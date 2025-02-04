@@ -15,20 +15,23 @@ export interface MandarinCardSide {
   back: MandarinCardData;
 }
 
-export type Deck = {
+export type GradientPreset = 'blue' | 'purple' | 'green' | 'orange' | 'pink';
+
+export interface Deck {
   id: string;
+  user_id: string;
   name: string;
   description?: string;
-  tags?: string[];
   language?: string;
   settings?: Record<string, any>;
-  total_cards: number;
-  new_cards: number;
-  cards_to_review: number;
-  color_preset?: 'blue' | 'purple' | 'green' | 'orange' | 'pink';
-  created_at: string;
-  updated_at: string;
-};
+  tags?: string[];
+  color_preset?: GradientPreset;
+  total_cards?: number;
+  new_cards?: number;
+  cards_to_review?: number;
+  created_at?: string;
+  updated_at?: string;
+}
 
 export interface Card {
   id: string;
