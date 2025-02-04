@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadAudioFile, createAudioFile, createAudioSegment } from '../../lib/api/audio';
@@ -75,9 +75,11 @@ export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttach
     >
       <MaterialIcons
         name="mic"
-        size={22}
+        size={Platform.select({
+          web: 24,
+          default: 18,
+        })}
         color="#4F46E5"
-        style={styles.icon}
       />
     </Pressable>
   );
@@ -85,25 +87,11 @@ export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttach
 
 const styles = StyleSheet.create({
   button: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'white',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.41,
-    elevation: 2,
   },
   pressed: {
     opacity: 0.7,
-  },
-  icon: {
-    marginLeft: 1, // Small adjustment to visually center the icon
   },
 }); 
