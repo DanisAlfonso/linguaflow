@@ -82,17 +82,17 @@ export function Header() {
               />
               <Button
                 type="clear"
-                title="Progress"
+                title="Statistics"
                 icon={
                   <MaterialIcons
-                    name="trending-up"
+                    name="analytics"
                     size={20}
                     color="#059669"
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
-                onPress={() => router.push('/progress')}
+                onPress={() => router.push('/statistics')}
               />
               <Button
                 type="clear"

@@ -75,6 +75,15 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
+            name="statistics/index"
+            options={{
+              title: 'Statistics',
+              tabBarIcon: ({ color, size }) => (
+                <MaterialIcons name="analytics" size={size} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="flashcards"
             options={{
               title: 'Flashcards',
