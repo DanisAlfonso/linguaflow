@@ -77,7 +77,7 @@ export function Header() {
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
                 onPress={() => {
                   console.log('Navigating to /flashcards from Header');
-                  router.replace('/flashcards');
+                  router.push('/flashcards/index');
                 }}
               />
               <Button

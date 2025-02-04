@@ -1,12 +1,13 @@
 import { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { Redirect, Tabs } from 'expo-router';
+import { View, StyleSheet, Platform } from 'react-native';
+import { Redirect, Tabs, Slot } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Header } from '../../components/layout/Header';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
+  const isWeb = Platform.OS === 'web';
 
   if (loading) {
     return null;
@@ -14,6 +15,17 @@ export default function AppLayout() {
 
   if (!user) {
     return <Redirect href="/sign-in" />;
+  }
+
+  if (isWeb) {
+    return (
+      <View style={styles.container}>
+        <Header />
+        <View style={styles.content}>
+          <Slot />
+        </View>
+      </View>
+    );
   }
 
   return (
