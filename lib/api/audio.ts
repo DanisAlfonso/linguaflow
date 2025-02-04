@@ -2,21 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { AudioFile, AudioSegment, AudioUploadResponse, CardAudioSegment } from '@/types/audio';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
-import { decode as atob } from 'base-64';
 import { decode as base64Decode } from 'base-64';
-
-// Polyfill for Buffer in React Native
-function base64ToArrayBuffer(base64: string): ArrayBuffer {
-  const binaryString = atob(base64);
-  const length = binaryString.length;
-  const bytes = new Uint8Array(length);
-  
-  for (let i = 0; i < length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  
-  return bytes.buffer;
-}
 
 // Convert base64 to Uint8Array
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -60,12 +46,6 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         throw new Error('File size must be less than 10MB');
       }
 
-      console.log('Uploading web file:', {
-        name: filename,
-        type: params.type,
-        size: params.file.size,
-      });
-
       const { data, error } = await supabase.storage
         .from('audio')
         .upload(filename, params.file, {
@@ -75,7 +55,6 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         });
 
       if (error) {
-        console.error('Error uploading audio file:', error);
         throw error;
       }
 
@@ -99,12 +78,6 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         throw new Error('File size must be less than 10MB');
       }
 
-      console.log('Uploading mobile file:', {
-        name: filename,
-        type: params.type,
-        size: fileInfo.size,
-      });
-
       // Read the file as base64
       const base64Data = await FileSystem.readAsStringAsync(params.uri, {
         encoding: FileSystem.EncodingType.Base64,
@@ -122,7 +95,6 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         });
 
       if (error) {
-        console.error('Error uploading audio file:', error);
         throw error;
       }
 
