@@ -245,6 +245,43 @@ export default function CreateCardScreen() {
                               cardId={createdCard || ''}
                               side="front"
                               onAudioAttached={handleAudioAttached}
+                              onCreateCard={async () => {
+                                if (!front.trim() || !back.trim()) {
+                                  Toast.show({
+                                    type: 'error',
+                                    text1: 'Error',
+                                    text2: 'Front and back of the card are required',
+                                  });
+                                  return '';
+                                }
+                                
+                                try {
+                                  const card = await createCard({
+                                    deck_id: id as string,
+                                    front: front.trim(),
+                                    back: back.trim(),
+                                    notes: notes.trim() || undefined,
+                                    tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+                                    language_specific_data: isMandarin ? {
+                                      mandarin: {
+                                        front: frontMandarinData,
+                                        back: backMandarinData,
+                                      },
+                                    } : undefined,
+                                  });
+                                  setCreatedCard(card.id);
+                                  return card.id;
+                                } catch (error) {
+                                  console.error('Error creating card:', error);
+                                  Toast.show({
+                                    type: 'error',
+                                    text1: 'Error',
+                                    text2: 'Failed to create card',
+                                  });
+                                  return '';
+                                }
+                              }}
+                              disabled={!front.trim() || !back.trim()}
                             />
                           </View>
                         }
@@ -282,6 +319,43 @@ export default function CreateCardScreen() {
                               cardId={createdCard || ''}
                               side="back"
                               onAudioAttached={handleAudioAttached}
+                              onCreateCard={async () => {
+                                if (!front.trim() || !back.trim()) {
+                                  Toast.show({
+                                    type: 'error',
+                                    text1: 'Error',
+                                    text2: 'Front and back of the card are required',
+                                  });
+                                  return '';
+                                }
+                                
+                                try {
+                                  const card = await createCard({
+                                    deck_id: id as string,
+                                    front: front.trim(),
+                                    back: back.trim(),
+                                    notes: notes.trim() || undefined,
+                                    tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+                                    language_specific_data: isMandarin ? {
+                                      mandarin: {
+                                        front: frontMandarinData,
+                                        back: backMandarinData,
+                                      },
+                                    } : undefined,
+                                  });
+                                  setCreatedCard(card.id);
+                                  return card.id;
+                                } catch (error) {
+                                  console.error('Error creating card:', error);
+                                  Toast.show({
+                                    type: 'error',
+                                    text1: 'Error',
+                                    text2: 'Failed to create card',
+                                  });
+                                  return '';
+                                }
+                              }}
+                              disabled={!front.trim() || !back.trim()}
                             />
                           </View>
                         }
@@ -336,6 +410,43 @@ export default function CreateCardScreen() {
                                 cardId={createdCard || ''}
                                 side="front"
                                 onAudioAttached={handleAudioAttached}
+                                onCreateCard={async () => {
+                                  if (!front.trim() || !back.trim()) {
+                                    Toast.show({
+                                      type: 'error',
+                                      text1: 'Error',
+                                      text2: 'Front and back of the card are required',
+                                    });
+                                    return '';
+                                  }
+                                  
+                                  try {
+                                    const card = await createCard({
+                                      deck_id: id as string,
+                                      front: front.trim(),
+                                      back: back.trim(),
+                                      notes: notes.trim() || undefined,
+                                      tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+                                      language_specific_data: isMandarin ? {
+                                        mandarin: {
+                                          front: frontMandarinData,
+                                          back: backMandarinData,
+                                        },
+                                      } : undefined,
+                                    });
+                                    setCreatedCard(card.id);
+                                    return card.id;
+                                  } catch (error) {
+                                    console.error('Error creating card:', error);
+                                    Toast.show({
+                                      type: 'error',
+                                      text1: 'Error',
+                                      text2: 'Failed to create card',
+                                    });
+                                    return '';
+                                  }
+                                }}
+                                disabled={!front.trim() || !back.trim()}
                               />
                             </View>
                           }
@@ -389,6 +500,43 @@ export default function CreateCardScreen() {
                                 cardId={createdCard || ''}
                                 side="back"
                                 onAudioAttached={handleAudioAttached}
+                                onCreateCard={async () => {
+                                  if (!front.trim() || !back.trim()) {
+                                    Toast.show({
+                                      type: 'error',
+                                      text1: 'Error',
+                                      text2: 'Front and back of the card are required',
+                                    });
+                                    return '';
+                                  }
+                                  
+                                  try {
+                                    const card = await createCard({
+                                      deck_id: id as string,
+                                      front: front.trim(),
+                                      back: back.trim(),
+                                      notes: notes.trim() || undefined,
+                                      tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+                                      language_specific_data: isMandarin ? {
+                                        mandarin: {
+                                          front: frontMandarinData,
+                                          back: backMandarinData,
+                                        },
+                                      } : undefined,
+                                    });
+                                    setCreatedCard(card.id);
+                                    return card.id;
+                                  } catch (error) {
+                                    console.error('Error creating card:', error);
+                                    Toast.show({
+                                      type: 'error',
+                                      text1: 'Error',
+                                      text2: 'Failed to create card',
+                                    });
+                                    return '';
+                                  }
+                                }}
+                                disabled={!front.trim() || !back.trim()}
                               />
                             </View>
                           }

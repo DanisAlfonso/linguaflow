@@ -9,11 +9,29 @@ interface AudioAttachButtonProps {
   cardId: string;
   side: 'front' | 'back';
   onAudioAttached?: () => void;
+  onCreateCard?: () => Promise<string>;
+  disabled?: boolean;
 }
 
-export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttachButtonProps) {
+export function AudioAttachButton({ 
+  cardId, 
+  side, 
+  onAudioAttached,
+  onCreateCard,
+  disabled = false 
+}: AudioAttachButtonProps) {
   const handlePress = async () => {
     try {
+      // If no cardId and onCreateCard is provided, create the card first
+      let currentCardId = cardId;
+      if (!currentCardId && onCreateCard) {
+        currentCardId = await onCreateCard();
+        if (!currentCardId) {
+          // Card creation failed or was cancelled
+          return;
+        }
+      }
+
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
@@ -41,7 +59,7 @@ export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttach
 
       // Create audio segment
       await createAudioSegment(
-        cardId,
+        currentCardId,
         audioFile.id,
         0,
         1,
@@ -71,7 +89,9 @@ export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttach
       style={({ pressed }) => [
         styles.button,
         pressed && styles.pressed,
+        disabled && styles.disabled,
       ]}
+      disabled={disabled}
     >
       <MaterialIcons
         name="mic"
@@ -79,7 +99,7 @@ export function AudioAttachButton({ cardId, side, onAudioAttached }: AudioAttach
           web: 24,
           default: 18,
         })}
-        color="#4F46E5"
+        color={disabled ? "#A1A1AA" : "#4F46E5"}
       />
     </Pressable>
   );
@@ -93,5 +113,8 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.7,
+  },
+  disabled: {
+    opacity: 0.5,
   },
 }); 
