@@ -470,7 +470,7 @@ export default function CreateCardScreen() {
               </View>
             ) : (
               <View style={styles.preview}>
-                <Pressable
+                <View
                   style={[
                     styles.previewCard,
                     {
@@ -504,15 +504,9 @@ export default function CreateCardScreen() {
                       ))}
                     </View>
                   )}
-                </Pressable>
+                </View>
 
                 <View style={styles.previewDivider}>
-                  <View
-                    style={[styles.dividerLine, { backgroundColor: theme.colors.grey2 }]}
-                  />
-                  <Text style={[styles.dividerText, { color: theme.colors.grey3 }]}>
-                    Tap to flip
-                  </Text>
                   <View
                     style={[styles.dividerLine, { backgroundColor: theme.colors.grey2 }]}
                   />
@@ -548,42 +542,35 @@ export default function CreateCardScreen() {
             )}
 
             <View style={styles.actionButtons}>
-              <Pressable
-                onPress={() => {
-                  animatePress(previewButtonScale);
-                  togglePreview();
-                }}
-                style={({ pressed }) => [
-                  styles.buttonWrapper,
-                  pressed && styles.buttonPressed,
+              <Animated.View
+                style={[
+                  styles.buttonContainer,
+                  { 
+                    backgroundColor: '#EEF2FF',
+                    borderWidth: 0,
+                    transform: [{ scale: previewButtonScale }] 
+                  },
                 ]}
               >
-                <Animated.View
-                  style={[
-                    styles.buttonContainer,
-                    { 
-                      backgroundColor: '#EEF2FF',
-                      borderWidth: 0,
-                    },
-                    { transform: [{ scale: previewButtonScale }] },
-                  ]}
-                >
-                  <Button
-                    title={isPreview ? "Edit" : "Preview"}
-                    type="clear"
-                    icon={
-                      <MaterialIcons
-                        name={isPreview ? "edit" : "visibility"}
-                        size={20}
-                        color="#4F46E5"
-                        style={styles.buttonIcon}
-                      />
-                    }
-                    buttonStyle={[styles.button, { backgroundColor: 'transparent' }]}
-                    titleStyle={{ color: '#4F46E5', fontWeight: '600', fontSize: 17 }}
-                  />
-                </Animated.View>
-              </Pressable>
+                <Button
+                  title={isPreview ? "Edit" : "Preview"}
+                  type="clear"
+                  icon={
+                    <MaterialIcons
+                      name={isPreview ? "edit" : "visibility"}
+                      size={20}
+                      color="#4F46E5"
+                      style={styles.buttonIcon}
+                    />
+                  }
+                  buttonStyle={[styles.button, { backgroundColor: 'transparent' }]}
+                  titleStyle={{ color: '#4F46E5', fontWeight: '600', fontSize: 17 }}
+                  onPress={() => {
+                    animatePress(previewButtonScale);
+                    togglePreview();
+                  }}
+                />
+              </Animated.View>
               
               {!createdCard ? (
                 <Pressable
