@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useColorScheme } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
 import { ThemeProvider } from '@rneui/themed';
@@ -11,9 +11,6 @@ export default function RootLayout() {
   const colorScheme = useColorScheme();
   const pathname = usePathname();
   const [initialPathname] = useState(pathname);
-
-  console.log('RootLayout - Initial pathname:', initialPathname);
-  console.log('RootLayout - Current pathname:', pathname);
 
   return (
     <ThemeProvider theme={colorScheme === 'dark' ? darkTheme : lightTheme}>
