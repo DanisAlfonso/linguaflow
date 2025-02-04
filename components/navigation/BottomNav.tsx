@@ -18,24 +18,19 @@ export function BottomNav() {
       route: '/',
     },
     {
+      label: 'Notes',
+      icon: 'edit',
+      route: '/notes',
+    },
+    {
+      label: 'Audio',
+      icon: 'headset',
+      route: '/audio',
+    },
+    {
       label: 'Flashcards',
-      icon: 'library-books',
+      icon: 'class',
       route: '/flashcards',
-    },
-    {
-      label: 'Progress',
-      icon: 'trending-up',
-      route: '/progress',
-    },
-    {
-      label: 'Practice',
-      icon: 'school',
-      route: '/practice',
-    },
-    {
-      label: 'Profile',
-      icon: 'person',
-      route: '/profile',
     },
   ];
 

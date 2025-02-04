@@ -45,15 +45,6 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="chat/index"
-            options={{
-              title: 'Chat',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="chat" size={size} color={color} />
-              ),
-            }}
-          />
-          <Tabs.Screen
             name="notes/index"
             options={{
               title: 'Notes',
@@ -63,7 +54,7 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="practice/index"
+            name="audio/index"
             options={{
               title: 'Audio',
               tabBarIcon: ({ color, size }) => (
@@ -74,7 +65,7 @@ export default function AppLayout() {
           <Tabs.Screen
             name="flashcards"
             options={{
-              title: 'flashcards',
+              title: 'Flashcards',
               tabBarIcon: ({ color, size }) => (
                 <MaterialIcons name="class" size={size} color={color} />
               ),

@@ -17,6 +17,10 @@ export function Header() {
     router.replace('/sign-in');
   };
 
+  const handleChatPress = () => {
+    router.push('/chat');
+  };
+
   const menuItems = [
     { label: 'Profile', icon: 'person', onPress: () => router.push('/profile') },
     { label: 'Settings', icon: 'settings', onPress: () => router.push('/settings') },
@@ -92,17 +96,17 @@ export function Header() {
               />
               <Button
                 type="clear"
-                title="Practice"
+                title="Audio"
                 icon={
                   <MaterialIcons
-                    name="school"
+                    name="headset"
                     size={20}
                     color="#B45309"
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
-                onPress={() => router.push('/practice')}
+                onPress={() => router.push('/audio')}
               />
             </View>
           )}
@@ -177,6 +181,16 @@ export function Header() {
             )}
           </View>
         </View>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.iconButton,
+            { opacity: pressed ? 0.7 : 1 }
+          ]}
+          onPress={handleChatPress}
+        >
+          <MaterialIcons name="chat" size={24} color={theme.colors.grey5} />
+        </Pressable>
       </View>
     </View>
   );
@@ -258,5 +272,9 @@ const styles = StyleSheet.create({
   menuText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  iconButton: {
+    padding: 8,
+    borderRadius: 8,
   },
 }); 

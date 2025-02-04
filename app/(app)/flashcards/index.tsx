@@ -287,13 +287,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   buttonText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
     color: 'white',
   },
   createButton: {
-    height: 44,
-    paddingHorizontal: 20,
+    height: 48,
+    paddingHorizontal: 24,
     borderRadius: 12,
     backgroundColor: '#4F46E5',
     justifyContent: 'center',
