@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
 import { createDeck } from '../../../lib/api/flashcards';
 import Toast from 'react-native-toast-message';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export default function CreateDeckScreen() {
   const [name, setName] = useState('');
@@ -17,6 +18,7 @@ export default function CreateDeckScreen() {
 
   const router = useRouter();
   const { theme } = useTheme();
+  const { user } = useAuth();
 
   const handleCreateDeck = async () => {
     if (!name.trim()) {
@@ -28,13 +30,32 @@ export default function CreateDeckScreen() {
       return;
     }
 
+    if (!user) {
+      Toast.show({
+        type: 'error',
+        text1: 'Authentication Error',
+        text2: 'Please sign in again',
+      });
+      router.replace('/sign-in');
+      return;
+    }
+
     setLoading(true);
     try {
+      console.log('Creating deck with data:', {
+        name: name.trim(),
+        description: description.trim() || undefined,
+        language: isMandarin ? 'Mandarin' : 'General',
+        tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+        userId: user.id,
+      });
+
       await createDeck({
         name: name.trim(),
         description: description.trim() || undefined,
         language: isMandarin ? 'Mandarin' : 'General',
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+        userId: user.id,
       });
 
       Toast.show({
@@ -45,11 +66,26 @@ export default function CreateDeckScreen() {
 
       router.replace('/flashcards');
     } catch (error) {
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to create deck. Please try again.',
+      console.error('Error creating deck:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
       });
+      
+      // Handle specific error cases
+      if (error instanceof Error) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: error.message,
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to create deck. Please try again.',
+        });
+      }
     } finally {
       setLoading(false);
     }

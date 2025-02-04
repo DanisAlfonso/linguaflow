@@ -24,6 +24,8 @@
     "@rneui/themed": "^4.0.0-rc.8",
     "@supabase/supabase-js": "^2.48.1",
     "@tabler/icons-react": "^3.29.0",
+    "@types/base-64": "^1.0.2",
+    "base-64": "^1.0.0",
     "date-fns": "^4.1.0",
     "expo": "~52.0.28",
     "expo-av": "^15.0.2",

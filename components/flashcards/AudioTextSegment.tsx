@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, Platform, StyleSheet, Animated, Text, StyleProp, TextStyle } from 'react-native';
 import { useTheme } from '@rneui/themed';
-import { Audio } from 'expo-av';
+import { Audio, AVPlaybackStatus } from 'expo-av';
 import { supabase } from '../../lib/supabase';
 
 interface AudioTextSegmentProps {
@@ -76,15 +76,50 @@ export function AudioTextSegment({
         if (!fullAudioUrl) return;
 
         console.log('Loading audio from:', fullAudioUrl);
+        
+        // Initialize audio with more permissive settings
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: true,
           shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+          allowsRecordingIOS: false,
+          interruptionModeIOS: 2, // INTERRUPTION_MODE_IOS_DUCK_OTHERS
+          interruptionModeAndroid: 2, // INTERRUPTION_MODE_ANDROID_DUCK_OTHERS
         });
+
+        // For mobile platforms, ensure we have the correct file extension and remove query params
+        let audioUri = fullAudioUrl;
+        if (Platform.OS !== 'web') {
+          // Remove query parameters as they can cause issues with some audio formats
+          audioUri = audioUri.split('?')[0];
+          // Ensure .mp3 extension
+          if (!audioUri.toLowerCase().endsWith('.mp3')) {
+            audioUri = `${audioUri}.mp3`;
+          }
+        }
         
+        // Create and load the sound with optimized configuration
         const { sound: audioSound } = await Audio.Sound.createAsync(
-          { uri: fullAudioUrl },
-          { shouldPlay: false }
+          { uri: audioUri },
+          { 
+            shouldPlay: false,
+            volume: 1.0,
+            isLooping: false,
+            rate: 1.0,
+            isMuted: false,
+            progressUpdateIntervalMillis: 100,
+            positionMillis: 0,
+            androidImplementation: 'MediaPlayer',
+            shouldCorrectPitch: true,
+          },
+          (status) => {
+            if (status.isLoaded && status.didJustFinish) {
+              console.log('Audio playback completed');
+              onAudioComplete?.();
+            }
+          },
+          true // Download first before playing
         );
 
         if (!isMounted) {
@@ -92,14 +127,9 @@ export function AudioTextSegment({
           return;
         }
 
+        console.log('Sound loaded successfully');
         sound.current = audioSound;
         setIsSoundLoaded(true);
-
-        sound.current.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
-            onAudioComplete?.();
-          }
-        });
       } catch (error) {
         console.error('Error loading sound:', error);
         if (isMounted) {

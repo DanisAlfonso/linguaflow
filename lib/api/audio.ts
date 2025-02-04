@@ -2,6 +2,33 @@ import { supabase } from '@/lib/supabase';
 import type { AudioFile, AudioSegment, AudioUploadResponse, CardAudioSegment } from '@/types/audio';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { decode as atob } from 'base-64';
+import { decode as base64Decode } from 'base-64';
+
+// Polyfill for Buffer in React Native
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = atob(base64);
+  const length = binaryString.length;
+  const bytes = new Uint8Array(length);
+  
+  for (let i = 0; i < length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  return bytes.buffer;
+}
+
+// Convert base64 to Uint8Array
+function base64ToUint8Array(base64: string): Uint8Array {
+  const binaryString = base64Decode(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  
+  return bytes;
+}
 
 interface UploadFileParams {
   uri: string;
@@ -17,51 +44,31 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
     const sanitizedName = params.name.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filename = `${Date.now()}-${sanitizedName}`;
 
-    let fileData: File | Blob;
-    
-    if (Platform.OS === 'web') {
-      // On web, we must use the File object directly
-      if (!params.file) {
-        throw new Error('File object is required for web uploads');
-      }
-      fileData = params.file;
-    } else {
-      // On native, we need to fetch the file data from the URI
-      const fileInfo = await FileSystem.getInfoAsync(params.uri);
-      if (!fileInfo.exists) {
-        throw new Error('File does not exist');
-      }
-      
-      // Read the file as base64 and convert to blob
-      const base64 = await FileSystem.readAsStringAsync(params.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      
-      const arrayBuffer = Buffer.from(base64, 'base64');
-      fileData = new Blob([arrayBuffer], { type: params.type });
-    }
-
-    // Verify file size (max 10MB)
-    if (fileData.size > 10 * 1024 * 1024) {
-      throw new Error('File size must be less than 10MB');
-    }
-
     // Verify file type
     if (!params.type.startsWith('audio/')) {
       throw new Error('File must be an audio file');
     }
 
-    console.log('Uploading file:', {
-      name: filename,
-      type: params.type,
-      size: fileData.size,
-    });
-
-    // For web uploads, we'll use a different upload method
     if (Platform.OS === 'web') {
+      // On web, we must use the File object directly
+      if (!params.file) {
+        throw new Error('File object is required for web uploads');
+      }
+
+      // Verify file size (max 10MB)
+      if (params.file.size > 10 * 1024 * 1024) {
+        throw new Error('File size must be less than 10MB');
+      }
+
+      console.log('Uploading web file:', {
+        name: filename,
+        type: params.type,
+        size: params.file.size,
+      });
+
       const { data, error } = await supabase.storage
         .from('audio')
-        .upload(filename, fileData, {
+        .upload(filename, params.file, {
           contentType: params.type,
           cacheControl: '3600',
           upsert: false
@@ -81,12 +88,36 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         fullPath: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${data.path}`,
       };
     } else {
-      // For native uploads
+      // On native, we need to fetch the file data from the URI
+      const fileInfo = await FileSystem.getInfoAsync(params.uri);
+      if (!fileInfo.exists) {
+        throw new Error('File does not exist');
+      }
+
+      // Verify file size (max 10MB)
+      if (fileInfo.size > 10 * 1024 * 1024) {
+        throw new Error('File size must be less than 10MB');
+      }
+
+      console.log('Uploading mobile file:', {
+        name: filename,
+        type: params.type,
+        size: fileInfo.size,
+      });
+
+      // Read the file as base64
+      const base64Data = await FileSystem.readAsStringAsync(params.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      // Convert base64 to binary data
+      const binaryData = base64ToUint8Array(base64Data);
+
+      // Upload the binary data
       const { data, error } = await supabase.storage
         .from('audio')
-        .upload(filename, fileData, {
+        .upload(filename, binaryData, {
           contentType: params.type,
-          duplex: 'half',
           upsert: false,
         });
 

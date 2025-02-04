@@ -1,4 +1,4 @@
-import { supabase } from '../supabase/client';
+import { supabase } from '../supabase';
 import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
 import { createNewCard } from '@/lib/spaced-repetition/fsrs';
@@ -11,31 +11,43 @@ export async function createDeck(
     language?: string;
     settings?: Record<string, any>;
     tags?: string[];
+    userId: string;
   }
 ): Promise<Deck> {
-  const session = await supabase.auth.getSession();
-  if (!session.data.session?.user) {
-    throw new Error('User must be authenticated to create a deck');
-  }
+  console.log('Creating deck with data:', data);
+  
+  try {
+    // Create the deck directly with the user_id
+    const { data: deck, error } = await supabase
+      .from('decks')
+      .insert({
+        user_id: data.userId,
+        name: data.name,
+        description: data.description || null,
+        language: data.language || 'General',
+        settings: data.settings || {},
+        tags: data.tags || [],
+      })
+      .select()
+      .single();
 
-  const { data: deck, error } = await supabase
-    .from('decks')
-    .insert({
-      user_id: session.data.session.user.id,
-      name: data.name,
-      description: data.description || null,
-      language: data.language || 'General',
-      settings: data.settings || {},
-      tags: data.tags || [],
-    })
-    .select()
-    .single();
+    if (error) {
+      console.error('Supabase error creating deck:', {
+        error,
+        errorMessage: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+      throw error;
+    }
 
-  if (error) {
+    console.log('Deck created successfully:', deck);
+    return deck;
+  } catch (error) {
+    console.error('Unexpected error in createDeck:', error);
     throw error;
   }
-
-  return deck;
 }
 
 export async function createCard(data: Partial<Card>): Promise<Card> {
