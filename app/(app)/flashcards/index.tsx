@@ -127,20 +127,15 @@ export default function FlashcardsScreen() {
           <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
             Flashcards
           </Text>
-          <Button
-            title="Create Deck"
-            icon={
-              <MaterialIcons
-                name="add"
-                size={20}
-                color="white"
-                style={styles.buttonIcon}
-              />
-            }
-            buttonStyle={styles.createButton}
-            titleStyle={styles.buttonText}
+          <Pressable
+            style={({ pressed }) => [
+              styles.createButton,
+              { opacity: pressed ? 0.9 : 1 }
+            ]}
             onPress={handleCreateDeck}
-          />
+          >
+            <Text style={styles.buttonText}>Create Deck</Text>
+          </Pressable>
         </View>
 
         <ScrollView
@@ -282,6 +277,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 32,
     paddingTop: 8,
+    gap: 16,
   },
   title: {
     fontSize: 32,
@@ -300,6 +296,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 12,
     backgroundColor: '#4F46E5',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   scrollContent: {
     gap: 24,
