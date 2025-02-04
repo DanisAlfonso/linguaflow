@@ -54,7 +54,7 @@ export function MandarinCardInput({
   return (
     <View style={styles.container}>
       {label ? (
-        <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3 }]}>
           {label}
         </Text>
       ) : null}
@@ -70,20 +70,20 @@ export function MandarinCardInput({
             styles.inputField,
             styles.textArea,
             {
-              borderColor: theme.colors.grey2,
-              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+              borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
+              backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#FFFFFF',
             },
           ]}
           inputStyle={[
             styles.inputText,
-            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+            { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black },
           ]}
-          placeholderTextColor={theme.colors.grey3}
+          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
         />
       </View>
       {hasChineseCharacters ? (
         <View style={styles.pinyinContainer}>
-          <Text style={[styles.pinyinLabel, { color: theme.colors.grey4 }]}>
+          <Text style={[styles.pinyinLabel, { color: theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3 }]}>
             Pinyin
           </Text>
           <Input
@@ -94,31 +94,38 @@ export function MandarinCardInput({
             inputContainerStyle={[
               styles.inputField,
               {
-                borderColor: theme.colors.grey2,
-                backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
+                backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#FFFFFF',
               },
             ]}
             inputStyle={[
               styles.inputText,
-              { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+              { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black },
             ]}
-            placeholderTextColor={theme.colors.grey3}
+            placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
           />
         </View>
       ) : null}
       {showPreview && value ? (
         <View style={styles.preview}>
-          <Text style={[styles.previewLabel, { color: theme.colors.grey4 }]}>
+          <Text style={[styles.previewLabel, { color: theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3 }]}>
             Preview
           </Text>
-          <View style={[styles.previewContent, { backgroundColor: theme.colors.grey0 }]}>
+          <View style={[
+            styles.previewContent,
+            {
+              backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#F8F9FA',
+              borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
+              borderWidth: 1,
+            }
+          ]}>
             <MandarinText
               data={{
                 characters: value.trim() ? value.split('') : [],
                 pinyin: hasChineseCharacters ? pinyin.split(' ').filter(p => p.length > 0) : [],
               }}
               characterSize={characterSize}
-              color={theme.colors.grey5}
+              color={theme.mode === 'dark' ? theme.colors.white : theme.colors.black}
             />
           </View>
         </View>
@@ -129,53 +136,76 @@ export function MandarinCardInput({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8,
+    gap: 16,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     marginLeft: 4,
+    marginBottom: 4,
+    letterSpacing: -0.4,
   },
   inputContainer: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   input: {
     paddingHorizontal: 0,
   },
   inputField: {
     borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    height: 48,
+    borderRadius: 16,
+    paddingHorizontal: 20,
+    height: 56,
     marginBottom: -8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   inputText: {
-    fontSize: 16,
+    fontSize: 17,
+    lineHeight: 24,
+    letterSpacing: -0.4,
   },
   textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-    paddingBottom: 12,
+    minHeight: 120,
+    paddingTop: 16,
+    paddingBottom: 16,
   },
   pinyinContainer: {
-    gap: 4,
+    gap: 8,
+    marginTop: 8,
   },
   pinyinLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     marginLeft: 4,
+    letterSpacing: -0.4,
   },
   preview: {
-    marginTop: 8,
-    gap: 4,
+    marginTop: 16,
+    gap: 8,
   },
   previewLabel: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     marginLeft: 4,
+    letterSpacing: -0.4,
   },
   previewContent: {
-    padding: 16,
-    borderRadius: 12,
+    padding: 20,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
 });

@@ -1,1 +1,3 @@
-Ensure the user interface (UI) for both web and mobile platforms is exceptionally professional, visually stunning, modern, and highly user-friendly.
+- Ensure the user interface (UI) for both web and mobile platforms is exceptionally professional, visually stunning, modern, and highly user-friendly.
+- Whenever a UI modification needs to be made, always keep in mind that this is an Expo project and the UI must look perfect on all types of screens (smartphones, tablets, laptops, and so on).
+- The UI must be responsive and adapt to different screen sizes.

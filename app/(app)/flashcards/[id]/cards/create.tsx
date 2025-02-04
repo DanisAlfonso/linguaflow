@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Platform, ScrollView, Pressable, TextInput } from 'react-native';
+import { View, StyleSheet, Platform, ScrollView, Pressable, TextInput, Animated } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +30,8 @@ export default function CreateCardScreen() {
   const [createdCard, setCreatedCard] = useState<string | null>(null);
   const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
+  const [previewButtonScale] = useState(new Animated.Value(1));
+  const [createButtonScale] = useState(new Animated.Value(1));
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -176,23 +178,38 @@ export default function CreateCardScreen() {
     setIsPreview(!isPreview);
   };
 
+  const animatePress = (scale: Animated.Value) => {
+    Animated.sequence([
+      Animated.timing(scale, {
+        toValue: 0.95,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.mode === 'dark' ? theme.colors.black : theme.colors.white }]}>
       <Container>
-        <View style={styles.header}>
+        <View style={[styles.header, { borderBottomColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey1 }]}>
           <Button
             type="clear"
             icon={
               <MaterialIcons
                 name="arrow-back"
                 size={24}
-                color={theme.colors.grey5}
+                color={theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5}
               />
             }
             onPress={() => router.back()}
             containerStyle={styles.backButton}
           />
-          <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
+          <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
             Add Card
           </Text>
         </View>
@@ -218,7 +235,7 @@ export default function CreateCardScreen() {
                   <View>
                     <View style={styles.inputContainer}>
                       <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                           Front
                         </Text>
                         <View style={styles.audioButton}>
@@ -255,7 +272,7 @@ export default function CreateCardScreen() {
 
                     <View style={styles.inputContainer}>
                       <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                           Back
                         </Text>
                         <View style={styles.audioButton}>
@@ -294,7 +311,7 @@ export default function CreateCardScreen() {
                   <View>
                     <View style={styles.inputContainer}>
                       <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                           Front
                         </Text>
                         <View style={styles.audioButton}>
@@ -325,7 +342,7 @@ export default function CreateCardScreen() {
                             styles.inputText,
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
-                          placeholderTextColor={theme.colors.grey3}
+                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
                         />
                       </View>
                       {frontAudioSegments.length > 0 && (
@@ -347,7 +364,7 @@ export default function CreateCardScreen() {
 
                     <View style={styles.inputContainer}>
                       <View style={styles.inputHeader}>
-                        <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                        <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                           Back
                         </Text>
                         <View style={styles.audioButton}>
@@ -378,7 +395,7 @@ export default function CreateCardScreen() {
                             styles.inputText,
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
-                          placeholderTextColor={theme.colors.grey3}
+                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
                         />
                       </View>
                       {backAudioSegments.length > 0 && (
@@ -401,7 +418,7 @@ export default function CreateCardScreen() {
                 )}
 
                 <View style={styles.inputContainer}>
-                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                  <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                     Notes (Optional)
                   </Text>
                   <Input
@@ -423,12 +440,12 @@ export default function CreateCardScreen() {
                       styles.inputText,
                       { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                     ]}
-                    placeholderTextColor={theme.colors.grey3}
+                    placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
                   />
                 </View>
 
                 <View style={styles.inputContainer}>
-                  <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                  <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                     Tags (Optional)
                   </Text>
                   <Input
@@ -447,7 +464,7 @@ export default function CreateCardScreen() {
                       styles.inputText,
                       { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                     ]}
-                    placeholderTextColor={theme.colors.grey3}
+                    placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
                   />
                 </View>
               </View>
@@ -530,58 +547,106 @@ export default function CreateCardScreen() {
               </View>
             )}
 
-            <View style={styles.actions}>
-              <Button
-                title={isPreview ? "Edit" : "Preview"}
-                type="clear"
-                icon={
-                  <MaterialIcons
-                    name={isPreview ? "edit" : "visibility"}
-                    size={20}
-                    color="#4F46E5"
-                    style={styles.buttonIcon}
+            <View style={styles.actionButtons}>
+              <Pressable
+                onPress={() => {
+                  animatePress(previewButtonScale);
+                  togglePreview();
+                }}
+                style={({ pressed }) => [
+                  styles.buttonWrapper,
+                  pressed && styles.buttonPressed,
+                ]}
+              >
+                <Animated.View
+                  style={[
+                    styles.buttonContainer,
+                    { 
+                      backgroundColor: '#EEF2FF',
+                      borderWidth: 0,
+                    },
+                    { transform: [{ scale: previewButtonScale }] },
+                  ]}
+                >
+                  <Button
+                    title={isPreview ? "Edit" : "Preview"}
+                    type="clear"
+                    icon={
+                      <MaterialIcons
+                        name={isPreview ? "edit" : "visibility"}
+                        size={20}
+                        color="#4F46E5"
+                        style={styles.buttonIcon}
+                      />
+                    }
+                    buttonStyle={[styles.button, { backgroundColor: 'transparent' }]}
+                    titleStyle={{ color: '#4F46E5', fontWeight: '600', fontSize: 17 }}
                   />
-                }
-                buttonStyle={styles.secondaryButton}
-                containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}
-                titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-                onPress={togglePreview}
-              />
+                </Animated.View>
+              </Pressable>
+              
               {!createdCard ? (
-                <Button
-                  title="Create Card"
-                  loading={loading}
-                  icon={
-                    <MaterialIcons
-                      name="add"
-                      size={20}
-                      color="white"
-                      style={styles.buttonIcon}
+                <Pressable
+                  onPress={() => {
+                    animatePress(createButtonScale);
+                    handleCreateCard();
+                  }}
+                  style={({ pressed }) => [
+                    styles.buttonWrapper,
+                    pressed && styles.buttonPressed,
+                  ]}
+                  disabled={loading}
+                >
+                  <Animated.View
+                    style={[
+                      styles.buttonContainer,
+                      styles.createButton,
+                      { transform: [{ scale: createButtonScale }] },
+                    ]}
+                  >
+                    <Button
+                      title="Create Card"
+                      loading={loading}
+                      type="clear"
+                      buttonStyle={styles.button}
+                      titleStyle={[styles.buttonTitle, { color: 'white' }]}
                     />
-                  }
-                  type="clear"
-                  buttonStyle={styles.primaryButton}
-                  containerStyle={[styles.primaryButtonContainer, { backgroundColor: '#4F46E5' }]}
-                  titleStyle={styles.primaryButtonText}
-                  onPress={handleCreateCard}
-                />
+                  </Animated.View>
+                </Pressable>
               ) : (
-                <Button
-                  title="Finish"
-                  icon={
-                    <MaterialIcons
-                      name="check"
-                      size={20}
-                      color="white"
-                      style={styles.buttonIcon}
+                <Pressable
+                  onPress={() => {
+                    animatePress(createButtonScale);
+                    handleFinish();
+                  }}
+                  style={({ pressed }) => [
+                    styles.buttonWrapper,
+                    pressed && styles.buttonPressed,
+                  ]}
+                >
+                  <Animated.View
+                    style={[
+                      styles.buttonContainer,
+                      styles.createButton,
+                      { transform: [{ scale: createButtonScale }] },
+                    ]}
+                  >
+                    <Button
+                      title="Finish"
+                      icon={
+                        <MaterialIcons
+                          name="check"
+                          size={20}
+                          color="white"
+                          style={styles.buttonIcon}
+                        />
+                      }
+                      type="clear"
+                      buttonStyle={styles.button}
+                      titleStyle={[styles.buttonTitle, { color: 'white' }]}
                     />
-                  }
-                  type="clear"
-                  buttonStyle={styles.primaryButton}
-                  containerStyle={[styles.primaryButtonContainer, { backgroundColor: '#4F46E5' }]}
-                  titleStyle={styles.primaryButtonText}
-                  onPress={handleFinish}
-                />
+                  </Animated.View>
+                </Pressable>
               )}
             </View>
           </View>
@@ -598,49 +663,89 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 32,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    marginBottom: 8,
   },
   backButton: {
     marginRight: 16,
+    padding: 8,
+    marginLeft: -8,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
+    fontSize: 28,
+    fontWeight: '700',
   },
   scrollContent: {
     flexGrow: 1,
   },
   form: {
-    gap: 24,
+    padding: 20,
+    gap: 28,
   },
   characterSizeControl: {
-    marginBottom: 8,
+    marginBottom: 28,
+    paddingHorizontal: 4,
   },
   inputContainer: {
-    gap: 8,
+    marginBottom: 56,
+  },
+  inputHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: 17,
+    fontWeight: '600',
     marginLeft: 4,
+    marginBottom: 12,
+    letterSpacing: -0.4,
   },
   input: {
     paddingHorizontal: 0,
   },
   inputField: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 16,
-    height: 48,
+    height: 56,
     marginBottom: -8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    ...Platform.select({
+      web: {
+        transition: 'all 0.2s ease',
+        ':focus-within': {
+          borderColor: '#4F46E5',
+          shadowOffset: {
+            width: 0,
+            height: 2,
+          },
+          shadowOpacity: 0.15,
+          shadowRadius: 3,
+          transform: [{translateY: -1}],
+        },
+      },
+      default: {},
+    }),
   },
   inputText: {
-    fontSize: 16,
+    fontSize: 17,
+    lineHeight: 24,
   },
   textArea: {
-    minHeight: 100,
-    paddingTop: 12,
-    paddingBottom: 12,
+    minHeight: 120,
+    paddingTop: 16,
+    paddingBottom: 16,
   },
   preview: {
     marginTop: 8,
@@ -699,52 +804,94 @@ const styles = StyleSheet.create({
   dividerText: {
     fontSize: 14,
   },
-  actions: {
+  actionButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 8,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+    borderTopWidth: 1,
+    borderTopColor: Platform.select({
+      ios: 'rgba(0, 0, 0, 0.1)',
+      android: 'rgba(0, 0, 0, 0.12)',
+      default: 'rgba(0, 0, 0, 0.1)',
+    }),
+    marginTop: 'auto',
+  },
+  button: {
+    height: 52,
+    borderRadius: 16,
+    ...Platform.select({
+      web: {
+        transition: 'all 0.2s ease',
+        cursor: 'pointer',
+      },
+      default: {},
+    }),
+  },
+  buttonContainer: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+    ...Platform.select({
+      web: {
+        transition: 'all 0.2s ease',
+        ':hover': {
+          transform: [{translateY: -1}],
+          shadowOffset: {
+            width: 0,
+            height: 2,
+          },
+          shadowOpacity: 0.15,
+          shadowRadius: 3,
+        },
+        ':active': {
+          transform: [{translateY: 0}],
+          shadowOffset: {
+            width: 0,
+            height: 1,
+          },
+          shadowOpacity: 0.1,
+          shadowRadius: 2,
+        },
+      },
+      default: {},
+    }),
+  },
+  buttonTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    letterSpacing: -0.4,
   },
   buttonIcon: {
     marginRight: 8,
   },
-  secondaryButton: {
-    height: 48,
-    borderWidth: 0,
-  },
-  secondaryButtonContainer: {
-    flex: 1,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  primaryButton: {
-    height: 48,
-    borderWidth: 0,
-  },
-  primaryButtonContainer: {
-    flex: 2,
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  primaryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
-  },
   inputWrapper: {
     position: 'relative',
   },
-  inputHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   audioButton: {
-    marginRight: 4,
+    marginRight: -8,
+    padding: 8,
   },
   audioSegments: {
-    marginTop: 8,
-    padding: 12,
-    borderRadius: 8,
+    marginTop: 12,
+    padding: 16,
+    borderRadius: 16,
+  },
+  createButton: {
+    backgroundColor: '#4F46E5',
+  },
+  buttonWrapper: {
+    flex: 1,
+  },
+  buttonPressed: {
+    opacity: Platform.OS === 'ios' ? 0.8 : 1,
   },
 }); 
