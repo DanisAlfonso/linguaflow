@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { View, ScrollView, StyleSheet, Platform, Pressable } from 'react-native';
-import { Text, Button, useTheme } from '@rneui/themed';
+import { Text, Button, useTheme, Overlay, Input } from '@rneui/themed';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Container } from '../../../components/layout/Container';
-import { getDecks, updateDeck } from '../../../lib/api/flashcards';
+import { getDecks, updateDeck, deleteDeck } from '../../../lib/api/flashcards';
 import type { Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
+import { BlurView } from 'expo-blur';
 
 // Add gradient presets with names
 type GradientPreset = 'blue' | 'purple' | 'green' | 'orange' | 'pink';
@@ -34,6 +35,10 @@ export default function FlashcardsScreen() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [newDeckName, setNewDeckName] = useState('');
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   
   const router = useRouter();
   const { theme } = useTheme();
@@ -68,8 +73,37 @@ export default function FlashcardsScreen() {
     router.push(`/flashcards/${deckId}`);
   };
 
-  const handleLongPressDeck = (deckId: string) => {
+  const handleLongPressDeck = (deckId: string, event: any) => {
+    // Get the position of the pressed element for menu placement
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
     setEditingDeckId(deckId);
+  };
+
+  const handleMenuOptionPress = (option: 'color' | 'addCards' | 'rename' | 'delete') => {
+    if (!editingDeckId) return;
+
+    if (option === 'color') {
+      setShowColorPicker(true);
+    } else if (option === 'addCards') {
+      router.push(`/flashcards/${editingDeckId}/cards/create`);
+      setEditingDeckId(null);
+    } else if (option === 'rename') {
+      const deck = decks.find(d => d.id === editingDeckId);
+      if (deck) {
+        setNewDeckName(deck.name);
+        setShowRename(true);
+      }
+    } else if (option === 'delete') {
+      handleDeleteDeck(editingDeckId);
+    }
   };
 
   const handleChangeColor = async (deckId: string, colorKey: GradientPreset) => {
@@ -82,7 +116,6 @@ export default function FlashcardsScreen() {
         color_preset: colorKey
       });
 
-      // Update local state
       setDecks(prevDecks => 
         prevDecks.map(d => 
           d.id === deckId ? { ...d, color_preset: colorKey } : d
@@ -99,8 +132,69 @@ export default function FlashcardsScreen() {
         text1: 'Failed to update color',
       });
     } finally {
+      setShowColorPicker(false);
       setEditingDeckId(null);
     }
+  };
+
+  const handleRenameDeck = async () => {
+    if (!editingDeckId || !newDeckName.trim()) return;
+
+    try {
+      const deck = decks.find(d => d.id === editingDeckId);
+      if (!deck) return;
+
+      await updateDeck(editingDeckId, {
+        ...deck,
+        name: newDeckName.trim()
+      });
+
+      setDecks(prevDecks => 
+        prevDecks.map(d => 
+          d.id === editingDeckId ? { ...d, name: newDeckName.trim() } : d
+        )
+      );
+
+      Toast.show({
+        type: 'success',
+        text1: 'Deck renamed successfully',
+      });
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to rename deck',
+      });
+    } finally {
+      setShowRename(false);
+      setEditingDeckId(null);
+    }
+  };
+
+  const handleDeleteDeck = async (deckId: string) => {
+    try {
+      await deleteDeck(deckId);
+      
+      // Update local state
+      setDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+
+      Toast.show({
+        type: 'success',
+        text1: 'Deck deleted successfully',
+      });
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to delete deck',
+      });
+    } finally {
+      setEditingDeckId(null);
+    }
+  };
+
+  const handleCloseMenu = () => {
+    setEditingDeckId(null);
+    setShowColorPicker(false);
+    setShowRename(false);
   };
 
   if (loading) {
@@ -171,7 +265,7 @@ export default function FlashcardsScreen() {
                     },
                   ]}
                   onPress={() => handleDeckPress(deck.id)}
-                  onLongPress={() => handleLongPressDeck(deck.id)}
+                  onLongPress={(event) => handleLongPressDeck(deck.id, event)}
                 >
                   <LinearGradient
                     colors={GRADIENT_PRESETS[getColorPreset(deck, index)].colors}
@@ -235,28 +329,237 @@ export default function FlashcardsScreen() {
                 </Pressable>
                 
                 {editingDeckId === deck.id && (
-                  <View style={styles.colorPicker}>
-                    {GRADIENT_KEYS.map((colorKey) => (
-                      <Pressable
-                        key={colorKey}
-                        onPress={() => handleChangeColor(deck.id, colorKey)}
-                        style={({ pressed }) => [
-                          styles.colorOption,
-                          pressed && styles.colorOptionPressed,
-                        ]}
-                      >
-                        <LinearGradient
-                          colors={GRADIENT_PRESETS[colorKey].colors}
-                          style={styles.colorPreview}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
+                  <Overlay
+                    isVisible={true}
+                    onBackdropPress={handleCloseMenu}
+                    overlayStyle={styles.overlayContainer}
+                    backdropStyle={styles.backdrop}
+                    animationType="fade"
+                  >
+                    <Pressable 
+                      style={StyleSheet.absoluteFill}
+                      onPress={handleCloseMenu}
+                    >
+                      <View style={StyleSheet.absoluteFill}>
+                        <BlurView 
+                          intensity={30} 
+                          style={StyleSheet.absoluteFill}
+                          tint={theme.mode === 'dark' ? 'dark' : 'light'}
                         />
-                        <Text style={styles.colorName}>
-                          {GRADIENT_PRESETS[colorKey].name}
-                        </Text>
+                      </View>
+                    </Pressable>
+                    <View 
+                      style={[
+                        styles.contextMenu,
+                        {
+                          position: 'absolute',
+                          left: menuPosition.x,
+                          top: menuPosition.y,
+                          width: menuPosition.width,
+                          opacity: 1,
+                          backgroundColor: Platform.OS === 'ios' 
+                            ? 'rgba(250, 250, 250, 0.8)' 
+                            : theme.mode === 'dark' 
+                              ? 'rgba(30, 30, 30, 0.95)'
+                              : 'rgba(255, 255, 255, 0.95)',
+                        },
+                      ]}
+                    >
+                      <Pressable onPress={(e) => e.stopPropagation()}>
+                        {!showColorPicker && !showRename ? (
+                          // Main Menu
+                          <>
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.menuOption,
+                                pressed && styles.menuOptionPressed,
+                              ]}
+                              onPress={() => handleMenuOptionPress('color')}
+                            >
+                              <MaterialIcons 
+                                name="palette" 
+                                size={20} 
+                                color={theme.colors.grey4}
+                              />
+                              <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                                Choose Color
+                              </Text>
+                              <MaterialIcons 
+                                name="chevron-right" 
+                                size={20} 
+                                color={theme.colors.grey4}
+                                style={styles.menuOptionIcon} 
+                              />
+                            </Pressable>
+                            <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.menuOption,
+                                pressed && styles.menuOptionPressed,
+                              ]}
+                              onPress={() => handleMenuOptionPress('addCards')}
+                            >
+                              <MaterialIcons 
+                                name="add-circle-outline" 
+                                size={20} 
+                                color={theme.colors.grey4}
+                              />
+                              <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                                Add Cards
+                              </Text>
+                            </Pressable>
+                            <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.menuOption,
+                                pressed && styles.menuOptionPressed,
+                              ]}
+                              onPress={() => handleMenuOptionPress('rename')}
+                            >
+                              <MaterialIcons 
+                                name="edit" 
+                                size={20} 
+                                color={theme.colors.grey4}
+                              />
+                              <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                                Rename
+                              </Text>
+                            </Pressable>
+                            <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.menuOption,
+                                pressed && styles.menuOptionPressed,
+                              ]}
+                              onPress={() => handleMenuOptionPress('delete')}
+                            >
+                              <MaterialIcons 
+                                name="delete-outline" 
+                                size={20} 
+                                color="#DC2626" 
+                              />
+                              <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
+                                Delete Deck
+                              </Text>
+                            </Pressable>
+                          </>
+                        ) : showRename ? (
+                          // Rename Interface
+                          <>
+                            <View style={styles.colorPickerHeader}>
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.backButton,
+                                  pressed && styles.backButtonPressed,
+                                ]}
+                                onPress={() => setShowRename(false)}
+                              >
+                                <MaterialIcons 
+                                  name="arrow-back" 
+                                  size={20} 
+                                  color={theme.colors.grey4} 
+                                />
+                              </Pressable>
+                              <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                                Rename Deck
+                              </Text>
+                            </View>
+                            <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                            <View style={styles.renameContainer}>
+                              <Input
+                                value={newDeckName}
+                                onChangeText={setNewDeckName}
+                                placeholder="Enter deck name"
+                                autoFocus
+                                returnKeyType="done"
+                                onSubmitEditing={handleRenameDeck}
+                                containerStyle={styles.renameInput}
+                                inputContainerStyle={[
+                                  styles.renameInputContainer,
+                                  { borderColor: theme.colors.grey2 }
+                                ]}
+                                inputStyle={[
+                                  styles.renameInputText,
+                                  { color: theme.colors.grey4 }
+                                ]}
+                              />
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.renameButton,
+                                  pressed && styles.renameButtonPressed,
+                                ]}
+                                onPress={handleRenameDeck}
+                              >
+                                <Text style={styles.renameButtonText}>
+                                  Save
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </>
+                        ) : (
+                          // Color Picker (existing code)
+                          <>
+                            <View style={styles.colorPickerHeader}>
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.backButton,
+                                  pressed && styles.backButtonPressed,
+                                ]}
+                                onPress={() => setShowColorPicker(false)}
+                              >
+                                <MaterialIcons 
+                                  name="arrow-back" 
+                                  size={20} 
+                                  color={theme.colors.grey4} 
+                                />
+                              </Pressable>
+                              <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                                Choose Color
+                              </Text>
+                            </View>
+                            <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                            {GRADIENT_KEYS.map((colorKey) => {
+                              const isSelected = decks.find(d => d.id === editingDeckId)?.color_preset === colorKey;
+                              return (
+                                <Pressable
+                                  key={colorKey}
+                                  style={({ pressed }) => [
+                                    styles.colorOption,
+                                    pressed && styles.colorOptionPressed,
+                                  ]}
+                                  onPress={() => handleChangeColor(editingDeckId, colorKey)}
+                                >
+                                  <View style={styles.colorPreviewContainer}>
+                                    <LinearGradient
+                                      colors={GRADIENT_PRESETS[colorKey].colors}
+                                      start={{ x: 0, y: 0 }}
+                                      end={{ x: 1, y: 1 }}
+                                      style={styles.colorPreview}
+                                    />
+                                  </View>
+                                  <Text style={[
+                                    styles.colorName,
+                                    { color: theme.colors.grey4 },
+                                    isSelected && styles.colorNameSelected
+                                  ]}>
+                                    {GRADIENT_PRESETS[colorKey].name}
+                                  </Text>
+                                  {isSelected && (
+                                    <MaterialIcons 
+                                      name="check" 
+                                      size={20} 
+                                      color={theme.colors.grey4}
+                                      style={styles.checkIcon} 
+                                    />
+                                  )}
+                                </Pressable>
+                              );
+                            })}
+                          </>
+                        )}
                       </Pressable>
-                    ))}
-                  </View>
+                    </View>
+                  </Overlay>
                 )}
               </React.Fragment>
             ))
@@ -418,32 +721,131 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-  colorPicker: {
+  overlayContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
+  backdrop: {
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.5)',
+  },
+  contextMenu: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+      },
+    }),
+  },
+  menuOption: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    alignItems: 'center',
+    padding: 12,
     gap: 12,
-    padding: 16,
-    marginTop: -12,
-    marginBottom: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-    borderRadius: 16,
+  },
+  menuOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  menuOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  menuOptionIcon: {
+    marginLeft: 'auto',
+  },
+  menuDivider: {
+    height: 1,
+    width: '100%',
+  },
+  colorPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  backButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  colorPickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   colorOption: {
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    opacity: 1,
+    padding: 12,
+    gap: 12,
   },
   colorOptionPressed: {
-    opacity: 0.7,
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  colorPreviewContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   colorPreview: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: '100%',
+    height: '100%',
   },
   colorName: {
-    fontSize: 12,
-    color: '#666',
+    fontSize: 16,
     fontWeight: '500',
+    flex: 1,
+  },
+  colorNameSelected: {
+    fontWeight: '600',
+  },
+  checkIcon: {
+    marginLeft: 'auto',
+  },
+  renameContainer: {
+    padding: 12,
+    gap: 12,
+  },
+  renameInput: {
+    paddingHorizontal: 0,
+    marginBottom: 0,
+  },
+  renameInputContainer: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  renameInputText: {
+    fontSize: 16,
+  },
+  renameButton: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  renameButtonPressed: {
+    opacity: 0.8,
+  },
+  renameButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 
