@@ -46,6 +46,9 @@ export default function AudioScreen() {
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [showRename, setShowRename] = useState(false);
   const [newTrackName, setNewTrackName] = useState('');
+  const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
+  const [showPlaylistRename, setShowPlaylistRename] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
 
   // Placeholder waveform data for testing
   const mockWaveformData = Array.from({ length: 200 }, () => Math.random());
@@ -639,6 +642,117 @@ export default function AudioScreen() {
     setEditingTrackId(null);
   };
 
+  const handleLongPressPlaylist = (playlist: AudioPlaylist, event: any) => {
+    // Get the position of the pressed element for menu placement
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
+    setEditingPlaylistId(playlist.id);
+  };
+
+  const handlePlaylistMenuOptionPress = (option: 'delete' | 'rename') => {
+    if (!editingPlaylistId) return;
+
+    const playlist = playlists.find(p => p.id === editingPlaylistId);
+    if (!playlist) return;
+
+    if (option === 'delete') {
+      handleDeletePlaylist(playlist);
+    } else if (option === 'rename') {
+      setNewPlaylistName(playlist.title);
+      setShowPlaylistRename(true);
+    }
+  };
+
+  const handleDeletePlaylist = async (playlist: AudioPlaylist) => {
+    try {
+      const { error } = await supabase
+        .from('audio_playlists')
+        .delete()
+        .eq('id', playlist.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setPlaylists(prevPlaylists => prevPlaylists.filter(p => p.id !== playlist.id));
+
+      // If this was the current playlist, clear it
+      if (currentPlaylist?.id === playlist.id) {
+        setCurrentPlaylist(null);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Playlist deleted successfully',
+      });
+    } catch (error) {
+      console.error('Error deleting playlist:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete playlist',
+      });
+    } finally {
+      setEditingPlaylistId(null);
+    }
+  };
+
+  const handleRenamePlaylist = async () => {
+    if (!editingPlaylistId || !newPlaylistName.trim()) return;
+
+    try {
+      const playlist = playlists.find(p => p.id === editingPlaylistId);
+      if (!playlist) return;
+
+      const { error } = await supabase
+        .from('audio_playlists')
+        .update({ title: newPlaylistName.trim() })
+        .eq('id', editingPlaylistId);
+
+      if (error) throw error;
+
+      // Update local state
+      setPlaylists(prevPlaylists =>
+        prevPlaylists.map(p =>
+          p.id === editingPlaylistId ? { ...p, title: newPlaylistName.trim() } : p
+        )
+      );
+
+      // Update current playlist if it's the one being renamed
+      if (currentPlaylist?.id === editingPlaylistId) {
+        setCurrentPlaylist(prev => prev ? { ...prev, title: newPlaylistName.trim() } : null);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Playlist renamed successfully',
+      });
+    } catch (error) {
+      console.error('Error renaming playlist:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to rename playlist',
+      });
+    } finally {
+      setShowPlaylistRename(false);
+      setEditingPlaylistId(null);
+    }
+  };
+
+  const handleClosePlaylistMenu = () => {
+    setEditingPlaylistId(null);
+    setShowPlaylistRename(false);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
@@ -1000,31 +1114,179 @@ export default function AudioScreen() {
             </View>
             <View style={styles.playlistsGrid}>
               {playlists.slice(0, 4).map((playlist) => (
-                <Pressable
-                  key={playlist.id}
-                  style={[
-                    styles.playlistCard,
-                    { backgroundColor: theme.colors.grey0 }
-                  ]}
-                  onPress={() => handlePlaylistSelect(playlist)}
-                >
-                  <View style={[styles.playlistArt, { backgroundColor: theme.colors.grey1 }]}>
-                    <MaterialIcons name="queue-music" size={32} color={theme.colors.grey3} />
-                  </View>
-                  <View style={styles.playlistInfo}>
-                    <Text 
-                      style={[styles.playlistTitle, { color: theme.colors.grey5 }]}
-                      numberOfLines={1}
+                <React.Fragment key={playlist.id}>
+                  <Pressable
+                    key={playlist.id}
+                    style={[
+                      styles.playlistCard,
+                      { backgroundColor: theme.colors.grey0 }
+                    ]}
+                    onPress={() => handlePlaylistSelect(playlist)}
+                    onLongPress={(event) => handleLongPressPlaylist(playlist, event)}
+                  >
+                    <View style={[styles.playlistArt, { backgroundColor: theme.colors.grey1 }]}>
+                      <MaterialIcons name="queue-music" size={32} color={theme.colors.grey3} />
+                    </View>
+                    <View style={styles.playlistInfo}>
+                      <Text 
+                        style={[styles.playlistTitle, { color: theme.colors.grey5 }]}
+                        numberOfLines={1}
+                      >
+                        {playlist.title}
+                      </Text>
+                      <Text 
+                        style={[styles.playlistStats, { color: theme.colors.grey3 }]}
+                      >
+                        {playlist.trackCount} tracks • {formatTime(playlist.totalDuration * 1000)}
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  {editingPlaylistId === playlist.id && (
+                    <Overlay
+                      isVisible={true}
+                      onBackdropPress={handleClosePlaylistMenu}
+                      overlayStyle={styles.overlayContainer}
+                      backdropStyle={styles.backdrop}
+                      animationType="fade"
                     >
-                      {playlist.title}
-                    </Text>
-                    <Text 
-                      style={[styles.playlistStats, { color: theme.colors.grey3 }]}
-                    >
-                      {playlist.trackCount} tracks • {formatTime(playlist.totalDuration * 1000)}
-                    </Text>
-                  </View>
-                </Pressable>
+                      <Pressable 
+                        style={StyleSheet.absoluteFill}
+                        onPress={handleClosePlaylistMenu}
+                      >
+                        <View style={StyleSheet.absoluteFill}>
+                          <BlurView 
+                            intensity={30} 
+                            style={StyleSheet.absoluteFill}
+                            tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                          />
+                        </View>
+                      </Pressable>
+                      <View 
+                        style={[
+                          styles.contextMenu,
+                          {
+                            position: 'absolute',
+                            left: menuPosition.x,
+                            top: menuPosition.y,
+                            width: menuPosition.width,
+                            backgroundColor: Platform.OS === 'ios' 
+                              ? 'rgba(250, 250, 250, 0.8)' 
+                              : theme.mode === 'dark' 
+                                ? 'rgba(30, 30, 30, 0.95)'
+                                : 'rgba(255, 255, 255, 0.95)',
+                            ...Platform.select({
+                              ios: {
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.2,
+                                shadowRadius: 8,
+                              },
+                              android: {
+                                elevation: 8,
+                              },
+                              web: {
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                              },
+                            }),
+                          },
+                        ]}
+                      >
+                        <Pressable onPress={(e) => e.stopPropagation()}>
+                          {!showPlaylistRename ? (
+                            <>
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.menuOption,
+                                  pressed && styles.menuOptionPressed,
+                                ]}
+                                onPress={() => handlePlaylistMenuOptionPress('rename')}
+                              >
+                                <MaterialIcons 
+                                  name="edit" 
+                                  size={20} 
+                                  color={theme.colors.grey4}
+                                />
+                                <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                                  Rename Playlist
+                                </Text>
+                              </Pressable>
+                              <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.menuOption,
+                                  pressed && styles.menuOptionPressed,
+                                ]}
+                                onPress={() => handlePlaylistMenuOptionPress('delete')}
+                              >
+                                <MaterialIcons 
+                                  name="delete-outline" 
+                                  size={20} 
+                                  color="#DC2626" 
+                                />
+                                <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
+                                  Delete Playlist
+                                </Text>
+                              </Pressable>
+                            </>
+                          ) : (
+                            <>
+                              <View style={styles.colorPickerHeader}>
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.backButton,
+                                    pressed && styles.backButtonPressed,
+                                  ]}
+                                  onPress={() => setShowPlaylistRename(false)}
+                                >
+                                  <MaterialIcons 
+                                    name="arrow-back" 
+                                    size={20} 
+                                    color={theme.colors.grey4} 
+                                  />
+                                </Pressable>
+                                <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                                  Rename Playlist
+                                </Text>
+                              </View>
+                              <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                              <View style={styles.renameContainer}>
+                                <TextInput
+                                  value={newPlaylistName}
+                                  onChangeText={setNewPlaylistName}
+                                  placeholder="Enter playlist name"
+                                  autoFocus
+                                  returnKeyType="done"
+                                  onSubmitEditing={handleRenamePlaylist}
+                                  style={[
+                                    styles.renameInput,
+                                    { 
+                                      color: theme.colors.grey4,
+                                      backgroundColor: theme.colors.grey0,
+                                      borderColor: theme.colors.grey2
+                                    }
+                                  ]}
+                                  placeholderTextColor={theme.colors.grey3}
+                                />
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.renameButton,
+                                    pressed && styles.renameButtonPressed,
+                                  ]}
+                                  onPress={handleRenamePlaylist}
+                                >
+                                  <Text style={styles.renameButtonText}>
+                                    Save
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            </>
+                          )}
+                        </Pressable>
+                      </View>
+                    </Overlay>
+                  )}
+                </React.Fragment>
               ))}
             </View>
           </View>
