@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Platform, ScrollView } from 'react-native';
+import { View, StyleSheet, Platform, ScrollView, Pressable, Animated } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,10 +17,15 @@ export default function EditDeckScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isDeleteHovered, setIsDeleteHovered] = useState(false);
+  const [isSaveHovered, setIsSaveHovered] = useState(false);
+  const [deleteTooltipOpacity] = useState(new Animated.Value(0));
+  const [saveTooltipOpacity] = useState(new Animated.Value(0));
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
+  const isWeb = Platform.OS === 'web';
 
   const loadDeck = useCallback(async () => {
     try {
@@ -116,6 +121,58 @@ export default function EditDeckScreen() {
       setDeleting(false);
     }
   };
+
+  // Animate tooltip opacity for Delete
+  useEffect(() => {
+    Animated.timing(deleteTooltipOpacity, {
+      toValue: isDeleteHovered ? 1 : 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [isDeleteHovered]);
+
+  // Animate tooltip opacity for Save
+  useEffect(() => {
+    Animated.timing(saveTooltipOpacity, {
+      toValue: isSaveHovered ? 1 : 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [isSaveHovered]);
+
+  // Add keyboard shortcuts
+  useEffect(() => {
+    if (!isWeb) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input
+      if (
+        document.activeElement?.tagName === 'INPUT' || 
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      // Save Changes shortcut (Cmd/Ctrl + S)
+      if (e.key === 's' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+        e.preventDefault();
+        if (!saving) {
+          handleSave();
+        }
+      }
+
+      // Delete shortcut (Cmd/Ctrl + D)
+      if (e.key === 'd' && (e.metaKey || e.ctrlKey) && !e.altKey) {
+        e.preventDefault();
+        if (!deleting) {
+          handleDelete();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isWeb, handleSave, handleDelete, saving, deleting]);
 
   if (loading || !deck) {
     return (
@@ -245,40 +302,88 @@ export default function EditDeckScreen() {
             </View>
 
             <View style={styles.actions}>
-              <Button
-                title="Delete Deck"
-                loading={deleting}
-                icon={
+              <View style={[styles.deleteButtonContainer, { backgroundColor: '#DC2626' }]}>
+                <Pressable
+                  onHoverIn={() => isWeb && setIsDeleteHovered(true)}
+                  onHoverOut={() => isWeb && setIsDeleteHovered(false)}
+                  onPress={handleDelete}
+                  disabled={deleting}
+                  style={[styles.deleteButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                >
                   <MaterialIcons
                     name="delete"
                     size={20}
                     color="white"
                     style={styles.buttonIcon}
                   />
-                }
-                type="clear"
-                buttonStyle={styles.deleteButton}
-                containerStyle={[styles.deleteButtonContainer, { backgroundColor: '#DC2626' }]}
-                titleStyle={styles.buttonText}
-                onPress={handleDelete}
-              />
-              <Button
-                title="Save Changes"
-                loading={saving}
-                icon={
+                  <Text style={[styles.buttonText, { color: 'white' }]}>
+                    Delete Deck
+                  </Text>
+                  {isWeb && (
+                    <Animated.View
+                      style={[
+                        styles.tooltip,
+                        { opacity: deleteTooltipOpacity }
+                      ]}
+                    >
+                      <View style={styles.tooltipContent}>
+                        <View style={styles.tooltipIconContainer}>
+                          <MaterialIcons
+                            name="keyboard"
+                            size={16}
+                            color="#A5B4FC"
+                          />
+                        </View>
+                        <Text style={styles.tooltipText}>
+                          Press <Text style={styles.tooltipShortcut}>{Platform.OS === 'macos' ? '⌘D' : 'Ctrl+D'}</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.tooltipArrow} />
+                    </Animated.View>
+                  )}
+                </Pressable>
+              </View>
+              <View style={[styles.saveButtonContainer, { backgroundColor: '#4F46E5' }]}>
+                <Pressable
+                  onHoverIn={() => isWeb && setIsSaveHovered(true)}
+                  onHoverOut={() => isWeb && setIsSaveHovered(false)}
+                  onPress={handleSave}
+                  disabled={saving}
+                  style={[styles.saveButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                >
                   <MaterialIcons
                     name="save"
                     size={20}
                     color="white"
                     style={styles.buttonIcon}
                   />
-                }
-                type="clear"
-                buttonStyle={styles.saveButton}
-                containerStyle={[styles.saveButtonContainer, { backgroundColor: '#4F46E5' }]}
-                titleStyle={styles.buttonText}
-                onPress={handleSave}
-              />
+                  <Text style={[styles.buttonText, { color: 'white' }]}>
+                    Save Changes
+                  </Text>
+                  {isWeb && (
+                    <Animated.View
+                      style={[
+                        styles.tooltip,
+                        { opacity: saveTooltipOpacity }
+                      ]}
+                    >
+                      <View style={styles.tooltipContent}>
+                        <View style={styles.tooltipIconContainer}>
+                          <MaterialIcons
+                            name="keyboard"
+                            size={16}
+                            color="#A5B4FC"
+                          />
+                        </View>
+                        <Text style={styles.tooltipText}>
+                          Press <Text style={styles.tooltipShortcut}>{Platform.OS === 'macos' ? '⌘S' : 'Ctrl+S'}</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.tooltipArrow} />
+                    </Animated.View>
+                  )}
+                </Pressable>
+              </View>
             </View>
           </View>
         </ScrollView>
@@ -308,6 +413,8 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 24,
+    position: 'relative',
+    zIndex: 1,
   },
   inputContainer: {
     gap: 8,
@@ -339,6 +446,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
+    position: 'relative',
+    zIndex: 2,
   },
   buttonIcon: {
     marginRight: 8,
@@ -350,7 +459,8 @@ const styles = StyleSheet.create({
   deleteButtonContainer: {
     flex: 1,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'visible',
+    position: 'relative',
   },
   saveButton: {
     height: 48,
@@ -359,11 +469,75 @@ const styles = StyleSheet.create({
   saveButtonContainer: {
     flex: 1,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'visible',
+    position: 'relative',
   },
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  tooltip: {
+    position: 'absolute',
+    top: -48,
+    left: '50%',
+    transform: [{ translateX: -75 }],
+    width: 150,
+    backgroundColor: 'rgba(30, 41, 59, 0.98)',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    zIndex: 1000,
+    pointerEvents: 'none',
+  },
+  tooltipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    gap: 8,
+  },
+  tooltipIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(165, 180, 252, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tooltipShortcut: {
+    color: '#A5B4FC',
+    fontWeight: '600',
+    padding: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(165, 180, 252, 0.1)',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -8,
+    left: '50%',
+    marginLeft: -8,
+    borderTopWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 0,
+    borderLeftWidth: 8,
+    borderTopColor: 'rgba(30, 41, 59, 0.95)',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'transparent',
   },
 }); 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, Platform, Pressable } from 'react-native';
+import { View, ScrollView, StyleSheet, Platform, Pressable, Animated } from 'react-native';
 import { Text, Button, Input, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -14,6 +14,10 @@ export default function DeckScreen() {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAddCardHovered, setIsAddCardHovered] = useState(false);
+  const [isEditDeckHovered, setIsEditDeckHovered] = useState(false);
+  const [tooltipOpacity] = useState(new Animated.Value(0));
+  const [editTooltipOpacity] = useState(new Animated.Value(0));
   
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -78,16 +82,104 @@ export default function DeckScreen() {
   };
 
   const handleAddCard = () => {
+    if (!deck) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please wait for deck to load',
+      });
+      return;
+    }
     router.push(`/flashcards/${id}/cards/create`);
   };
 
+  // Add keyboard shortcut for Add Card
+  useEffect(() => {
+    if (!isWeb) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input
+      if (
+        document.activeElement?.tagName === 'INPUT' || 
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      // Add Card shortcut (a)
+      if (e.key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleAddCard();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isWeb, handleAddCard]);
+
+  // Animate tooltip opacity
+  useEffect(() => {
+    Animated.timing(tooltipOpacity, {
+      toValue: isAddCardHovered ? 1 : 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [isAddCardHovered]);
+
   const handleEditDeck = () => {
+    if (!deck) {
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please wait for deck to load',
+      });
+      return;
+    }
     router.push(`/flashcards/${id}/edit`);
   };
 
   const handleCardPress = (cardId: string) => {
     router.push(`/flashcards/${id}/cards/${cardId}`);
   };
+
+  // Animate tooltip opacity for Edit Deck
+  useEffect(() => {
+    Animated.timing(editTooltipOpacity, {
+      toValue: isEditDeckHovered ? 1 : 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start();
+  }, [isEditDeckHovered]);
+
+  // Add keyboard shortcut for Edit Deck
+  useEffect(() => {
+    if (!isWeb) return;
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if user is typing in an input
+      if (
+        document.activeElement?.tagName === 'INPUT' || 
+        document.activeElement?.tagName === 'TEXTAREA'
+      ) {
+        return;
+      }
+
+      // Add Card shortcut (a)
+      if (e.key === 'a' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleAddCard();
+      }
+
+      // Edit Deck shortcut (e)
+      if (e.key === 'e' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        handleEditDeck();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [isWeb, handleAddCard, handleEditDeck]);
 
   const filteredCards = cards.filter(
     (card) =>
@@ -224,38 +316,86 @@ export default function DeckScreen() {
                 onPress={hasCards ? handleStartStudy : handleAddCard}
               />
               <View style={styles.secondaryActions}>
-                <Button
-                  title="Add Card"
-                  type="clear"
-                  icon={
+                <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
+                  <Pressable
+                    onHoverIn={() => isWeb && setIsAddCardHovered(true)}
+                    onHoverOut={() => isWeb && setIsAddCardHovered(false)}
+                    onPress={handleAddCard}
+                    style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                  >
                     <MaterialIcons
                       name="add"
                       size={20}
                       color="#4F46E5"
                       style={styles.buttonIcon}
                     />
-                  }
-                  buttonStyle={styles.secondaryButton}
-                  containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}
-                  titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-                  onPress={handleAddCard}
-                />
-                <Button
-                  title="Edit Deck"
-                  type="clear"
-                  icon={
+                    <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
+                      Add Card
+                    </Text>
+                    {isWeb && (
+                      <Animated.View
+                        style={[
+                          styles.tooltip,
+                          { opacity: tooltipOpacity }
+                        ]}
+                      >
+                        <View style={styles.tooltipContent}>
+                          <View style={styles.tooltipIconContainer}>
+                            <MaterialIcons
+                              name="keyboard"
+                              size={16}
+                              color="#A5B4FC"
+                            />
+                          </View>
+                          <Text style={styles.tooltipText}>
+                            Press <Text style={styles.tooltipShortcut}>A</Text>
+                          </Text>
+                        </View>
+                        <View style={styles.tooltipArrow} />
+                      </Animated.View>
+                    )}
+                  </Pressable>
+                </View>
+                <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
+                  <Pressable
+                    onHoverIn={() => isWeb && setIsEditDeckHovered(true)}
+                    onHoverOut={() => isWeb && setIsEditDeckHovered(false)}
+                    onPress={handleEditDeck}
+                    style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                  >
                     <MaterialIcons
                       name="edit"
                       size={20}
                       color="#4F46E5"
                       style={styles.buttonIcon}
                     />
-                  }
-                  buttonStyle={styles.secondaryButton}
-                  containerStyle={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}
-                  titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-                  onPress={handleEditDeck}
-                />
+                    <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
+                      Edit Deck
+                    </Text>
+                    {isWeb && (
+                      <Animated.View
+                        style={[
+                          styles.tooltip,
+                          { opacity: editTooltipOpacity }
+                        ]}
+                      >
+                        <View style={styles.tooltipContent}>
+                          <View style={styles.tooltipIconContainer}>
+                            <MaterialIcons
+                              name="keyboard"
+                              size={16}
+                              color="#A5B4FC"
+                            />
+                          </View>
+                          <Text style={styles.tooltipText}>
+                            Press <Text style={styles.tooltipShortcut}>E</Text>
+                          </Text>
+                        </View>
+                        <View style={styles.tooltipArrow} />
+                      </Animated.View>
+                    )}
+                  </Pressable>
+                </View>
               </View>
             </View>
           </View>
@@ -442,7 +582,8 @@ const styles = StyleSheet.create({
   secondaryButtonContainer: {
     flex: 1,
     borderRadius: 12,
-    overflow: 'hidden',
+    overflow: 'visible',
+    position: 'relative',
   },
   cardsSection: {
     gap: 16,
@@ -533,5 +674,67 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     maxWidth: 240,
+  },
+  tooltip: {
+    position: 'absolute',
+    top: -48,
+    left: '50%',
+    transform: [{ translateX: -75 }],
+    width: 150,
+    backgroundColor: 'rgba(30, 41, 59, 0.98)',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
+    zIndex: 1000,
+  },
+  tooltipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    gap: 8,
+  },
+  tooltipIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    backgroundColor: 'rgba(165, 180, 252, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipText: {
+    color: '#E2E8F0',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  tooltipShortcut: {
+    color: '#A5B4FC',
+    fontWeight: '600',
+    padding: 2,
+    borderRadius: 4,
+    overflow: 'hidden',
+    backgroundColor: 'rgba(165, 180, 252, 0.1)',
+  },
+  tooltipArrow: {
+    position: 'absolute',
+    bottom: -8,
+    left: '50%',
+    marginLeft: -8,
+    borderTopWidth: 8,
+    borderRightWidth: 8,
+    borderBottomWidth: 0,
+    borderLeftWidth: 8,
+    borderTopColor: 'rgba(30, 41, 59, 0.95)',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'transparent',
+    borderLeftColor: 'transparent',
   },
 }); 
