@@ -4,9 +4,11 @@ import { Redirect, Tabs, Slot } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Header } from '../../components/layout/Header';
+import { useTheme } from '@rneui/themed';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
+  const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
   if (loading) {
@@ -34,15 +36,43 @@ export default function AppLayout() {
       <View style={styles.content}>
         <Tabs
           screenOptions={{
-            tabBarActiveTintColor: '#4F46E5',
-            tabBarInactiveTintColor: '#9CA3AF',
+            tabBarActiveTintColor: theme.colors.primary,
+            tabBarInactiveTintColor: theme.colors.grey4,
             tabBarStyle: {
-              borderTopWidth: 0,
-              elevation: 0,
-              shadowOpacity: 0,
-              height: 60,
+              backgroundColor: theme.colors.grey0,
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.grey1,
+              elevation: Platform.OS === 'android' ? 8 : 0,
+              shadowColor: '#000',
+              shadowOffset: {
+                width: 0,
+                height: -4,
+              },
+              shadowOpacity: 0.1,
+              shadowRadius: 8,
+              height: 64,
               paddingBottom: 8,
               paddingTop: 8,
+              ...Platform.select({
+                ios: {
+                  borderTopWidth: 0.5,
+                  borderTopColor: theme.colors.grey2,
+                },
+                android: {
+                  borderTopWidth: 0,
+                },
+              }),
+            },
+            tabBarLabelStyle: {
+              fontSize: 12,
+              fontWeight: '500',
+              marginTop: 2,
+            },
+            tabBarIconStyle: {
+              marginBottom: -4,
+            },
+            tabBarItemStyle: {
+              paddingVertical: 4,
             },
             headerShown: false,
           }}
@@ -51,8 +81,13 @@ export default function AppLayout() {
             name="index"
             options={{
               title: 'Home',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="home" size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <MaterialIcons 
+                  name="home" 
+                  size={focused ? size + 2 : size} 
+                  color={color}
+                  style={focused ? styles.activeIcon : null}
+                />
               ),
             }}
           />
@@ -60,8 +95,13 @@ export default function AppLayout() {
             name="flashcards"
             options={{
               title: 'Flashcards',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="class" size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <MaterialIcons 
+                  name="class" 
+                  size={focused ? size + 2 : size} 
+                  color={color}
+                  style={focused ? styles.activeIcon : null}
+                />
               ),
             }}
           />
@@ -69,8 +109,13 @@ export default function AppLayout() {
             name="audio/index"
             options={{
               title: 'Audio',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="headset" size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <MaterialIcons 
+                  name="headset" 
+                  size={focused ? size + 2 : size} 
+                  color={color}
+                  style={focused ? styles.activeIcon : null}
+                />
               ),
             }}
           />
@@ -78,8 +123,13 @@ export default function AppLayout() {
             name="statistics/index"
             options={{
               title: 'Statistics',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="analytics" size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <MaterialIcons 
+                  name="analytics" 
+                  size={focused ? size + 2 : size} 
+                  color={color}
+                  style={focused ? styles.activeIcon : null}
+                />
               ),
             }}
           />
@@ -87,8 +137,13 @@ export default function AppLayout() {
             name="notes/index"
             options={{
               title: 'Notes',
-              tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="edit" size={size} color={color} />
+              tabBarIcon: ({ color, size, focused }) => (
+                <MaterialIcons 
+                  name="edit" 
+                  size={focused ? size + 2 : size} 
+                  color={color}
+                  style={focused ? styles.activeIcon : null}
+                />
               ),
             }}
           />
@@ -104,5 +159,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  activeIcon: {
+    transform: [{translateY: -2}],
   },
 }); 
