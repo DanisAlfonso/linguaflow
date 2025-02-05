@@ -11,6 +11,8 @@ export default function AppLayout() {
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
+  const BASE_ICON_SIZE = 28; // Increased from default 24
+
   if (loading) {
     return null;
   }
@@ -50,9 +52,9 @@ export default function AppLayout() {
               },
               shadowOpacity: 0.1,
               shadowRadius: 8,
-              height: 64,
-              paddingBottom: 8,
-              paddingTop: 8,
+              height: 76, // Increased from 64
+              paddingBottom: 12, // Increased from 8
+              paddingTop: 12, // Increased from 8
               ...Platform.select({
                 ios: {
                   borderTopWidth: 0.5,
@@ -64,15 +66,15 @@ export default function AppLayout() {
               }),
             },
             tabBarLabelStyle: {
-              fontSize: 12,
+              fontSize: 13, // Increased from 12
               fontWeight: '500',
-              marginTop: 2,
+              marginTop: 4,
             },
             tabBarIconStyle: {
-              marginBottom: -4,
+              marginBottom: -2,
             },
             tabBarItemStyle: {
-              paddingVertical: 4,
+              paddingVertical: 6, // Increased from 4
             },
             headerShown: false,
           }}
@@ -84,7 +86,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
                   name="home" 
-                  size={focused ? size + 2 : size} 
+                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
                 />
@@ -98,7 +100,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
                   name="class" 
-                  size={focused ? size + 2 : size} 
+                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
                 />
@@ -112,7 +114,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
                   name="headset" 
-                  size={focused ? size + 2 : size} 
+                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
                 />
@@ -126,7 +128,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
                   name="analytics" 
-                  size={focused ? size + 2 : size} 
+                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
                 />
@@ -140,7 +142,7 @@ export default function AppLayout() {
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
                   name="edit" 
-                  size={focused ? size + 2 : size} 
+                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
                 />
@@ -161,6 +163,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activeIcon: {
-    transform: [{translateY: -2}],
+    transform: [{translateY: -3}], // Increased from -2 to maintain proportion with new sizes
   },
 }); 
