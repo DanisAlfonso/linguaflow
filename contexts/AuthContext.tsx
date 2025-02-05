@@ -18,6 +18,9 @@ type Props = {
   initialPathname?: string;
 };
 
+// List of routes that require authentication but are not in the (app) group
+const PROTECTED_ROUTES = ['profile', 'settings'];
+
 export function AuthProvider({ children, initialPathname }: Props) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,23 +30,20 @@ export function AuthProvider({ children, initialPathname }: Props) {
   useEffect(() => {
     console.log('AuthContext - Initial pathname:', initialPathname);
     console.log('AuthContext - Current segments:', segments);
-    console.log('AuthContext - Auth state:', { user: !!user, loading });
+    console.log('AuthContext - Auth state:', { loading, user: !!user });
 
     if (loading) return;
 
-    const inProtectedRoute = segments[0] === '(app)';
+    const inProtectedRoute = segments[0] === '(app)' || PROTECTED_ROUTES.includes(segments[0] || '');
     const isRootPath = segments.length === 0 || (segments.length === 1 && segments[0] === '');
 
     if (!user && inProtectedRoute) {
       // If not authenticated and trying to access protected route, redirect to sign in
       console.log('AuthContext - Not authenticated, redirecting to sign in');
       router.replace('/sign-in');
-    } else if (user && !inProtectedRoute && !isRootPath) {
-      // If authenticated and accessing non-root public route, redirect to app version
-      const targetPath = initialPathname || '/';
-      const appPath = targetPath === '/' ? '/(app)' : `/(app)${targetPath}`;
-      console.log('AuthContext - Authenticated, redirecting to:', appPath);
-      router.replace(appPath);
+    } else if (user && !inProtectedRoute && !isRootPath && segments[0] !== '(auth)') {
+      // If authenticated and accessing non-root public route (except auth routes), redirect to app version
+      console.log('AuthContext - Authenticated, keeping current route');
     } else if (user && isRootPath) {
       // If authenticated and at root, redirect to app home
       console.log('AuthContext - At root, redirecting to app home');

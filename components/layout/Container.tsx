@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
+import { useTheme } from '@rneui/themed';
 
 type ContainerProps = {
   children: React.ReactNode;
@@ -8,6 +9,7 @@ type ContainerProps = {
 
 export function Container({ children, style }: ContainerProps) {
   const { width } = useWindowDimensions();
+  const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
   const isWideScreen = width > 768;
 
@@ -15,6 +17,9 @@ export function Container({ children, style }: ContainerProps) {
     <View
       style={[
         styles.container,
+        {
+          backgroundColor: theme.colors.background,
+        },
         isWeb && isWideScreen && styles.webContainer,
         style,
       ]}
