@@ -44,6 +44,8 @@ export default function AudioScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [showRename, setShowRename] = useState(false);
+  const [newTrackName, setNewTrackName] = useState('');
 
   // Placeholder waveform data for testing
   const mockWaveformData = Array.from({ length: 200 }, () => Math.random());
@@ -573,10 +575,64 @@ export default function AudioScreen() {
 
     if (option === 'delete') {
       handleDeleteTrack(track);
+    } else if (option === 'rename') {
+      setNewTrackName(track.title);
+      setShowRename(true);
     }
-    // Add more options here in the future
-    
-    setEditingTrackId(null);
+  };
+
+  const handleRenameTrack = async () => {
+    if (!editingTrackId || !newTrackName.trim()) return;
+
+    try {
+      const track = recentTracks.find(t => t.id === editingTrackId);
+      if (!track) return;
+
+      // Update track in database
+      const { error } = await supabase
+        .from('audio_tracks')
+        .update({ title: newTrackName.trim() })
+        .eq('id', editingTrackId);
+
+      if (error) throw error;
+
+      // Update local state
+      setRecentTracks(prevTracks =>
+        prevTracks.map(t =>
+          t.id === editingTrackId ? { ...t, title: newTrackName.trim() } : t
+        )
+      );
+
+      // Update all tracks if they're loaded
+      if (allTracks.length > 0) {
+        setAllTracks(prevTracks =>
+          prevTracks.map(t =>
+            t.id === editingTrackId ? { ...t, title: newTrackName.trim() } : t
+          )
+        );
+      }
+
+      // Update current track if it's the one being renamed
+      if (currentTrack?.id === editingTrackId) {
+        setCurrentTrack(prev => prev ? { ...prev, title: newTrackName.trim() } : null);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Track renamed successfully',
+      });
+    } catch (error) {
+      console.error('Error renaming track:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to rename track',
+      });
+    } finally {
+      setShowRename(false);
+      setEditingTrackId(null);
+    }
   };
 
   const handleCloseMenu = () => {
@@ -822,22 +878,95 @@ export default function AudioScreen() {
                         ]}
                       >
                         <Pressable onPress={(e) => e.stopPropagation()}>
-                          <Pressable
-                            style={({ pressed }) => [
-                              styles.menuOption,
-                              pressed && styles.menuOptionPressed,
-                            ]}
-                            onPress={() => handleMenuOptionPress('delete')}
-                          >
-                            <MaterialIcons 
-                              name="delete-outline" 
-                              size={20} 
-                              color="#DC2626" 
-                            />
-                            <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
-                              Delete Track
-                            </Text>
-                          </Pressable>
+                          {!showRename ? (
+                            <>
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.menuOption,
+                                  pressed && styles.menuOptionPressed,
+                                ]}
+                                onPress={() => handleMenuOptionPress('rename')}
+                              >
+                                <MaterialIcons 
+                                  name="edit" 
+                                  size={20} 
+                                  color={theme.colors.grey4}
+                                />
+                                <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                                  Rename Track
+                                </Text>
+                              </Pressable>
+                              <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.menuOption,
+                                  pressed && styles.menuOptionPressed,
+                                ]}
+                                onPress={() => handleMenuOptionPress('delete')}
+                              >
+                                <MaterialIcons 
+                                  name="delete-outline" 
+                                  size={20} 
+                                  color="#DC2626" 
+                                />
+                                <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
+                                  Delete Track
+                                </Text>
+                              </Pressable>
+                            </>
+                          ) : (
+                            <>
+                              <View style={styles.colorPickerHeader}>
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.backButton,
+                                    pressed && styles.backButtonPressed,
+                                  ]}
+                                  onPress={() => setShowRename(false)}
+                                >
+                                  <MaterialIcons 
+                                    name="arrow-back" 
+                                    size={20} 
+                                    color={theme.colors.grey4} 
+                                  />
+                                </Pressable>
+                                <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                                  Rename Track
+                                </Text>
+                              </View>
+                              <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                              <View style={styles.renameContainer}>
+                                <TextInput
+                                  value={newTrackName}
+                                  onChangeText={setNewTrackName}
+                                  placeholder="Enter track name"
+                                  autoFocus
+                                  returnKeyType="done"
+                                  onSubmitEditing={handleRenameTrack}
+                                  style={[
+                                    styles.renameInput,
+                                    { 
+                                      color: theme.colors.grey4,
+                                      backgroundColor: theme.colors.grey0,
+                                      borderColor: theme.colors.grey2
+                                    }
+                                  ]}
+                                  placeholderTextColor={theme.colors.grey3}
+                                />
+                                <Pressable
+                                  style={({ pressed }) => [
+                                    styles.renameButton,
+                                    pressed && styles.renameButtonPressed,
+                                  ]}
+                                  onPress={handleRenameTrack}
+                                >
+                                  <Text style={styles.renameButtonText}>
+                                    Save
+                                  </Text>
+                                </Pressable>
+                              </View>
+                            </>
+                          )}
                         </Pressable>
                       </View>
                     </Overlay>
@@ -1583,5 +1712,51 @@ const styles = StyleSheet.create({
   menuOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  menuDivider: {
+    height: 1,
+    width: '100%',
+  },
+  colorPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  backButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  colorPickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  renameContainer: {
+    padding: 12,
+    gap: 12,
+  },
+  renameInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 8,
+  },
+  renameButton: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  renameButtonPressed: {
+    opacity: 0.8,
+  },
+  renameButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 
