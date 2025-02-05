@@ -37,6 +37,13 @@ function AppContent() {
               presentation: 'card',
             }} 
           />
+          <Stack.Screen 
+            name="chat" 
+            options={{
+              animation: 'slide_from_right',
+              presentation: 'card',
+            }} 
+          />
         </Stack>
         <Toast />
       </AuthProvider>
