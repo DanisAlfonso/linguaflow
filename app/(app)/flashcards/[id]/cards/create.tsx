@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform, ScrollView, Pressable, TextInput, Animated } from 'react-native';
-import { Text, Input, Button, useTheme } from '@rneui/themed';
+import { Text, Input, Button, useTheme, Badge } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -32,6 +32,8 @@ export default function CreateCardScreen() {
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
   const [previewButtonScale] = useState(new Animated.Value(1));
   const [createButtonScale] = useState(new Animated.Value(1));
+  const [cardsCreated, setCardsCreated] = useState(0);
+  const [sessionStartTime] = useState(new Date());
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -59,7 +61,20 @@ export default function CreateCardScreen() {
     loadDeck();
   }, [id]);
 
-  const handleCreateCard = async () => {
+  const clearForm = useCallback(() => {
+    setFront('');
+    setBack('');
+    setNotes('');
+    setTags('');
+    setFrontMandarinData({ characters: [], pinyin: [] });
+    setBackMandarinData({ characters: [], pinyin: [] });
+    setCreatedCard(null);
+    setFrontAudioSegments([]);
+    setBackAudioSegments([]);
+    setIsPreview(false);
+  }, []);
+
+  const handleCreateCard = async (andContinue = false) => {
     if (!front.trim() || !back.trim()) {
       Toast.show({
         type: 'error',
@@ -84,12 +99,19 @@ export default function CreateCardScreen() {
           },
         } : undefined,
       });
+      
+      setCardsCreated(prev => prev + 1);
       setCreatedCard(card.id);
+      
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: 'Card created successfully',
+        text2: `Card created successfully${andContinue ? ' - Add another card' : ''}`,
       });
+
+      if (andContinue) {
+        clearForm();
+      }
     } catch (error) {
       console.error('Error creating card:', error);
       Toast.show({
@@ -102,16 +124,12 @@ export default function CreateCardScreen() {
     }
   };
 
-  // Add a debug effect to monitor createdCard state
-  useEffect(() => {
-    console.log('CreatedCard state changed to:', createdCard);
-  }, [createdCard]);
-
   const handleFinish = () => {
+    const duration = Math.round((new Date().getTime() - sessionStartTime.getTime()) / 1000);
     Toast.show({
       type: 'success',
-      text1: 'Success',
-      text2: 'Card saved successfully',
+      text1: 'Session Complete',
+      text2: `Created ${cardsCreated} cards in ${Math.floor(duration / 60)}m ${duration % 60}s`,
     });
     router.back();
   };
@@ -206,8 +224,15 @@ export default function CreateCardScreen() {
             containerStyle={styles.backButton}
           />
           <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-            Add Card
+            Add Cards
           </Text>
+          {cardsCreated > 0 && (
+            <Badge
+              value={cardsCreated}
+              status="primary"
+              containerStyle={styles.badge}
+            />
+          )}
         </View>
 
         <ScrollView
@@ -686,37 +711,37 @@ export default function CreateCardScreen() {
             )}
 
             <View style={styles.actionButtons}>
-              <Animated.View
-                style={[
-                  styles.buttonContainer,
-                  { 
-                    backgroundColor: '#EEF2FF',
-                    borderWidth: 0,
-                    transform: [{ scale: previewButtonScale }] 
-                  },
-                ]}
-              >
-                <Button
-                  title={isPreview ? "Edit" : "Preview"}
-                  type="clear"
-                  icon={
-                    <MaterialIcons
-                      name={isPreview ? "edit" : "visibility"}
-                      size={20}
-                      color="#4F46E5"
-                      style={styles.buttonIcon}
-                    />
-                  }
-                  buttonStyle={[styles.button, { backgroundColor: 'transparent' }]}
-                  titleStyle={{ color: '#4F46E5', fontWeight: '600', fontSize: 17 }}
-                  onPress={() => {
-                    animatePress(previewButtonScale);
-                    togglePreview();
-                  }}
-                />
-              </Animated.View>
-              
-              {!createdCard ? (
+              <View style={styles.actionButtonsRow}>
+                <Animated.View
+                  style={[
+                    styles.buttonContainer,
+                    { 
+                      backgroundColor: '#EEF2FF',
+                      borderWidth: 0,
+                      transform: [{ scale: previewButtonScale }] 
+                    },
+                  ]}
+                >
+                  <Button
+                    title={isPreview ? "Edit" : "Preview"}
+                    type="clear"
+                    icon={
+                      <MaterialIcons
+                        name={isPreview ? "edit" : "visibility"}
+                        size={20}
+                        color="#4F46E5"
+                        style={styles.buttonIcon}
+                      />
+                    }
+                    buttonStyle={[styles.button, { backgroundColor: 'transparent' }]}
+                    titleStyle={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}
+                    onPress={() => {
+                      animatePress(previewButtonScale);
+                      togglePreview();
+                    }}
+                  />
+                </Animated.View>
+
                 <Animated.View
                   style={[
                     styles.buttonContainer,
@@ -725,22 +750,32 @@ export default function CreateCardScreen() {
                   ]}
                 >
                   <Button
-                    title="Create Card"
+                    title={createdCard ? "Create New" : "Create"}
                     loading={loading}
+                    icon={
+                      <MaterialIcons
+                        name={createdCard ? "add" : "check"}
+                        size={20}
+                        color="white"
+                        style={styles.buttonIcon}
+                      />
+                    }
                     onPress={() => {
                       animatePress(createButtonScale);
-                      handleCreateCard();
+                      handleCreateCard(true);
                     }}
                     type="clear"
                     buttonStyle={styles.button}
                     titleStyle={[styles.buttonTitle, { color: 'white' }]}
                   />
                 </Animated.View>
-              ) : (
+              </View>
+
+              {cardsCreated > 0 && (
                 <Animated.View
                   style={[
                     styles.buttonContainer,
-                    styles.createButton,
+                    styles.finishButton,
                     { transform: [{ scale: createButtonScale }] },
                   ]}
                 >
@@ -748,7 +783,7 @@ export default function CreateCardScreen() {
                     title="Finish"
                     icon={
                       <MaterialIcons
-                        name="check"
+                        name="check-circle"
                         size={20}
                         color="white"
                         style={styles.buttonIcon}
@@ -759,7 +794,7 @@ export default function CreateCardScreen() {
                       handleFinish();
                     }}
                     type="clear"
-                    buttonStyle={styles.button}
+                    buttonStyle={[styles.button, { backgroundColor: '#10B981' }]}
                     titleStyle={[styles.buttonTitle, { color: 'white' }]}
                   />
                 </Animated.View>
@@ -921,17 +956,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
     padding: 20,
     paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-    borderTopWidth: 1,
-    borderTopColor: Platform.select({
-      ios: 'rgba(0, 0, 0, 0.1)',
-      android: 'rgba(0, 0, 0, 0.12)',
-      default: 'rgba(0, 0, 0, 0.1)',
-    }),
-    marginTop: 'auto',
+    gap: 12,
+  },
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
   },
   button: {
     height: 52,
@@ -956,33 +987,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-    ...Platform.select({
-      web: {
-        transition: 'all 0.2s ease',
-        ':hover': {
-          transform: [{translateY: -1}],
-          shadowOffset: {
-            width: 0,
-            height: 2,
-          },
-          shadowOpacity: 0.15,
-          shadowRadius: 3,
-        },
-        ':active': {
-          transform: [{translateY: 0}],
-          shadowOffset: {
-            width: 0,
-            height: 1,
-          },
-          shadowOpacity: 0.1,
-          shadowRadius: 2,
-        },
-      },
-      default: {},
-    }),
+  },
+  createButton: {
+    backgroundColor: '#4F46E5',
+  },
+  finishButton: {
+    backgroundColor: '#10B981',
   },
   buttonTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
     letterSpacing: -0.4,
   },
@@ -1018,13 +1031,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
   },
-  createButton: {
-    backgroundColor: '#4F46E5',
-  },
-  buttonWrapper: {
-    flex: 1,
-  },
-  buttonPressed: {
-    opacity: Platform.OS === 'ios' ? 0.8 : 1,
+  badge: {
+    position: 'absolute',
+    right: 20,
+    top: 20,
   },
 }); 
