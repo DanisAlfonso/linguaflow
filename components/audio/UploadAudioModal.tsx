@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -6,6 +6,7 @@ import {
   Pressable,
   ActivityIndicator,
   TextInput,
+  Animated,
 } from 'react-native';
 import { Text, useTheme, Button, Dialog } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -28,9 +29,19 @@ export function UploadAudioModal({
   const { theme } = useTheme();
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const animatedProgress = React.useRef(new Animated.Value(0)).current;
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+
+  // Update animated progress when uploadProgress changes
+  useEffect(() => {
+    Animated.timing(animatedProgress, {
+      toValue: uploadProgress,
+      duration: 500,
+      useNativeDriver: false,
+    }).start();
+  }, [uploadProgress]);
 
   const handleFilePick = async () => {
     try {
@@ -64,11 +75,38 @@ export function UploadAudioModal({
     }
   };
 
+  const simulateProgress = useCallback(() => {
+    // Reset progress
+    setUploadProgress(0);
+    animatedProgress.setValue(0);
+
+    // Simulate progress in steps
+    const steps = [
+      { value: 30, duration: 500 },
+      { value: 50, duration: 800 },
+      { value: 70, duration: 1000 },
+      { value: 85, duration: 1200 },
+    ];
+
+    // Chain the animations
+    const animations = steps.map((step, index) =>
+      Animated.timing(animatedProgress, {
+        toValue: step.value,
+        duration: step.duration,
+        useNativeDriver: false,
+      })
+    );
+
+    Animated.sequence(animations).start();
+  }, [animatedProgress]);
+
   const handleUpload = async () => {
     if (!selectedFile || selectedFile.canceled) return;
 
     try {
       setIsUploading(true);
+      simulateProgress();
+      
       const file = selectedFile.assets[0];
 
       // Upload the audio file
@@ -77,6 +115,15 @@ export function UploadAudioModal({
         type: file.mimeType || 'audio/mpeg',
         name: file.name,
       });
+
+      // Once upload is complete, animate to 100%
+      Animated.timing(animatedProgress, {
+        toValue: 100,
+        duration: 500,
+        useNativeDriver: false,
+      }).start();
+
+      setUploadProgress(100);
 
       // Create audio file record
       const audioFile = await createAudioFile(
@@ -91,8 +138,12 @@ export function UploadAudioModal({
         text2: 'Audio uploaded successfully',
       });
 
-      onUploadComplete(audioFile);
-      onClose();
+      // Wait for the final animation to complete
+      setTimeout(() => {
+        onUploadComplete(audioFile);
+        onClose();
+      }, 500);
+
     } catch (error) {
       console.error('Error uploading audio:', error);
       Toast.show({
@@ -102,9 +153,18 @@ export function UploadAudioModal({
       });
     } finally {
       setIsUploading(false);
-      setUploadProgress(0);
     }
   };
+
+  // Update progress text based on animated value
+  const [displayProgress, setDisplayProgress] = useState(0);
+  
+  useEffect(() => {
+    const listener = animatedProgress.addListener(({ value }) => {
+      setDisplayProgress(Math.round(value));
+    });
+    return () => animatedProgress.removeListener(listener);
+  }, [animatedProgress]);
 
   const renderUploadArea = () => (
     <Pressable
@@ -139,6 +199,11 @@ export function UploadAudioModal({
       </LinearGradient>
     </Pressable>
   );
+
+  const progressWidth = animatedProgress.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
 
   return (
     <Dialog
@@ -203,13 +268,30 @@ export function UploadAudioModal({
       </View>
 
       {isUploading && (
-        <View style={styles.progressContainer}>
-          <LinearGradient
-            colors={[theme.colors.primary, theme.colors.secondary]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={[styles.progressBar, { width: `${uploadProgress}%` }]}
-          />
+        <View style={styles.progressSection}>
+          <View style={styles.progressContainer}>
+            <Animated.View 
+              style={[
+                styles.progressBackground,
+                {
+                  width: animatedProgress.interpolate({
+                    inputRange: [0, 100],
+                    outputRange: ['0%', '100%']
+                  })
+                }
+              ]}
+            >
+              <LinearGradient
+                colors={[theme.colors.primary, theme.colors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.progressBar}
+              />
+            </Animated.View>
+          </View>
+          <Text style={[styles.progressText, { color: theme.colors.grey3 }]}>
+            Uploading... {displayProgress}%
+          </Text>
         </View>
       )}
 
@@ -308,16 +390,31 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
+  progressSection: {
+    marginHorizontal: 20,
+    marginBottom: 20,
+  },
   progressContainer: {
     height: 4,
     backgroundColor: '#E5E7EB',
-    marginHorizontal: 20,
-    marginBottom: 20,
     borderRadius: 2,
     overflow: 'hidden',
+    marginBottom: 8,
   },
   progressBar: {
-    height: '100%',
+    flex: 1,
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  progressBackground: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    overflow: 'hidden',
     borderRadius: 2,
   },
 }); 

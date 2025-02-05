@@ -16,11 +16,18 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+// Define the progress event type
+interface UploadProgressEvent {
+  loaded: number;
+  total: number;
+}
+
 interface UploadFileParams {
   uri: string;
   type: string;
   name: string;
   file?: File;
+  onProgress?: (progress: number) => void;
 }
 
 // Upload an audio file to Supabase Storage
@@ -51,7 +58,7 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
         .upload(filename, params.file, {
           contentType: params.type,
           cacheControl: '3600',
-          upsert: false
+          upsert: false,
         });
 
       if (error) {
@@ -60,6 +67,11 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
 
       if (!data?.path) {
         throw new Error('No path returned from upload');
+      }
+
+      // Simulate upload progress on web
+      if (params.onProgress) {
+        params.onProgress(100);
       }
 
       return {
@@ -86,7 +98,7 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
       // Convert base64 to binary data
       const binaryData = base64ToUint8Array(base64Data);
 
-      // Upload the binary data
+      // Upload with simulated progress
       const { data, error } = await supabase.storage
         .from('audio')
         .upload(filename, binaryData, {
@@ -100,6 +112,11 @@ export async function uploadAudioFile(params: UploadFileParams): Promise<AudioUp
 
       if (!data?.path) {
         throw new Error('No path returned from upload');
+      }
+
+      // Simulate upload progress on native
+      if (params.onProgress) {
+        params.onProgress(100);
       }
 
       return {
