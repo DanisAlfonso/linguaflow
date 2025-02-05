@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
-import { View, StyleSheet, Platform, Pressable } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
+import { View, StyleSheet, Platform, Pressable, LayoutChangeEvent } from 'react-native';
 import { useTheme } from '@rneui/themed';
 import Animated, {
   useAnimatedStyle,
@@ -79,6 +79,7 @@ export function Waveform({
 }: WaveformProps) {
   const { theme } = useTheme();
   const animation = useSharedValue(0);
+  const containerWidth = useRef(0);
 
   // Default colors based on theme
   const defaultActiveColor = theme.colors.primary;
@@ -106,15 +107,18 @@ export function Waveform({
     return sampled;
   }, [data, sampleStep]);
 
+  // Handle layout change
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    containerWidth.current = event.nativeEvent.layout.width;
+  }, []);
+
   // Handle seeking
   const handleSeek = useCallback((event: any) => {
-    if (!onSeek) return;
+    if (!onSeek || containerWidth.current === 0) return;
 
-    const { locationX, target } = event.nativeEvent;
-    target.measure((_x: number, _y: number, width: number) => {
-      const progress = Math.max(0, Math.min(1, locationX / width));
-      onSeek(progress);
-    });
+    const { locationX } = event.nativeEvent;
+    const progress = Math.max(0, Math.min(1, locationX / containerWidth.current));
+    onSeek(progress);
   }, [onSeek]);
 
   // Animate progress changes
@@ -131,6 +135,7 @@ export function Waveform({
 
   return (
     <Pressable
+      onLayout={handleLayout}
       onPressIn={(e) => {
         onSeekStart?.();
         handleSeek(e);
