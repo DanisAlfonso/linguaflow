@@ -215,4 +215,26 @@ export async function deleteAudioFile(audioFileId: string, filePath: string): Pr
     console.error('Error deleting audio file record:', dbError);
     throw dbError;
   }
+}
+
+// Get a signed URL for an audio file
+export async function getAudioFileUrl(filePath: string): Promise<string> {
+  try {
+    const { data, error } = await supabase.storage
+      .from('audio')
+      .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.signedUrl) {
+      throw new Error('No signed URL returned');
+    }
+
+    return data.signedUrl;
+  } catch (error) {
+    console.error('Error getting audio file URL:', error);
+    throw error;
+  }
 } 
