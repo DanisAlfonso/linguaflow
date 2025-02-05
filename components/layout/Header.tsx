@@ -68,7 +68,7 @@ export function Header() {
                 title="Flashcards"
                 icon={
                   <MaterialIcons
-                    name="library-books"
+                    name="class"
                     size={20}
                     color="#059669"
                     style={styles.buttonIcon}
@@ -79,6 +79,20 @@ export function Header() {
                   console.log('Navigating to /flashcards from Header');
                   router.push('/flashcards');
                 }}
+              />
+              <Button
+                type="clear"
+                title="Audio"
+                icon={
+                  <MaterialIcons
+                    name="headset"
+                    size={20}
+                    color="#B45309"
+                    style={styles.buttonIcon}
+                  />
+                }
+                titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
+                onPress={() => router.push('/audio')}
               />
               <Button
                 type="clear"
@@ -96,17 +110,17 @@ export function Header() {
               />
               <Button
                 type="clear"
-                title="Audio"
+                title="Notes"
                 icon={
                   <MaterialIcons
-                    name="headset"
+                    name="edit"
                     size={20}
-                    color="#B45309"
+                    color="#059669"
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
-                onPress={() => router.push('/audio')}
+                onPress={() => router.push('/notes')}
               />
             </View>
           )}

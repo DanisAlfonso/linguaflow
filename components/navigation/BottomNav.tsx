@@ -18,14 +18,9 @@ export function BottomNav() {
       route: '/',
     },
     {
-      label: 'Notes',
-      icon: 'edit',
-      route: '/notes',
-    },
-    {
-      label: 'Statistics',
-      icon: 'analytics',
-      route: '/statistics',
+      label: 'Flashcards',
+      icon: 'class',
+      route: '/flashcards',
     },
     {
       label: 'Audio',
@@ -33,9 +28,14 @@ export function BottomNav() {
       route: '/audio',
     },
     {
-      label: 'Flashcards',
-      icon: 'class',
-      route: '/flashcards',
+      label: 'Statistics',
+      icon: 'analytics',
+      route: '/statistics',
+    },
+    {
+      label: 'Notes',
+      icon: 'edit',
+      route: '/notes',
     },
   ];
 

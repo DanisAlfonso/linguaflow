@@ -57,11 +57,11 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="notes/index"
+            name="flashcards"
             options={{
-              title: 'Notes',
+              title: 'Flashcards',
               tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="edit" size={size} color={color} />
+                <MaterialIcons name="class" size={size} color={color} />
               ),
             }}
           />
@@ -84,11 +84,11 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="flashcards"
+            name="notes/index"
             options={{
-              title: 'Flashcards',
+              title: 'Notes',
               tabBarIcon: ({ color, size }) => (
-                <MaterialIcons name="class" size={size} color={color} />
+                <MaterialIcons name="edit" size={size} color={color} />
               ),
             }}
           />
