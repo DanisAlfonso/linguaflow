@@ -122,20 +122,6 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="statistics/index"
-            options={{
-              title: 'Statistics',
-              tabBarIcon: ({ color, size, focused }) => (
-                <MaterialIcons 
-                  name="analytics" 
-                  size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
-                  color={color}
-                  style={focused ? styles.activeIcon : null}
-                />
-              ),
-            }}
-          />
-          <Tabs.Screen
             name="notes/index"
             options={{
               title: 'Notes',

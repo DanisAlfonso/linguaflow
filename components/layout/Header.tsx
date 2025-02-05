@@ -110,21 +110,6 @@ export function Header() {
               />
               <Button
                 type="clear"
-                title="Statistics"
-                icon={
-                  <MaterialIcons
-                    name="analytics"
-                    size={22}
-                    color={theme.colors.success}
-                    style={styles.buttonIcon}
-                  />
-                }
-                titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
-                onPress={() => router.push('/statistics')}
-                containerStyle={styles.buttonContainer}
-              />
-              <Button
-                type="clear"
                 title="Notes"
                 icon={
                   <MaterialIcons

@@ -6,10 +6,12 @@ import { Container } from '../../components/layout/Container';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const router = useRouter();
+  const { user } = useAuth();
   const isWeb = Platform.OS === 'web';
 
   // Placeholder data (replace with real data later)
@@ -21,6 +23,14 @@ export default function HomeScreen() {
     { id: '2', name: 'Common Verbs', progress: 40, lastStudied: '1d ago' },
   ];
 
+  // Example statistics data (replace with real data later)
+  const stats = {
+    streak: 7,
+    cardsLearned: 124,
+    minutesListened: 45,
+    accuracy: 92,
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
@@ -28,6 +38,132 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
         >
+          <View style={styles.welcomeSection}>
+            <View style={styles.welcomeHeader}>
+              <View>
+                <Text style={[styles.greeting, { color: theme.colors.grey5 }]}>
+                  Welcome back
+                </Text>
+                <Text style={[styles.subtitle, { color: theme.colors.grey4 }]}>
+                  {user?.email}
+                </Text>
+              </View>
+              <View 
+                style={[
+                  styles.streakContainer,
+                  { backgroundColor: theme.colors.warning + '20' }
+                ]}
+              >
+                <MaterialIcons 
+                  name="local-fire-department" 
+                  size={20} 
+                  color={theme.colors.warning}
+                />
+                <Text style={[styles.streakText, { color: theme.colors.warning }]}>
+                  {stats.streak} Day Streak
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          <View 
+            style={[
+              styles.statsSection,
+              { 
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey1,
+              }
+            ]}
+          >
+            <View style={styles.statsSectionHeader}>
+              <View style={styles.statsTitleContainer}>
+                <MaterialIcons
+                  name="analytics"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+                <Text style={[styles.statsTitle, { color: theme.colors.grey5 }]}>
+                  Your Progress
+                </Text>
+              </View>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.viewAllButton,
+                  pressed && { opacity: 0.7 }
+                ]}
+                onPress={() => router.push('/statistics')}
+              >
+                <Text style={[styles.viewAllText, { color: theme.colors.primary }]}>
+                  View All
+                </Text>
+                <MaterialIcons
+                  name="chevron-right"
+                  size={20}
+                  color={theme.colors.primary}
+                />
+              </Pressable>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <View 
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.primary + '10' }
+                ]}
+              >
+                <MaterialIcons
+                  name="school"
+                  size={24}
+                  color={theme.colors.primary}
+                />
+                <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                  {stats.cardsLearned}
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
+                  Cards Learned
+                </Text>
+              </View>
+
+              <View 
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.success + '10' }
+                ]}
+              >
+                <MaterialIcons
+                  name="headset"
+                  size={24}
+                  color={theme.colors.success}
+                />
+                <Text style={[styles.statValue, { color: theme.colors.success }]}>
+                  {stats.minutesListened}m
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
+                  Audio Time
+                </Text>
+              </View>
+
+              <View 
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.warning + '10' }
+                ]}
+              >
+                <MaterialIcons
+                  name="trending-up"
+                  size={24}
+                  color={theme.colors.warning}
+                />
+                <Text style={[styles.statValue, { color: theme.colors.warning }]}>
+                  {stats.accuracy}%
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
+                  Accuracy
+                </Text>
+              </View>
+            </View>
+          </View>
+
           {/* Daily Overview Card */}
           <View style={[styles.section, { backgroundColor: theme.colors.grey0 }]}>
             <View style={styles.welcomeHeader}>
@@ -191,22 +327,8 @@ const styles = StyleSheet.create({
     gap: 24,
     paddingVertical: 24,
   },
-  section: {
-    borderRadius: 20,
-    padding: 24,
-    gap: 20,
-    ...Platform.select({
-      web: {
-        transition: 'all 0.2s ease',
-      },
-      default: {
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-      },
-    }),
+  welcomeSection: {
+    marginBottom: 8,
   },
   welcomeHeader: {
     flexDirection: 'row',
@@ -225,7 +347,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#EA580C20',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 12,
@@ -234,13 +355,61 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  statsSection: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 24,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+      },
+    }),
+  },
+  statsSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  statsTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statsTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
+  },
+  viewAllText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
   statsGrid: {
     flexDirection: 'row',
-    gap: 16,
+    gap: 12,
   },
   statCard: {
     flex: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     padding: 16,
     alignItems: 'center',
     gap: 8,
@@ -250,8 +419,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   statLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
+    textAlign: 'center',
+  },
+  section: {
+    borderRadius: 20,
+    padding: 24,
+    gap: 20,
+    ...Platform.select({
+      web: {
+        transition: 'all 0.2s ease',
+      },
+      default: {
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+      },
+    }),
   },
   sectionTitle: {
     fontSize: 20,

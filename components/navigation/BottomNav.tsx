@@ -28,11 +28,6 @@ export function BottomNav() {
       route: '/audio',
     },
     {
-      label: 'Statistics',
-      icon: 'analytics',
-      route: '/statistics',
-    },
-    {
       label: 'Notes',
       icon: 'edit',
       route: '/notes',
