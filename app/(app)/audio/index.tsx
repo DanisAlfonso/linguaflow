@@ -14,6 +14,8 @@ import { getAudioFileUrl, deleteTrack, validateTrackFile } from '../../../lib/ap
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../../lib/supabase';
 import { Dialog } from '@rneui/base';
+import { Overlay } from '@rneui/base';
+import { BlurView } from 'expo-blur';
 
 export default function AudioScreen() {
   const { theme } = useTheme();
@@ -40,6 +42,8 @@ export default function AudioScreen() {
   const [newPlaylistDescription, setNewPlaylistDescription] = useState('');
   const [playlistTracks, setPlaylistTracks] = useState<Record<string, AudioTrack[]>>({});
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
 
   // Placeholder waveform data for testing
   const mockWaveformData = Array.from({ length: 200 }, () => Math.random());
@@ -547,6 +551,38 @@ export default function AudioScreen() {
     }
   }, [allTracks.length]);
 
+  const handleLongPressTrack = (track: AudioTrack, event: any) => {
+    // Get the position of the pressed element for menu placement
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
+    setEditingTrackId(track.id);
+  };
+
+  const handleMenuOptionPress = (option: 'delete' | 'rename' | 'addToPlaylist') => {
+    if (!editingTrackId) return;
+
+    const track = recentTracks.find(t => t.id === editingTrackId);
+    if (!track) return;
+
+    if (option === 'delete') {
+      handleDeleteTrack(track);
+    }
+    // Add more options here in the future
+    
+    setEditingTrackId(null);
+  };
+
+  const handleCloseMenu = () => {
+    setEditingTrackId(null);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
@@ -705,42 +741,108 @@ export default function AudioScreen() {
               contentContainerStyle={styles.recentTracksContainer}
             >
               {recentTracks.map((track) => (
-                <Pressable
-                  key={track.id}
-                  style={[
-                    styles.recentTrackCard,
-                    { backgroundColor: theme.colors.grey0 }
-                  ]}
-                >
+                <React.Fragment key={track.id}>
                   <Pressable
-                    style={styles.recentTrackContent}
-                    onPress={() => playTrack(track)}
-                  >
-                    <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
-                      <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
-                    </View>
-                    <Text 
-                      style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
-                      numberOfLines={1}
-                    >
-                      {track.title}
-                    </Text>
-                    <Text 
-                      style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
-                    >
-                      {track.duration ? formatTime(track.duration * 1000) : '--:--'}
-                    </Text>
-                  </Pressable>
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.deleteButton,
-                      { opacity: pressed ? 0.7 : 1 }
+                    key={track.id}
+                    style={[
+                      styles.recentTrackCard,
+                      { backgroundColor: theme.colors.grey0 }
                     ]}
-                    onPress={() => handleDeleteTrack(track)}
                   >
-                    <MaterialIcons name="delete" size={20} color={theme.colors.error} />
+                    <Pressable
+                      style={styles.recentTrackContent}
+                      onPress={() => playTrack(track)}
+                      onLongPress={(event) => handleLongPressTrack(track, event)}
+                    >
+                      <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
+                        <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
+                      </View>
+                      <Text 
+                        style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
+                        numberOfLines={1}
+                      >
+                        {track.title}
+                      </Text>
+                      <Text 
+                        style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
+                      >
+                        {track.duration ? formatTime(track.duration * 1000) : '--:--'}
+                      </Text>
+                    </Pressable>
                   </Pressable>
-                </Pressable>
+
+                  {editingTrackId === track.id && (
+                    <Overlay
+                      isVisible={true}
+                      onBackdropPress={handleCloseMenu}
+                      overlayStyle={styles.overlayContainer}
+                      backdropStyle={styles.backdrop}
+                      animationType="fade"
+                    >
+                      <Pressable 
+                        style={StyleSheet.absoluteFill}
+                        onPress={handleCloseMenu}
+                      >
+                        <View style={StyleSheet.absoluteFill}>
+                          <BlurView 
+                            intensity={30} 
+                            style={StyleSheet.absoluteFill}
+                            tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                          />
+                        </View>
+                      </Pressable>
+                      <View 
+                        style={[
+                          styles.contextMenu,
+                          {
+                            position: 'absolute',
+                            left: menuPosition.x,
+                            top: menuPosition.y,
+                            width: menuPosition.width,
+                            backgroundColor: Platform.OS === 'ios' 
+                              ? 'rgba(250, 250, 250, 0.8)' 
+                              : theme.mode === 'dark' 
+                                ? 'rgba(30, 30, 30, 0.95)'
+                                : 'rgba(255, 255, 255, 0.95)',
+                            ...Platform.select({
+                              ios: {
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 4 },
+                                shadowOpacity: 0.2,
+                                shadowRadius: 8,
+                              },
+                              android: {
+                                elevation: 8,
+                              },
+                              web: {
+                                boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                              },
+                            }),
+                          },
+                        ]}
+                      >
+                        <Pressable onPress={(e) => e.stopPropagation()}>
+                          <Pressable
+                            style={({ pressed }) => [
+                              styles.menuOption,
+                              pressed && styles.menuOptionPressed,
+                            ]}
+                            onPress={() => handleMenuOptionPress('delete')}
+                          >
+                            <MaterialIcons 
+                              name="delete-outline" 
+                              size={20} 
+                              color="#DC2626" 
+                            />
+                            <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
+                              Delete Track
+                            </Text>
+                          </Pressable>
+                        </Pressable>
+                      </View>
+                    </Overlay>
+                  )}
+                </React.Fragment>
               ))}
             </ScrollView>
           </View>
@@ -1454,5 +1556,32 @@ const styles = StyleSheet.create({
     padding: 8,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  overlayContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
+  backdrop: {
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.5)',
+  },
+  contextMenu: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  menuOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  menuOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 
