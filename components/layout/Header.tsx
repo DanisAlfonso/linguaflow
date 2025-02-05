@@ -35,12 +35,26 @@ export function Header() {
           backgroundColor: theme.colors.grey0,
           borderBottomColor: theme.colors.grey1,
           borderBottomWidth: 1,
+          ...Platform.select({
+            ios: {
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.05,
+              shadowRadius: 4,
+            },
+            android: {
+              elevation: 4,
+            },
+            web: {
+              boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
+            },
+          }),
         },
       ]}
     >
       <View style={[styles.content, isWeb && styles.webContent]}>
         <Text
-          style={[styles.logo, { color: theme.colors.grey5 }]}
+          style={[styles.logo, { color: theme.colors.primary }]}
           onPress={() => router.push('/')}
         >
           Linguaflow
@@ -55,13 +69,14 @@ export function Header() {
                 icon={
                   <MaterialIcons
                     name="dashboard"
-                    size={20}
-                    color="#4F46E5"
+                    size={22}
+                    color={theme.colors.primary}
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey5 }]}
                 onPress={() => router.push('/')}
+                containerStyle={styles.buttonContainer}
               />
               <Button
                 type="clear"
@@ -69,16 +84,14 @@ export function Header() {
                 icon={
                   <MaterialIcons
                     name="class"
-                    size={20}
-                    color="#059669"
+                    size={22}
+                    color={theme.colors.success}
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
-                onPress={() => {
-                  console.log('Navigating to /flashcards from Header');
-                  router.push('/flashcards');
-                }}
+                onPress={() => router.push('/flashcards')}
+                containerStyle={styles.buttonContainer}
               />
               <Button
                 type="clear"
@@ -86,13 +99,14 @@ export function Header() {
                 icon={
                   <MaterialIcons
                     name="headset"
-                    size={20}
-                    color="#B45309"
+                    size={22}
+                    color={theme.colors.warning}
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
                 onPress={() => router.push('/audio')}
+                containerStyle={styles.buttonContainer}
               />
               <Button
                 type="clear"
@@ -100,13 +114,14 @@ export function Header() {
                 icon={
                   <MaterialIcons
                     name="analytics"
-                    size={20}
-                    color="#059669"
+                    size={22}
+                    color={theme.colors.success}
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
                 onPress={() => router.push('/statistics')}
+                containerStyle={styles.buttonContainer}
               />
               <Button
                 type="clear"
@@ -114,30 +129,38 @@ export function Header() {
                 icon={
                   <MaterialIcons
                     name="edit"
-                    size={20}
-                    color="#059669"
+                    size={22}
+                    color={theme.colors.success}
                     style={styles.buttonIcon}
                   />
                 }
                 titleStyle={[styles.buttonText, { color: theme.colors.grey4 }]}
                 onPress={() => router.push('/notes')}
+                containerStyle={styles.buttonContainer}
               />
             </View>
           )}
 
           <View style={styles.userMenu}>
             <Pressable
-              style={styles.avatarButton}
+              style={({ pressed }) => [
+                styles.avatarButton,
+                pressed && { opacity: 0.8 }
+              ]}
               onPress={() => setMenuVisible(!menuVisible)}
             >
               <View
                 style={[
                   styles.avatar,
-                  { backgroundColor: '#4F46E5' + '20' },
+                  { 
+                    backgroundColor: theme.colors.primary + '15',
+                    borderWidth: 2,
+                    borderColor: theme.colors.primary + '30',
+                  },
                 ]}
               >
                 <Text
-                  style={[styles.avatarText, { color: '#4F46E5' }]}
+                  style={[styles.avatarText, { color: theme.colors.primary }]}
                 >
                   {user?.email?.[0].toUpperCase()}
                 </Text>
@@ -147,6 +170,7 @@ export function Header() {
                   name={menuVisible ? 'expand-less' : 'expand-more'}
                   size={24}
                   color={theme.colors.grey4}
+                  style={{ marginLeft: 4 }}
                 />
               )}
             </Pressable>
@@ -158,11 +182,20 @@ export function Header() {
                   {
                     backgroundColor: theme.colors.grey0,
                     borderColor: theme.colors.grey1,
-                    shadowColor: '#000',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.1,
-                    shadowRadius: 8,
-                    elevation: 4,
+                    ...Platform.select({
+                      ios: {
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 8,
+                      },
+                      android: {
+                        elevation: 8,
+                      },
+                      web: {
+                        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.08)',
+                      },
+                    }),
                   },
                 ]}
               >
@@ -179,7 +212,7 @@ export function Header() {
                     }}
                   >
                     <MaterialIcons
-                      name={item.icon}
+                      name={item.icon as keyof typeof MaterialIcons.glyphMap}
                       size={20}
                       color={theme.colors.grey5}
                       style={styles.menuIcon}
@@ -199,11 +232,16 @@ export function Header() {
         <Pressable
           style={({ pressed }) => [
             styles.iconButton,
-            { opacity: pressed ? 0.7 : 1 }
+            { opacity: pressed ? 0.7 : 1 },
+            { backgroundColor: theme.colors.primary + '10', }
           ]}
           onPress={handleChatPress}
         >
-          <MaterialIcons name="chat" size={24} color={theme.colors.grey5} />
+          <MaterialIcons 
+            name="chat" 
+            size={24} 
+            color={theme.colors.primary}
+          />
         </Pressable>
       </View>
     </View>
@@ -220,15 +258,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    height: 64,
+    height: 72,
   },
   webContent: {
     paddingHorizontal: 24,
   },
   logo: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 26,
+    fontWeight: '700',
     cursor: 'pointer',
+    letterSpacing: -0.5,
   },
   nav: {
     flexDirection: 'row',
@@ -237,13 +276,19 @@ const styles = StyleSheet.create({
   webNav: {
     flexDirection: 'row',
     marginRight: 24,
+    gap: 8,
+  },
+  buttonContainer: {
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   buttonIcon: {
     marginRight: 8,
   },
   buttonText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: -0.3,
   },
   userMenu: {
     position: 'relative',
@@ -252,11 +297,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     cursor: 'pointer',
+    padding: 4,
+    borderRadius: 20,
   },
   avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -269,7 +316,7 @@ const styles = StyleSheet.create({
     top: '100%',
     right: 0,
     marginTop: 8,
-    minWidth: 200,
+    minWidth: 220,
     borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
@@ -284,11 +331,12 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   menuText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
+    letterSpacing: -0.3,
   },
   iconButton: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 10,
+    borderRadius: 12,
   },
 }); 
