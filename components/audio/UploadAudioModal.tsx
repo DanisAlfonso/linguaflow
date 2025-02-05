@@ -61,6 +61,16 @@ export function UploadAudioModal({
           });
           return;
         }
+
+        // For web platform, we need to get the actual File object
+        if (Platform.OS === 'web') {
+          // The file object is already available in the result for web
+          const response = await fetch(file.uri);
+          const blob = await response.blob();
+          const webFile = new File([blob], file.name, { type: file.mimeType });
+          result.assets[0].file = webFile;
+        }
+
         setSelectedFile(result);
         // Use filename (without extension) as default title
         setTitle(file.name.replace(/\.[^/.]+$/, ''));
@@ -114,6 +124,7 @@ export function UploadAudioModal({
         uri: file.uri,
         type: file.mimeType || 'audio/mpeg',
         name: file.name,
+        file: Platform.OS === 'web' ? file.file : undefined,
       });
 
       // Once upload is complete, animate to 100%
