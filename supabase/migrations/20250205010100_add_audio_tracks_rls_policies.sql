@@ -1,5 +1,22 @@
--- Enable RLS on audio_tracks table
-alter table audio_tracks enable row level security;
+-- Drop existing policies if they exist
+drop policy if exists "Users can insert their own tracks" on audio_tracks;
+drop policy if exists "Users can view their own tracks" on audio_tracks;
+drop policy if exists "Users can update their own tracks" on audio_tracks;
+drop policy if exists "Users can delete their own tracks" on audio_tracks;
+
+-- Enable RLS on audio_tracks table if not already enabled
+do $$
+begin
+    if not exists (
+        select 1
+        from pg_tables
+        where schemaname = 'public'
+        and tablename = 'audio_tracks'
+        and rowsecurity = true
+    ) then
+        alter table audio_tracks enable row level security;
+    end if;
+end $$;
 
 -- Policy to allow users to insert their own tracks
 create policy "Users can insert their own tracks"

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
-import { Text, useTheme } from '@rneui/themed';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, Platform, Pressable, TextInput, RefreshControl } from 'react-native';
+import { Text, useTheme, Button } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
@@ -10,9 +10,10 @@ import { UploadAudioModal } from '../../../components/audio/UploadAudioModal';
 import type { AudioTrack, AudioPlaylist } from '../../../types/audio-player';
 import type { AudioFile } from '../../../types/audio';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { getAudioFileUrl } from '../../../lib/api/audio';
+import { getAudioFileUrl, deleteTrack, validateTrackFile } from '../../../lib/api/audio';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../../lib/supabase';
+import { Dialog } from '@rneui/base';
 
 export default function AudioScreen() {
   const { theme } = useTheme();
@@ -27,6 +28,18 @@ export default function AudioScreen() {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
+  const [recentTracks, setRecentTracks] = useState<AudioTrack[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAllTracksModalVisible, setIsAllTracksModalVisible] = useState(false);
+  const [allTracks, setAllTracks] = useState<AudioTrack[]>([]);
+  const [playlists, setPlaylists] = useState<AudioPlaylist[]>([]);
+  const [isPlaylistModalVisible, setIsPlaylistModalVisible] = useState(false);
+  const [isCreatePlaylistModalVisible, setIsCreatePlaylistModalVisible] = useState(false);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<AudioPlaylist | null>(null);
+  const [newPlaylistTitle, setNewPlaylistTitle] = useState('');
+  const [newPlaylistDescription, setNewPlaylistDescription] = useState('');
+  const [playlistTracks, setPlaylistTracks] = useState<Record<string, AudioTrack[]>>({});
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Placeholder waveform data for testing
   const mockWaveformData = Array.from({ length: 200 }, () => Math.random());
@@ -237,6 +250,303 @@ export default function AudioScreen() {
     }
   };
 
+  // Fetch recent tracks
+  const fetchRecentTracks = async () => {
+    try {
+      const { data: tracks, error } = await supabase
+        .from('audio_tracks')
+        .select('*, audio_file:audio_files(*)')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (error) throw error;
+      setRecentTracks(tracks.map(track => ({
+        ...track,
+        createdAt: new Date(track.created_at),
+        updatedAt: new Date(track.updated_at),
+        audioFile: track.audio_file
+      })));
+    } catch (error) {
+      console.error('Error fetching recent tracks:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load recent tracks',
+      });
+    }
+  };
+
+  // Load recent tracks on mount
+  useEffect(() => {
+    fetchRecentTracks();
+  }, []);
+
+  // Function to play a specific track
+  const playTrack = async (track: AudioTrack) => {
+    try {
+      // Validate that the file exists before attempting to play
+      const isValid = await validateTrackFile(track.id);
+      if (!isValid) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Audio file not found',
+        });
+        // Refresh the track list to remove invalid tracks
+        fetchRecentTracks();
+        return;
+      }
+
+      // Unload current sound if exists
+      if (sound.current) {
+        await sound.current.unloadAsync();
+      }
+
+      setCurrentTrack(track);
+      setIsLoading(true);
+
+      const signedUrl = await getAudioFileUrl(track.audioFile!.file_path);
+      
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: signedUrl },
+        { 
+          shouldPlay: true,
+          volume,
+          isLooping: false,
+          progressUpdateIntervalMillis: 100,
+        },
+        onPlaybackStatusUpdate,
+        true
+      );
+
+      sound.current = newSound;
+      setIsPlaying(true);
+      setIsLoading(false);
+
+      // Increment play count
+      await supabase.rpc('increment_track_play_count', { p_track_id: track.id });
+    } catch (error) {
+      console.error('Error playing track:', error);
+      setIsLoading(false);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to play track',
+      });
+    }
+  };
+
+  // Function to play previous track
+  const playPreviousTrack = () => {
+    if (!currentTrack || recentTracks.length === 0) return;
+    
+    const currentIndex = recentTracks.findIndex(track => track.id === currentTrack.id);
+    if (currentIndex === -1) return;
+    
+    const previousIndex = currentIndex === 0 ? recentTracks.length - 1 : currentIndex - 1;
+    playTrack(recentTracks[previousIndex]);
+  };
+
+  // Function to play next track
+  const playNextTrack = () => {
+    if (!currentTrack || recentTracks.length === 0) return;
+    
+    const currentIndex = recentTracks.findIndex(track => track.id === currentTrack.id);
+    if (currentIndex === -1) return;
+    
+    const nextIndex = currentIndex === recentTracks.length - 1 ? 0 : currentIndex + 1;
+    playTrack(recentTracks[nextIndex]);
+  };
+
+  // Fetch all tracks
+  const fetchAllTracks = async () => {
+    try {
+      const { data: tracks, error } = await supabase
+        .from('audio_tracks')
+        .select('*, audio_file:audio_files(*)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setAllTracks(tracks.map(track => ({
+        ...track,
+        createdAt: new Date(track.created_at),
+        updatedAt: new Date(track.updated_at),
+        audioFile: track.audio_file
+      })));
+    } catch (error) {
+      console.error('Error fetching all tracks:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load tracks',
+      });
+    }
+  };
+
+  // Fetch user's playlists
+  const fetchPlaylists = async () => {
+    try {
+      const { data: playlistsData, error: playlistsError } = await supabase
+        .from('audio_playlists')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (playlistsError) throw playlistsError;
+
+      setPlaylists(playlistsData.map(playlist => ({
+        ...playlist,
+        createdAt: new Date(playlist.created_at),
+        updatedAt: new Date(playlist.updated_at),
+      })));
+    } catch (error) {
+      console.error('Error fetching playlists:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load playlists',
+      });
+    }
+  };
+
+  // Create a new playlist
+  const createPlaylist = async (title: string, description: string = '') => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: playlist, error } = await supabase
+        .from('audio_playlists')
+        .insert({
+          title,
+          description,
+          user_id: user.id,
+          visibility: 'private',
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      await fetchPlaylists();
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Playlist created successfully',
+      });
+    } catch (error) {
+      console.error('Error creating playlist:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to create playlist',
+      });
+    }
+  };
+
+  // Load playlists on mount
+  useEffect(() => {
+    fetchPlaylists();
+  }, []);
+
+  const fetchPlaylistTracks = async (playlistId: string) => {
+    try {
+      const { data: tracks, error } = await supabase
+        .from('audio_playlist_tracks')
+        .select(`
+          *,
+          track:audio_tracks(
+            *,
+            audio_file:audio_files(*)
+          )
+        `)
+        .eq('playlist_id', playlistId)
+        .order('position');
+
+      if (error) throw error;
+
+      const formattedTracks = tracks.map(item => ({
+        ...item.track,
+        createdAt: new Date(item.track.created_at),
+        updatedAt: new Date(item.track.updated_at),
+        audioFile: item.track.audio_file
+      }));
+
+      setPlaylistTracks(prev => ({
+        ...prev,
+        [playlistId]: formattedTracks
+      }));
+    } catch (error) {
+      console.error('Error fetching playlist tracks:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to load playlist tracks',
+      });
+    }
+  };
+
+  const handlePlaylistSelect = (playlist: AudioPlaylist) => {
+    setSelectedPlaylist(playlist);
+    setIsPlaylistModalVisible(true);
+    fetchPlaylistTracks(playlist.id);
+  };
+
+  // Add handleDeleteTrack function
+  const handleDeleteTrack = async (track: AudioTrack) => {
+    try {
+      await deleteTrack(track.id);
+      
+      // If this was the current track, stop playback
+      if (currentTrack?.id === track.id) {
+        if (sound.current) {
+          await sound.current.unloadAsync();
+        }
+        setCurrentTrack(null);
+        setIsPlaying(false);
+      }
+      
+      // Refresh the track lists
+      fetchRecentTracks();
+      if (allTracks.length > 0) {
+        fetchAllTracks();
+      }
+      
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Track deleted successfully',
+      });
+    } catch (error) {
+      console.error('Error deleting track:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete track',
+      });
+    }
+  };
+
+  // Add refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await fetchRecentTracks();
+      if (allTracks.length > 0) {
+        await fetchAllTracks();
+      }
+      await fetchPlaylists();
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to refresh data',
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [allTracks.length]);
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
@@ -253,6 +563,16 @@ export default function AudioScreen() {
           style={styles.content}
           contentContainerStyle={styles.contentContainer}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+              tintColor={theme.colors.primary}
+              colors={[theme.colors.primary]} // Android
+              progressBackgroundColor={theme.colors.grey0} // Android
+              progressViewOffset={20} // Android
+            />
+          }
         >
           {/* Upload Section */}
           <View style={styles.uploadSection}>
@@ -338,7 +658,10 @@ export default function AudioScreen() {
               </View>
 
               <View style={styles.playbackControls}>
-                <Pressable style={styles.controlButton}>
+                <Pressable 
+                  style={styles.controlButton}
+                  onPress={playPreviousTrack}
+                >
                   <MaterialIcons name="skip-previous" size={32} color="white" />
                 </Pressable>
                 <Pressable 
@@ -351,7 +674,10 @@ export default function AudioScreen() {
                     color="white" 
                   />
                 </Pressable>
-                <Pressable style={styles.controlButton}>
+                <Pressable 
+                  style={styles.controlButton}
+                  onPress={playNextTrack}
+                >
                   <MaterialIcons name="skip-next" size={32} color="white" />
                 </Pressable>
               </View>
@@ -364,7 +690,10 @@ export default function AudioScreen() {
               <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
                 Recent Tracks
               </Text>
-              <Pressable>
+              <Pressable onPress={() => {
+                setIsAllTracksModalVisible(true);
+                fetchAllTracks();
+              }}>
                 <Text style={[styles.seeAllButton, { color: theme.colors.primary }]}>
                   See All
                 </Text>
@@ -375,29 +704,42 @@ export default function AudioScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.recentTracksContainer}
             >
-              {/* Placeholder for recent tracks */}
-              {[1, 2, 3].map((_, index) => (
+              {recentTracks.map((track) => (
                 <Pressable
-                  key={index}
+                  key={track.id}
                   style={[
                     styles.recentTrackCard,
                     { backgroundColor: theme.colors.grey0 }
                   ]}
                 >
-                  <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
-                    <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
-                  </View>
-                  <Text 
-                    style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
-                    numberOfLines={1}
+                  <Pressable
+                    style={styles.recentTrackContent}
+                    onPress={() => playTrack(track)}
                   >
-                    Track {index + 1}
-                  </Text>
-                  <Text 
-                    style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
+                    <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
+                      <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
+                    </View>
+                    <Text 
+                      style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
+                      numberOfLines={1}
+                    >
+                      {track.title}
+                    </Text>
+                    <Text 
+                      style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
+                    >
+                      {track.duration ? formatTime(track.duration * 1000) : '--:--'}
+                    </Text>
+                  </Pressable>
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.deleteButton,
+                      { opacity: pressed ? 0.7 : 1 }
+                    ]}
+                    onPress={() => handleDeleteTrack(track)}
                   >
-                    3:45
-                  </Text>
+                    <MaterialIcons name="delete" size={20} color={theme.colors.error} />
+                  </Pressable>
                 </Pressable>
               ))}
             </ScrollView>
@@ -409,21 +751,31 @@ export default function AudioScreen() {
               <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
                 Your Playlists
               </Text>
-              <Pressable>
-                <Text style={[styles.seeAllButton, { color: theme.colors.primary }]}>
-                  See All
-                </Text>
-              </Pressable>
+              <View style={styles.playlistActions}>
+                <Pressable onPress={() => setIsCreatePlaylistModalVisible(true)}>
+                  <MaterialIcons 
+                    name="add" 
+                    size={24} 
+                    color={theme.colors.primary}
+                    style={styles.addPlaylistButton} 
+                  />
+                </Pressable>
+                <Pressable onPress={() => setIsPlaylistModalVisible(true)}>
+                  <Text style={[styles.seeAllButton, { color: theme.colors.primary }]}>
+                    See All
+                  </Text>
+                </Pressable>
+              </View>
             </View>
             <View style={styles.playlistsGrid}>
-              {/* Placeholder for playlists */}
-              {[1, 2, 3, 4].map((_, index) => (
+              {playlists.slice(0, 4).map((playlist) => (
                 <Pressable
-                  key={index}
+                  key={playlist.id}
                   style={[
                     styles.playlistCard,
                     { backgroundColor: theme.colors.grey0 }
                   ]}
+                  onPress={() => handlePlaylistSelect(playlist)}
                 >
                   <View style={[styles.playlistArt, { backgroundColor: theme.colors.grey1 }]}>
                     <MaterialIcons name="queue-music" size={32} color={theme.colors.grey3} />
@@ -433,12 +785,12 @@ export default function AudioScreen() {
                       style={[styles.playlistTitle, { color: theme.colors.grey5 }]}
                       numberOfLines={1}
                     >
-                      Playlist {index + 1}
+                      {playlist.title}
                     </Text>
                     <Text 
                       style={[styles.playlistStats, { color: theme.colors.grey3 }]}
                     >
-                      12 tracks • 45:30
+                      {playlist.trackCount} tracks • {formatTime(playlist.totalDuration * 1000)}
                     </Text>
                   </View>
                 </Pressable>
@@ -453,6 +805,226 @@ export default function AudioScreen() {
         onClose={() => setIsUploadModalVisible(false)}
         onUploadComplete={handleUploadComplete}
       />
+
+      {/* All Tracks Modal */}
+      <Dialog
+        isVisible={isAllTracksModalVisible}
+        onBackdropPress={() => setIsAllTracksModalVisible(false)}
+        overlayStyle={[
+          styles.allTracksModal,
+          { backgroundColor: theme.colors.background }
+        ]}
+      >
+        <View style={styles.modalHeader}>
+          <Text h4 style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
+            All Tracks
+          </Text>
+          <Pressable
+            onPress={() => setIsAllTracksModalVisible(false)}
+            style={({ pressed }) => [
+              styles.closeButton,
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <MaterialIcons name="close" size={24} color={theme.colors.grey3} />
+          </Pressable>
+        </View>
+
+        <ScrollView style={styles.allTracksContainer}>
+          {allTracks.map((track) => (
+            <Pressable
+              key={track.id}
+              style={({ pressed }) => [
+                styles.allTrackItem,
+                { 
+                  backgroundColor: theme.colors.grey0,
+                  opacity: pressed ? 0.7 : 1,
+                }
+              ]}
+            >
+              <Pressable
+                style={styles.allTrackContent}
+                onPress={() => {
+                  playTrack(track);
+                  setIsAllTracksModalVisible(false);
+                }}
+              >
+                <View style={[styles.allTrackArt, { backgroundColor: theme.colors.grey1 }]}>
+                  <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
+                </View>
+                <View style={styles.allTrackInfo}>
+                  <Text 
+                    style={[styles.allTrackTitle, { color: theme.colors.grey5 }]}
+                    numberOfLines={1}
+                  >
+                    {track.title}
+                  </Text>
+                  <Text 
+                    style={[styles.allTrackDate, { color: theme.colors.grey3 }]}
+                  >
+                    {track.createdAt.toLocaleDateString()}
+                  </Text>
+                </View>
+                <Text 
+                  style={[styles.allTrackDuration, { color: theme.colors.grey3 }]}
+                >
+                  {track.duration ? formatTime(track.duration * 1000) : '--:--'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.deleteButton,
+                  { opacity: pressed ? 0.7 : 1 }
+                ]}
+                onPress={() => handleDeleteTrack(track)}
+              >
+                <MaterialIcons name="delete" size={20} color={theme.colors.error} />
+              </Pressable>
+            </Pressable>
+          ))}
+        </ScrollView>
+      </Dialog>
+
+      {/* Playlist Modal */}
+      <Dialog
+        isVisible={isPlaylistModalVisible}
+        onBackdropPress={() => setIsPlaylistModalVisible(false)}
+        overlayStyle={[
+          styles.playlistModal,
+          { backgroundColor: theme.colors.background }
+        ]}
+      >
+        <View style={styles.modalHeader}>
+          <Text h4 style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
+            Playlist: {selectedPlaylist?.title}
+          </Text>
+          <Pressable
+            onPress={() => setIsPlaylistModalVisible(false)}
+            style={({ pressed }) => [
+              styles.closeButton,
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <MaterialIcons name="close" size={24} color={theme.colors.grey3} />
+          </Pressable>
+        </View>
+
+        <ScrollView style={styles.playlistTracksContainer}>
+          {playlistTracks[selectedPlaylist?.id || '']?.map((track) => (
+            <Pressable
+              key={track.id}
+              style={({ pressed }) => [
+                styles.playlistTrackItem,
+                { 
+                  backgroundColor: theme.colors.grey0,
+                  opacity: pressed ? 0.7 : 1,
+                }
+              ]}
+              onPress={() => {
+                playTrack(track);
+                setIsPlaylistModalVisible(false);
+              }}
+            >
+              <View style={styles.playlistTrackContent}>
+                <View style={[styles.playlistTrackArt, { backgroundColor: theme.colors.grey1 }]}>
+                  <MaterialIcons name="music-note" size={20} color={theme.colors.grey3} />
+                </View>
+                <View style={styles.playlistTrackInfo}>
+                  <Text 
+                    style={[styles.playlistTrackTitle, { color: theme.colors.grey5 }]}
+                    numberOfLines={1}
+                  >
+                    {track.title}
+                  </Text>
+                  <Text 
+                    style={[styles.playlistTrackDuration, { color: theme.colors.grey3 }]}
+                  >
+                    {track.duration ? formatTime(track.duration * 1000) : '--:--'}
+                  </Text>
+                </View>
+              </View>
+            </Pressable>
+          ))}
+          {(!playlistTracks[selectedPlaylist?.id || ''] || 
+            playlistTracks[selectedPlaylist?.id || ''].length === 0) && (
+            <View style={styles.emptyPlaylistMessage}>
+              <Text style={[styles.emptyPlaylistText, { color: theme.colors.grey3 }]}>
+                No tracks in this playlist yet
+              </Text>
+            </View>
+          )}
+        </ScrollView>
+      </Dialog>
+
+      {/* Create Playlist Modal */}
+      <Dialog
+        isVisible={isCreatePlaylistModalVisible}
+        onBackdropPress={() => setIsCreatePlaylistModalVisible(false)}
+        overlayStyle={[
+          styles.createPlaylistModal,
+          { backgroundColor: theme.colors.background }
+        ]}
+      >
+        <View style={styles.modalHeader}>
+          <Text h4 style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
+            Create Playlist
+          </Text>
+          <Pressable
+            onPress={() => setIsCreatePlaylistModalVisible(false)}
+            style={({ pressed }) => [
+              styles.closeButton,
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <MaterialIcons name="close" size={24} color={theme.colors.grey3} />
+          </Pressable>
+        </View>
+
+        <View style={styles.createPlaylistForm}>
+          <TextInput
+            placeholder="Playlist Name"
+            style={[
+              styles.input,
+              { 
+                color: theme.colors.grey5,
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey2
+              }
+            ]}
+            placeholderTextColor={theme.colors.grey3}
+            onChangeText={(text) => setNewPlaylistTitle(text)}
+          />
+          <TextInput
+            placeholder="Description (optional)"
+            style={[
+              styles.input,
+              styles.textArea,
+              { 
+                color: theme.colors.grey5,
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey2
+              }
+            ]}
+            placeholderTextColor={theme.colors.grey3}
+            multiline
+            numberOfLines={3}
+            onChangeText={(text) => setNewPlaylistDescription(text)}
+          />
+          <Button
+            title="Create Playlist"
+            onPress={() => {
+              createPlaylist(newPlaylistTitle, newPlaylistDescription);
+              setIsCreatePlaylistModalVisible(false);
+            }}
+            disabled={!newPlaylistTitle.trim()}
+            buttonStyle={{
+              backgroundColor: theme.colors.primary,
+              borderRadius: 12,
+              paddingVertical: 12,
+            }}
+          />
+        </View>
+      </Dialog>
     </SafeAreaView>
   );
 }
@@ -650,6 +1222,9 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  recentTrackContent: {
+    flex: 1,
+  },
   recentTrackArt: {
     width: '100%',
     aspectRatio: 1,
@@ -725,5 +1300,159 @@ const styles = StyleSheet.create({
       android: 'monospace',
       default: 'monospace',
     }),
+  },
+  allTracksModal: {
+    width: Platform.OS === 'web' ? 480 : '90%',
+    maxWidth: 480,
+    maxHeight: '80%',
+    borderRadius: 20,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  closeButton: {
+    padding: 8,
+    borderRadius: 50,
+  },
+  allTracksContainer: {
+    padding: 16,
+  },
+  allTrackItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
+  },
+  allTrackContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  allTrackArt: {
+    width: 48,
+    height: 48,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  allTrackInfo: {
+    flex: 1,
+    marginRight: 12,
+  },
+  allTrackTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  allTrackDate: {
+    fontSize: 14,
+  },
+  allTrackDuration: {
+    fontSize: 14,
+    fontFamily: Platform.select({
+      ios: 'Menlo',
+      android: 'monospace',
+      default: 'monospace',
+    }),
+  },
+  playlistActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  addPlaylistButton: {
+    padding: 4,
+  },
+  playlistModal: {
+    width: Platform.OS === 'web' ? 480 : '90%',
+    maxWidth: 480,
+    borderRadius: 20,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  playlistTracksContainer: {
+    padding: 16,
+  },
+  playlistTrackItem: {
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+      },
+    }),
+  },
+  playlistTrackContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  playlistTrackArt: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  playlistTrackInfo: {
+    flex: 1,
+  },
+  playlistTrackTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  playlistTrackDuration: {
+    fontSize: 14,
+  },
+  emptyPlaylistMessage: {
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyPlaylistText: {
+    fontSize: 16,
+  },
+  createPlaylistModal: {
+    width: Platform.OS === 'web' ? 480 : '90%',
+    maxWidth: 480,
+    borderRadius: 20,
+    padding: 0,
+    overflow: 'hidden',
+  },
+  createPlaylistForm: {
+    padding: 16,
+    gap: 16,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 16,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  deleteButton: {
+    padding: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 }); 

@@ -254,4 +254,91 @@ export async function getAudioFileUrl(filePath: string): Promise<string> {
     console.error('Error getting audio file URL:', error);
     throw error;
   }
-} 
+}
+
+/**
+ * Validates if a track's audio file exists in storage
+ */
+export const validateTrackFile = async (trackId: string): Promise<boolean> => {
+  try {
+    const { data: exists, error } = await supabase
+      .rpc('validate_track_file', { p_track_id: trackId });
+
+    if (error) {
+      console.error('Error validating track file:', error);
+      return false;
+    }
+
+    return exists;
+  } catch (error) {
+    console.error('Error validating track file:', error);
+    return false;
+  }
+};
+
+// Add type definition for the track response
+type TrackWithFile = {
+  id: string;
+  audioFile: {
+    id: string;
+    file_path: string;
+  };
+};
+
+/**
+ * Deletes a track and its associated audio file
+ */
+export const deleteTrack = async (trackId: string): Promise<void> => {
+  try {
+    // First get the track details to get the file path
+    const { data: track, error: trackError } = await supabase
+      .from('audio_tracks')
+      .select(`
+        id,
+        audioFile:audio_files!inner(
+          id,
+          file_path
+        )
+      `)
+      .eq('id', trackId)
+      .single<TrackWithFile>();
+
+    if (trackError) {
+      throw trackError;
+    }
+
+    if (!track) {
+      throw new Error('Track not found');
+    }
+
+    // Try to delete the file from storage first
+    if (track.audioFile?.file_path) {
+      try {
+        const { error: storageError } = await supabase.storage
+          .from('audio')
+          .remove([track.audioFile.file_path]);
+
+        if (storageError) {
+          console.error('Error deleting file from storage:', storageError);
+        }
+      } catch (storageError) {
+        console.error('Error accessing storage:', storageError);
+      }
+    }
+
+    // Delete the audio file record (this will cascade to audio_tracks)
+    if (track.audioFile?.id) {
+      const { error: audioFileError } = await supabase
+        .from('audio_files')
+        .delete()
+        .eq('id', track.audioFile.id);
+
+      if (audioFileError) {
+        throw audioFileError;
+      }
+    }
+  } catch (error) {
+    console.error('Error deleting track:', error);
+    throw error;
+  }
+}; 
