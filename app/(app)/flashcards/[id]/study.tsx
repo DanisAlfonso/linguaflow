@@ -14,8 +14,9 @@ import { getCardAudioSegments } from '../../../../lib/api/audio';
 import { Audio } from 'expo-av';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
-import type { CardAudioSegment } from '../../../../types/audio';
+import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
+import { uploadRecording } from '../../../../lib/api/audio';
 
 // Keyboard shortcuts for web
 const KEYBOARD_SHORTCUTS = {
@@ -60,6 +61,9 @@ export default function StudyScreen() {
   const playbackTimer = useRef<NodeJS.Timeout>();
 
   const [hasRecording, setHasRecording] = useState(false);
+
+  // Add a new state for the uploaded recording
+  const [uploadedRecording, setUploadedRecording] = useState<Recording | null>(null);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -399,13 +403,26 @@ export default function StudyScreen() {
       });
 
       const uri = recording.getURI();
+      if (!uri) {
+        throw new Error('No recording URI available');
+      }
+
       console.log('Recording stopped and stored at', uri);
+
+      // Upload the recording
+      const uploaded = await uploadRecording(currentCard.id, {
+        uri,
+        duration: recordingDuration,
+      });
+
+      // Store the uploaded recording
+      setUploadedRecording(uploaded);
 
       // Reset states but keep duration for display
       setRecording(null);
       setIsRecording(false);
       setMeterLevel(0);
-      setHasRecording(true); // Set this to true to show playback controls
+      setHasRecording(true);
 
       Toast.show({
         type: 'success',
@@ -427,6 +444,7 @@ export default function StudyScreen() {
       sound.current.unloadAsync();
       sound.current = undefined;
     }
+    setUploadedRecording(null);
     setHasRecording(false);
     setRecordingDuration(0);
     setPlaybackProgress(0);
@@ -435,17 +453,15 @@ export default function StudyScreen() {
 
   const startPlayback = async () => {
     try {
-      if (!recording) return;
-
-      const uri = recording.getURI();
-      if (!uri) {
-        console.error('No recording URI available');
+      if (!uploadedRecording) {
+        console.error('No uploaded recording available');
         return;
       }
 
       if (!sound.current) {
+        console.log('Creating new sound from URL:', uploadedRecording.audio_url);
         const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri },
+          { uri: uploadedRecording.audio_url },
           { progressUpdateIntervalMillis: 100 },
           (status) => {
             if (status.isLoaded) {
@@ -574,6 +590,17 @@ export default function StudyScreen() {
             </Text>
           </View>
           <View style={styles.headerRight}>
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name="headset"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+              }
+              onPress={() => router.push(`/flashcards/${id}/recordings`)}
+            />
             <Button
               type="clear"
               icon={

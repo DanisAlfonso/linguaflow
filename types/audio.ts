@@ -30,4 +30,16 @@ export interface CardAudioSegment {
 export interface AudioUploadResponse {
   path: string;
   fullPath: string;
+}
+
+export interface Recording {
+  id: string;
+  audio_url: string;
+  duration: number;
+  created_at: string;
+}
+
+export interface RecordingFile {
+  uri: string;
+  duration: number;
 } 

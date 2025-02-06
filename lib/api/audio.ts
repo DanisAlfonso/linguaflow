@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { AudioFile, AudioSegment, AudioUploadResponse, CardAudioSegment } from '@/types/audio';
+import type { AudioFile, AudioSegment, AudioUploadResponse, CardAudioSegment, Recording, RecordingFile } from '@/types/audio';
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { decode as base64Decode } from 'base-64';
@@ -341,4 +341,120 @@ export const deleteTrack = async (trackId: string): Promise<void> => {
     console.error('Error deleting track:', error);
     throw error;
   }
-}; 
+};
+
+export async function uploadRecording(cardId: string, file: RecordingFile): Promise<Recording> {
+  const fileName = `${cardId}/${Date.now()}.m4a`;
+  const filePath = `recordings/${fileName}`;
+
+  try {
+    // Get the current user
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) {
+      throw new Error('User not authenticated');
+    }
+
+    // Handle file upload based on platform
+    let fileData: Blob | Uint8Array;
+    if (Platform.OS === 'web') {
+      // For web, fetch the file and convert to blob
+      const response = await fetch(file.uri);
+      fileData = await response.blob();
+    } else {
+      // For mobile, read the file as base64 and convert to Uint8Array
+      const base64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      fileData = base64ToUint8Array(base64);
+    }
+
+    // Upload the file to storage
+    const { error: uploadError } = await supabase.storage
+      .from('audio')
+      .upload(filePath, fileData, {
+        contentType: 'audio/mp4',
+      });
+
+    if (uploadError) {
+      console.error('Error uploading recording:', uploadError);
+      throw new Error('Failed to upload recording');
+    }
+
+    // Get the public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('audio')
+      .getPublicUrl(filePath);
+
+    // Insert the recording record
+    const { data, error } = await supabase
+      .from('recordings')
+      .insert({
+        card_id: cardId,
+        user_id: user.id,
+        audio_url: publicUrl,
+        duration: file.duration,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error saving recording:', error);
+      throw new Error('Failed to save recording');
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in uploadRecording:', error);
+    throw error;
+  }
+}
+
+export async function getCardRecordings(cardId: string): Promise<Recording[]> {
+  const { data, error } = await supabase
+    .rpc('get_card_recordings', {
+      p_card_id: cardId,
+    });
+
+  if (error) {
+    console.error('Error fetching recordings:', error);
+    throw new Error('Failed to fetch recordings');
+  }
+
+  return data || [];
+}
+
+export async function deleteRecording(recordingId: string): Promise<void> {
+  // First get the recording to get the file path
+  const { data: recording, error: fetchError } = await supabase
+    .from('recordings')
+    .select('audio_url')
+    .eq('id', recordingId)
+    .single();
+
+  if (fetchError) {
+    console.error('Error fetching recording:', fetchError);
+    throw new Error('Failed to fetch recording');
+  }
+
+  // Delete from storage
+  const filePath = recording.audio_url.split('/').slice(-2).join('/');
+  const { error: storageError } = await supabase.storage
+    .from('audio')
+    .remove([`recordings/${filePath}`]);
+
+  if (storageError) {
+    console.error('Error deleting recording file:', storageError);
+    // Continue to delete the record even if file deletion fails
+  }
+
+  // Delete the record
+  const { error: deleteError } = await supabase
+    .from('recordings')
+    .delete()
+    .eq('id', recordingId);
+
+  if (deleteError) {
+    console.error('Error deleting recording:', deleteError);
+    throw new Error('Failed to delete recording');
+  }
+} 
