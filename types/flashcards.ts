@@ -66,9 +66,12 @@ export interface Card {
 export type ReviewResponse = 'again' | 'hard' | 'good' | 'easy';
 
 export interface StudySession {
-  deckId: string;
-  startedAt: Date;
-  cardsStudied: number;
-  correctResponses: number;
-  timeSpent: number; // in seconds
+  id: string;
+  user_id: string;
+  deck_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration: string | null;
+  cards_reviewed: number;
+  created_at: string;
 } 

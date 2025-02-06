@@ -5,13 +5,13 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import { getDueCards, reviewCard, getDeck } from '../../../../lib/api/flashcards';
+import { getDueCards, reviewCard, getDeck, createStudySession, updateStudySession } from '../../../../lib/api/flashcards';
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
 import { MandarinText } from '../../../../components/flashcards/MandarinText';
 import { CharacterSizeControl } from '../../../../components/flashcards/CharacterSizeControl';
 import { AudioEnabledText } from '../../../../components/flashcards/AudioEnabledText';
 import { getCardAudioSegments } from '../../../../lib/api/audio';
-import type { Card, Deck } from '../../../../types/flashcards';
+import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
 
@@ -39,6 +39,8 @@ export default function StudyScreen() {
   const [characterSize, setCharacterSize] = useState(24);
   const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
+  const [studySession, setStudySession] = useState<StudySession | null>(null);
+  const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -116,6 +118,10 @@ export default function StudyScreen() {
       if (deckData?.language === 'Mandarin' && deckData.settings?.defaultCharacterSize) {
         setCharacterSize(deckData.settings.defaultCharacterSize);
       }
+
+      // Create a new study session
+      const session = await createStudySession(id as string);
+      setStudySession(session);
     } catch (error) {
       console.error('Error in loadData:', error);
       Toast.show({
@@ -163,6 +169,7 @@ export default function StudyScreen() {
 
   const flipCard = () => {
     setIsFlipped(!isFlipped);
+    setCardFlipTime(new Date());
     Animated.spring(flipAnim, {
       toValue: isFlipped ? 0 : 1,
       friction: 8,
@@ -176,13 +183,21 @@ export default function StudyScreen() {
     setReviewing(true);
 
     try {
-      await reviewCard(currentCard.id, rating);
+      // Calculate response time if card was flipped
+      const responseTimeMs = cardFlipTime 
+        ? new Date().getTime() - cardFlipTime.getTime()
+        : undefined;
+
+      await reviewCard(currentCard.id, rating, responseTimeMs);
 
       // Update statistics
       setCardsStudied(prev => prev + 1);
       if (rating === Rating.Good || rating === Rating.Easy) {
         setCorrectResponses(prev => prev + 1);
       }
+
+      // Reset card flip time for next card
+      setCardFlipTime(null);
 
       if (rating === Rating.Again) {
         // Move current card to the end of the deck
@@ -205,10 +220,19 @@ export default function StudyScreen() {
           const endTime = new Date();
           const timeSpent = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
           
+          // Update study session
+          if (studySession) {
+            await updateStudySession(studySession.id, {
+              ended_at: endTime.toISOString(),
+              duration: `${timeSpent} seconds`,
+              cards_reviewed: cardsStudied + 1,
+            });
+          }
+          
           Toast.show({
             type: 'success',
             text1: 'Study session complete!',
-            text2: `You reviewed ${cardsStudied} cards in ${Math.floor(timeSpent / 60)}m ${timeSpent % 60}s`,
+            text2: `You reviewed ${cardsStudied + 1} cards in ${Math.floor(timeSpent / 60)}m ${timeSpent % 60}s`,
           });
 
           // Navigate back to deck view
@@ -586,8 +610,7 @@ const styles = StyleSheet.create({
     right: 0,
   },
   cardText: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 32,
     textAlign: 'center',
   },
   cardTags: {
@@ -657,9 +680,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-  },
-  cardText: {
-    fontSize: 32,
-    textAlign: 'center',
   },
 }); 

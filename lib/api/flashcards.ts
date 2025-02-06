@@ -226,7 +226,8 @@ export async function getDueCards(deckId: string, limit: number = 20): Promise<C
 
 export async function reviewCard(
   id: string,
-  rating: Rating
+  rating: Rating,
+  responseTimeMs?: number
 ): Promise<Card> {
   try {
     console.log('Reviewing card:', id, 'with rating:', rating);
@@ -248,7 +249,20 @@ export async function reviewCard(
       throw new Error('Card not found');
     }
 
-    console.log('Current card data:', currentCard);
+    // Record the review in card_reviews table
+    const { error: reviewError } = await supabase
+      .from('card_reviews')
+      .insert({
+        card_id: id,
+        deck_id: currentCard.deck_id,
+        rating,
+        response_time_ms: responseTimeMs,
+      });
+
+    if (reviewError) {
+      console.error('Error recording card review:', reviewError);
+      throw reviewError;
+    }
 
     // Then get the deck
     const { data: deck, error: getDeckError } = await supabase
@@ -350,6 +364,138 @@ export async function reviewCard(
       console.error('Error message:', error.message);
       console.error('Error stack:', error.stack);
     }
+    throw error;
+  }
+}
+
+export interface UserStatistics {
+  total_cards_learned: number;
+  study_time_minutes: number;
+  day_streak: number;
+  accuracy: number;
+  avg_response_time: number;
+  review_rate: number;
+}
+
+export async function getUserStatistics(): Promise<UserStatistics> {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_user_statistics');
+
+    if (error) {
+      console.error('Error getting user statistics:', error);
+      throw error;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getUserStatistics:', error);
+    throw error;
+  }
+}
+
+export interface StudySession {
+  id: string;
+  user_id: string;
+  deck_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration: string | null;
+  cards_reviewed: number;
+  created_at: string;
+}
+
+export async function createStudySession(deckId: string): Promise<StudySession> {
+  try {
+    const { data: session, error } = await supabase
+      .from('study_sessions')
+      .insert({
+        deck_id: deckId,
+        started_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating study session:', error);
+      throw error;
+    }
+
+    return session;
+  } catch (error) {
+    console.error('Error in createStudySession:', error);
+    throw error;
+  }
+}
+
+export async function updateStudySession(
+  sessionId: string,
+  data: {
+    ended_at: string;
+    duration: string;
+    cards_reviewed: number;
+  }
+): Promise<StudySession> {
+  try {
+    const { data: session, error } = await supabase
+      .from('study_sessions')
+      .update(data)
+      .eq('id', sessionId)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating study session:', error);
+      throw error;
+    }
+
+    return session;
+  } catch (error) {
+    console.error('Error in updateStudySession:', error);
+    throw error;
+  }
+}
+
+export interface HourlyActivity {
+  hour_of_day: number;
+  cards_reviewed: number;
+}
+
+export interface ResponseDistribution {
+  response_bucket: string;
+  count: number;
+}
+
+export async function getHourlyActivity(daysBack: number = 30): Promise<HourlyActivity[]> {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_user_hourly_activity', { p_days_back: daysBack });
+
+    if (error) {
+      console.error('Error getting hourly activity:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getHourlyActivity:', error);
+    throw error;
+  }
+}
+
+export async function getResponseDistribution(daysBack: number = 30): Promise<ResponseDistribution[]> {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_user_response_distribution', { p_days_back: daysBack });
+
+    if (error) {
+      console.error('Error getting response distribution:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getResponseDistribution:', error);
     throw error;
   }
 } 
