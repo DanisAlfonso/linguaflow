@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Platform, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, StyleSheet, Platform, ScrollView, ActivityIndicator, RefreshControl, Dimensions } from 'react-native';
 import { Text, useTheme } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { VictoryBar, VictoryChart, VictoryAxis } from 'victory-native';
 import { Container } from '../components/layout/Container';
 import { getUserStatistics, getHourlyActivity, getResponseDistribution } from '../lib/api/flashcards';
 import type { UserStatistics, HourlyActivity, ResponseDistribution } from '../lib/api/flashcards';
@@ -17,15 +18,37 @@ export default function StatisticsScreen() {
   const [hourlyActivity, setHourlyActivity] = useState<HourlyActivity[]>([]);
   const [responseDistribution, setResponseDistribution] = useState<ResponseDistribution[]>([]);
 
+  // Mock data for testing the chart
+  const mockHourlyActivity = [
+    { hour_of_day: 6, cards_reviewed: 15 },  // Early morning
+    { hour_of_day: 7, cards_reviewed: 25 },
+    { hour_of_day: 8, cards_reviewed: 45 },  // Morning peak
+    { hour_of_day: 9, cards_reviewed: 35 },
+    { hour_of_day: 10, cards_reviewed: 20 },
+    { hour_of_day: 11, cards_reviewed: 15 },
+    { hour_of_day: 12, cards_reviewed: 30 },  // Lunch break
+    { hour_of_day: 13, cards_reviewed: 25 },
+    { hour_of_day: 14, cards_reviewed: 20 },
+    { hour_of_day: 15, cards_reviewed: 40 },  // Afternoon peak
+    { hour_of_day: 16, cards_reviewed: 50 },
+    { hour_of_day: 17, cards_reviewed: 35 },
+    { hour_of_day: 18, cards_reviewed: 20 },
+    { hour_of_day: 19, cards_reviewed: 25 },
+    { hour_of_day: 20, cards_reviewed: 55 },  // Evening peak
+    { hour_of_day: 21, cards_reviewed: 45 },
+    { hour_of_day: 22, cards_reviewed: 30 },
+    { hour_of_day: 23, cards_reviewed: 15 },
+  ];
+
   const loadStats = useCallback(async () => {
     try {
-      const [statsData, hourlyData, responseData] = await Promise.all([
+      const [statsData, responseData] = await Promise.all([
         getUserStatistics(),
-        getHourlyActivity(),
         getResponseDistribution(),
       ]);
       setStats(statsData);
-      setHourlyActivity(hourlyData);
+      // Use mock data instead of API call
+      setHourlyActivity(mockHourlyActivity);
       setResponseDistribution(responseData);
     } catch (error) {
       console.error('Error loading statistics:', error);
@@ -267,6 +290,7 @@ export default function StatisticsScreen() {
               </View>
             </View>
 
+            {/* Study Patterns Section */}
             <View 
               style={[
                 styles.section,
@@ -354,6 +378,101 @@ export default function StatisticsScreen() {
                     Cards Last 30 Days
                   </Text>
                 </View>
+              </View>
+            </View>
+
+            {/* Hourly Activity Chart Section */}
+            <View 
+              style={[
+                styles.section,
+                { 
+                  backgroundColor: theme.colors.grey0,
+                  borderColor: theme.colors.grey1,
+                }
+              ]}
+            >
+              <View style={styles.sectionHeader}>
+                <View style={styles.sectionTitleContainer}>
+                  <MaterialIcons
+                    name="bar-chart"
+                    size={24}
+                    color={theme.colors.grey5}
+                  />
+                  <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
+                    Hourly Activity
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.chartWrapper}>
+                <VictoryChart
+                  padding={{ top: 40, bottom: 50, left: 50, right: 20 }}
+                  domainPadding={{ x: 10 }}
+                  domain={{ x: [0, 23] }}
+                  height={220}
+                >
+                  <VictoryAxis
+                    tickValues={Array.from({ length: 8 }, (_, i) => i * 3)} // Show every 3 hours
+                    tickFormat={(hour: number) => {
+                      if (hour === 0) return 'Midnight';
+                      if (hour === 12) return 'Noon';
+                      if (hour < 12) return `${hour}AM`;
+                      return `${hour-12}PM`;
+                    }}
+                    style={{
+                      axis: { stroke: theme.colors.grey3 },
+                      ticks: { stroke: theme.colors.grey3 },
+                      tickLabels: { 
+                        fill: theme.colors.grey3,
+                        fontSize: 10,
+                        angle: -45,
+                        textAnchor: 'end',
+                        padding: 8,
+                      },
+                      grid: { stroke: 'transparent' },
+                    }}
+                  />
+                  <VictoryAxis
+                    dependentAxis
+                    tickFormat={(cards: number) => Math.round(cards).toString()}
+                    style={{
+                      axis: { stroke: theme.colors.grey3 },
+                      ticks: { stroke: theme.colors.grey3 },
+                      tickLabels: { 
+                        fill: theme.colors.grey3,
+                        fontSize: 11,
+                      },
+                      grid: { 
+                        stroke: theme.colors.grey2,
+                        strokeWidth: 1,
+                      },
+                    }}
+                  />
+                  <VictoryBar
+                    data={Array.from({ length: 24 }, (_, hour) => {
+                      const activityData = hourlyActivity.find(h => h.hour_of_day === hour);
+                      return {
+                        hour,
+                        cards: activityData ? activityData.cards_reviewed : 0,
+                      };
+                    })}
+                    x="hour"
+                    y="cards"
+                    barRatio={0.7}
+                    style={{
+                      data: {
+                        fill: theme.colors.success,
+                      },
+                    }}
+                    animate={{
+                      duration: 200,
+                      onLoad: { duration: 200 },
+                    }}
+                  />
+                </VictoryChart>
+                <Text style={[styles.chartSubtitle, { color: theme.colors.grey3 }]}>
+                  Average cards reviewed per hour • Last 30 days
+                </Text>
               </View>
             </View>
           </>
@@ -462,5 +581,16 @@ const styles = StyleSheet.create({
   errorText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  statsContainer: {
+    gap: 24,
+  },
+  chartWrapper: {
+    overflow: 'hidden',
+    alignItems: 'center',
+  },
+  chartSubtitle: {
+    fontSize: 12,
+    marginTop: 8,
   },
 }); 

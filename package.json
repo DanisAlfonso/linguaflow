@@ -56,7 +56,8 @@
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5",
-    "ts-fsrs": "^4.6.1"
+    "ts-fsrs": "^4.6.1",
+    "victory-native": "^36.9.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
