@@ -75,8 +75,13 @@ export function scheduleReview(
     last_reviewed_at: Date | null;
     reps: number;
     lapses: number;
+    step_index: number;
   },
-  rating: Rating
+  rating: Rating,
+  deckSettings: {
+    learning_steps: number[];
+    relearning_steps: number[];
+  }
 ): {
   state: number;
   difficulty: number;
@@ -84,6 +89,7 @@ export function scheduleReview(
   retrievability: number;
   scheduled_days: number;
   scheduled_in_minutes?: number;
+  step_index: number;
 } {
   const now = new Date();
   
@@ -108,13 +114,71 @@ export function scheduleReview(
 
   // For learning/relearning cards, schedule in minutes
   if (result.card.state === CardState.Learning || result.card.state === CardState.Relearning) {
+    const steps = result.card.state === CardState.Learning ? 
+      deckSettings.learning_steps : 
+      deckSettings.relearning_steps;
+
+    // On "Again", reset to first step
+    if (rating === Rating.Again) {
+      return {
+        state: result.card.state,
+        difficulty,
+        stability: result.card.stability,
+        retrievability: result.retrievability,
+        scheduled_days: 0,
+        scheduled_in_minutes: steps[0],
+        step_index: 0,
+      };
+    }
+
+    // On "Good", move to next step or graduate
+    if (rating === Rating.Good) {
+      const nextStepIndex = card.step_index + 1;
+      if (nextStepIndex >= steps.length) {
+        // Graduate the card
+        return {
+          state: CardState.Review,
+          difficulty,
+          stability: result.card.stability,
+          retrievability: result.retrievability,
+          scheduled_days: 1, // Graduate with 1 day interval
+          step_index: 0,
+        };
+      } else {
+        // Move to next step
+        return {
+          state: result.card.state,
+          difficulty,
+          stability: result.card.stability,
+          retrievability: result.retrievability,
+          scheduled_days: 0,
+          scheduled_in_minutes: steps[nextStepIndex],
+          step_index: nextStepIndex,
+        };
+      }
+    }
+
+    // On "Easy", graduate immediately
+    if (rating === Rating.Easy) {
+      return {
+        state: CardState.Review,
+        difficulty,
+        stability: result.card.stability,
+        retrievability: result.retrievability,
+        scheduled_days: 4, // Graduate with 4 day interval
+        step_index: 0,
+      };
+    }
+
+    // On "Hard", repeat current step
     return {
       state: result.card.state,
       difficulty,
       stability: result.card.stability,
       retrievability: result.retrievability,
       scheduled_days: 0,
-      scheduled_in_minutes: 10, // Default to 10 minutes for learning/relearning
+      scheduled_in_minutes: steps[card.step_index],
+      step_index: card.step_index,
     };
   }
 
@@ -125,6 +189,7 @@ export function scheduleReview(
     stability: result.card.stability,
     retrievability: result.retrievability,
     scheduled_days: Math.max(1, Math.round(result.card.scheduled_days)), // Ensure minimum 1 day interval
+    step_index: 0,
   };
 }
 

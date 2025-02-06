@@ -71,17 +71,34 @@ export async function createCard(data: Partial<Card>): Promise<Card> {
 }
 
 export async function getDeck(id: string): Promise<Deck | null> {
-  const { data: deck, error } = await supabase
-    .from('decks')
-    .select()
-    .eq('id', id)
-    .single();
+  try {
+    // First update the deck's review stats
+    const { error: statsError } = await supabase.rpc('update_deck_review_stats', {
+      p_deck_id: id,
+    });
 
-  if (error) {
+    if (statsError) {
+      console.error('Error updating deck stats:', statsError);
+      throw statsError;
+    }
+
+    // Then get the deck with updated stats
+    const { data: deck, error } = await supabase
+      .from('decks')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching deck:', error);
+      throw error;
+    }
+
+    return deck;
+  } catch (error) {
+    console.error('Error in getDeck:', error);
     throw error;
   }
-
-  return deck;
 }
 
 export async function getCards(deckId: string): Promise<Card[]> {
@@ -258,11 +275,15 @@ export async function reviewCard(
       last_reviewed_at: currentCard.last_reviewed_at,
       reps: currentCard.reps || 0,
       lapses: currentCard.lapses || 0,
+      step_index: currentCard.step_index || 0,
     };
 
     console.log('Card state for FSRS:', cardState);
     
-    const schedule = scheduleReview(cardState, rating);
+    const schedule = scheduleReview(cardState, rating, {
+      learning_steps: deck.learning_steps || [1, 10],
+      relearning_steps: deck.relearning_steps || [10],
+    });
     console.log('New schedule:', schedule);
 
     // Determine the queue based on the state
