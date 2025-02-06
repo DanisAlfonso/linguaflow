@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, StyleSheet, Platform, Pressable, Animated, ViewStyle } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -11,6 +11,8 @@ import { MandarinText } from '../../../../components/flashcards/MandarinText';
 import { CharacterSizeControl } from '../../../../components/flashcards/CharacterSizeControl';
 import { AudioEnabledText } from '../../../../components/flashcards/AudioEnabledText';
 import { getCardAudioSegments } from '../../../../lib/api/audio';
+import { Audio } from 'expo-av';
+import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
@@ -41,6 +43,23 @@ export default function StudyScreen() {
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
   const [studySession, setStudySession] = useState<StudySession | null>(null);
   const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
+
+  // Recording states
+  const [isRecordingEnabled, setIsRecordingEnabled] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [meterLevel, setMeterLevel] = useState(0);
+  const [permissionResponse, requestPermission] = Audio.usePermissions();
+  const recordingTimer = useRef<NodeJS.Timeout>();
+
+  // Playback states
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackProgress, setPlaybackProgress] = useState(0);
+  const sound = useRef<Audio.Sound>();
+  const playbackTimer = useRef<NodeJS.Timeout>();
+
+  const [hasRecording, setHasRecording] = useState(false);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -269,6 +288,226 @@ export default function StudyScreen() {
     transform: [{ rotateY: backInterpolate }],
   };
 
+  // Handle recording permissions
+  useEffect(() => {
+    const checkPermissions = async () => {
+      if (!permissionResponse) return;
+      
+      if (isRecordingEnabled && permissionResponse.status !== 'granted') {
+        console.log('Requesting recording permission..');
+        const permission = await requestPermission();
+        if (!permission.granted) {
+          Toast.show({
+            type: 'error',
+            text1: 'Permission Required',
+            text2: 'Microphone access is needed for recording',
+          });
+          setIsRecordingEnabled(false);
+        }
+      }
+    };
+
+    checkPermissions();
+  }, [isRecordingEnabled, permissionResponse, requestPermission]);
+
+  // Clean up recording timer
+  useEffect(() => {
+    return () => {
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+      }
+      if (playbackTimer.current) {
+        clearInterval(playbackTimer.current);
+      }
+      if (sound.current) {
+        sound.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      if (!permissionResponse || permissionResponse.status !== 'granted') {
+        Toast.show({
+          type: 'error',
+          text1: 'Permission Required',
+          text2: 'Microphone access is needed for recording',
+        });
+        return;
+      }
+
+      // Configure audio mode for recording
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      });
+
+      console.log('Starting recording..');
+      const { recording } = await Audio.Recording.createAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        (status) => {
+          // Update meter level from recording status
+          if (status.isRecording && status.metering !== undefined) {
+            // Convert dB meter level to a value between 0 and 1
+            // Typical values are between -160 and 0 dB
+            const db = status.metering;
+            const normalized = (db + 160) / 160; // Convert to 0-1 range
+            const clamped = Math.max(0, Math.min(1, normalized)); // Ensure between 0 and 1
+            setMeterLevel(clamped);
+          }
+        },
+        1000 // Update metering every 1000ms
+      );
+
+      setRecording(recording);
+      setIsRecording(true);
+      setRecordingDuration(0);
+      setMeterLevel(0);
+
+      // Start duration timer
+      recordingTimer.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1000);
+      }, 1000);
+
+      console.log('Recording started');
+    } catch (err) {
+      console.error('Failed to start recording', err);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to start recording',
+      });
+    }
+  };
+
+  const stopRecording = async () => {
+    try {
+      if (!recording) return;
+
+      console.log('Stopping recording..');
+      await recording.stopAndUnloadAsync();
+      
+      // Stop and clear duration timer
+      if (recordingTimer.current) {
+        clearInterval(recordingTimer.current);
+      }
+
+      // Reset audio mode
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+      });
+
+      const uri = recording.getURI();
+      console.log('Recording stopped and stored at', uri);
+
+      // Reset states but keep duration for display
+      setRecording(null);
+      setIsRecording(false);
+      setMeterLevel(0);
+      setHasRecording(true); // Set this to true to show playback controls
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Recording saved',
+      });
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to save recording',
+      });
+    }
+  };
+
+  const deleteRecording = () => {
+    if (sound.current) {
+      sound.current.unloadAsync();
+      sound.current = undefined;
+    }
+    setHasRecording(false);
+    setRecordingDuration(0);
+    setPlaybackProgress(0);
+    setIsPlaying(false);
+  };
+
+  const startPlayback = async () => {
+    try {
+      if (!recording) return;
+
+      const uri = recording.getURI();
+      if (!uri) {
+        console.error('No recording URI available');
+        return;
+      }
+
+      if (!sound.current) {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri },
+          { progressUpdateIntervalMillis: 100 },
+          (status) => {
+            if (status.isLoaded) {
+              const durationMillis = status.durationMillis ?? 1; // Fallback to 1 to avoid division by zero
+              setPlaybackProgress(status.positionMillis / durationMillis);
+              
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlaybackProgress(0);
+                if (playbackTimer.current) {
+                  clearInterval(playbackTimer.current);
+                }
+              }
+            }
+          }
+        );
+        sound.current = newSound;
+      }
+
+      await sound.current.playAsync();
+      setIsPlaying(true);
+    } catch (error) {
+      console.error('Error playing recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to play recording',
+      });
+    }
+  };
+
+  const stopPlayback = async () => {
+    try {
+      if (!sound.current) return;
+
+      await sound.current.stopAsync();
+      await sound.current.setPositionAsync(0);
+      setIsPlaying(false);
+      setPlaybackProgress(0);
+    } catch (error) {
+      console.error('Error stopping playback:', error);
+    }
+  };
+
+  const handleSeek = async (progress: number) => {
+    try {
+      if (!sound.current) return;
+
+      const status = await sound.current.getStatusAsync();
+      if (!status.isLoaded) return;
+
+      const durationMillis = status.durationMillis ?? 0;
+      if (durationMillis === 0) return;
+
+      const position = progress * durationMillis;
+      await sound.current.setPositionAsync(position);
+      setPlaybackProgress(progress);
+    } catch (error) {
+      console.error('Error seeking:', error);
+    }
+  };
+
   if (loading || !currentCard) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -300,17 +539,19 @@ export default function StudyScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
         <View style={styles.header}>
-          <Button
-            type="clear"
-            icon={
-              <MaterialIcons
-                name="close"
-                size={24}
-                color={theme.colors.grey5}
-              />
-            }
-            onPress={() => router.back()}
-          />
+          <View style={styles.headerLeft}>
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name="close"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+              }
+              onPress={() => router.back()}
+            />
+          </View>
           <View style={styles.progress}>
             <View 
               style={[
@@ -331,6 +572,19 @@ export default function StudyScreen() {
             <Text style={[styles.progressText, { color: theme.colors.grey4 }]}>
               {currentCardIndex + 1} / {cards.length}
             </Text>
+          </View>
+          <View style={styles.headerRight}>
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name={isRecordingEnabled ? "mic" : "mic-none"}
+                  size={24}
+                  color={isRecordingEnabled ? theme.colors.primary : theme.colors.grey5}
+                />
+              }
+              onPress={() => setIsRecordingEnabled(!isRecordingEnabled)}
+            />
           </View>
         </View>
 
@@ -541,6 +795,22 @@ export default function StudyScreen() {
             </Text>
           </View>
         )}
+
+        <RecordingInterface
+          isVisible={isRecordingEnabled}
+          isRecording={isRecording}
+          isPlaying={isPlaying}
+          recordingDuration={recordingDuration}
+          playbackProgress={playbackProgress}
+          meterLevel={meterLevel}
+          hasRecording={hasRecording}
+          onStartRecording={startRecording}
+          onStopRecording={stopRecording}
+          onStartPlayback={startPlayback}
+          onStopPlayback={stopPlayback}
+          onDeleteRecording={deleteRecording}
+          onClose={() => setIsRecordingEnabled(false)}
+        />
       </Container>
     </SafeAreaView>
   );
@@ -555,9 +825,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 32,
   },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   progress: {
     flex: 1,
-    marginLeft: 16,
+    marginHorizontal: 16,
     gap: 8,
   },
   progressBar: {
