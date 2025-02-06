@@ -34,6 +34,8 @@ export interface AudioUploadResponse {
 
 export interface Recording {
   id: string;
+  card_id: string;
+  user_id: string;
   audio_url: string;
   duration: number;
   created_at: string;
@@ -42,4 +44,42 @@ export interface Recording {
 export interface RecordingFile {
   uri: string;
   duration: number;
+}
+
+export interface LocalRecording {
+  id: string;
+  card_id: string;
+  user_id: string;
+  file_path: string;
+  duration: number;
+  created_at: string;
+  synced: boolean;
+  audio_url: string | null;
+  remote_id: string | null;
+}
+
+export interface LocalRecordingInput {
+  card_id: string;
+  user_id: string;
+  file_path: string;
+  duration: number;
+}
+
+export interface DatabaseTransaction {
+  executeSql: (
+    sqlStatement: string,
+    args?: any[],
+    callback?: (transaction: DatabaseTransaction, resultSet: DatabaseResultSet) => void,
+    errorCallback?: (transaction: DatabaseTransaction, error: Error) => boolean
+  ) => void;
+}
+
+export interface DatabaseResultSet {
+  insertId: number;
+  rowsAffected: number;
+  rows: {
+    length: number;
+    item: (index: number) => any;
+    _array: any[];
+  };
 } 

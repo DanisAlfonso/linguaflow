@@ -17,6 +17,8 @@ import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
 import { uploadRecording } from '../../../../lib/api/audio';
+import { initDatabase } from '../../../../lib/db';
+import { ensureRecordingsDirectory } from '../../../../lib/fs/recordings';
 
 // Keyboard shortcuts for web
 const KEYBOARD_SHORTCUTS = {
@@ -27,6 +29,19 @@ const KEYBOARD_SHORTCUTS = {
   ' ': 'flip', // Space bar to flip card
   'Control+ ': 'playAudio', // Ctrl+Space to play audio
 } as const;
+
+async function configureAudioSession() {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+      shouldDuckAndroid: true,
+    });
+  } catch (error) {
+    console.error('Error configuring audio session:', error);
+  }
+}
 
 export default function StudyScreen() {
   const [cards, setCards] = useState<Card[]>([]);
@@ -458,11 +473,18 @@ export default function StudyScreen() {
         return;
       }
 
+      // Configure audio session
+      await configureAudioSession();
+
       if (!sound.current) {
         console.log('Creating new sound from URL:', uploadedRecording.audio_url);
-        const { sound: newSound } = await Audio.Sound.createAsync(
+        const { sound: newSound, status } = await Audio.Sound.createAsync(
           { uri: uploadedRecording.audio_url },
-          { progressUpdateIntervalMillis: 100 },
+          { 
+            progressUpdateIntervalMillis: 100,
+            shouldPlay: true,
+            volume: 1.0,
+          },
           (status) => {
             if (status.isLoaded) {
               const durationMillis = status.durationMillis ?? 1; // Fallback to 1 to avoid division by zero
@@ -478,10 +500,13 @@ export default function StudyScreen() {
             }
           }
         );
-        sound.current = newSound;
-      }
 
-      await sound.current.playAsync();
+        console.log('Sound created with status:', status);
+        sound.current = newSound;
+      } else {
+        await sound.current.playAsync();
+      }
+      
       setIsPlaying(true);
     } catch (error) {
       console.error('Error playing recording:', error);
@@ -501,6 +526,10 @@ export default function StudyScreen() {
       await sound.current.setPositionAsync(0);
       setIsPlaying(false);
       setPlaybackProgress(0);
+
+      if (playbackTimer.current) {
+        clearInterval(playbackTimer.current);
+      }
     } catch (error) {
       console.error('Error stopping playback:', error);
     }
@@ -523,6 +552,21 @@ export default function StudyScreen() {
       console.error('Error seeking:', error);
     }
   };
+
+  // Initialize database and file system
+  useEffect(() => {
+    const init = async () => {
+      try {
+        await Promise.all([
+          initDatabase(),
+          ensureRecordingsDirectory(),
+        ]);
+      } catch (error) {
+        console.error('Error initializing storage:', error);
+      }
+    };
+    init();
+  }, []);
 
   if (loading || !currentCard) {
     return (
@@ -831,12 +875,16 @@ export default function StudyScreen() {
           playbackProgress={playbackProgress}
           meterLevel={meterLevel}
           hasRecording={hasRecording}
+          cardId={currentCard.id}
           onStartRecording={startRecording}
           onStopRecording={stopRecording}
           onStartPlayback={startPlayback}
           onStopPlayback={stopPlayback}
           onDeleteRecording={deleteRecording}
           onClose={() => setIsRecordingEnabled(false)}
+          setIsPlaying={setIsPlaying}
+          setPlaybackProgress={setPlaybackProgress}
+          uploadedRecording={uploadedRecording}
         />
       </Container>
     </SafeAreaView>

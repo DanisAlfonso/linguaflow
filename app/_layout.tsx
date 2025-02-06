@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { AuthProvider } from '../contexts/AuthContext';
 import { lightTheme, darkTheme } from '../theme';
+import { useBackgroundSync } from '../hooks/useBackgroundSync';
 
 function AppContent() {
   const { theme } = useTheme();
@@ -61,6 +62,9 @@ function AppContent() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [currentTheme, setCurrentTheme] = useState(colorScheme === 'dark' ? darkTheme : lightTheme);
+
+  // Initialize background sync
+  useBackgroundSync();
 
   useEffect(() => {
     setCurrentTheme(colorScheme === 'dark' ? darkTheme : lightTheme);

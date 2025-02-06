@@ -1,42 +1,270 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, Animated, Platform } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
+import { Audio } from 'expo-av';
+import { useAuth } from '../../contexts/AuthContext';
+import { generateRecordingPath, saveRecordingFile, getRecordingUri, deleteRecordingFile } from '../../lib/fs/recordings';
+import { saveLocalRecording, deleteLocalRecording } from '../../lib/db';
+import { syncRecordings } from '../../lib/sync/recordings';
+import type { LocalRecording, Recording } from '../../types/audio';
+import Toast from 'react-native-toast-message';
 import { WaveformVisualizer } from './WaveformVisualizer';
 
-interface RecordingInterfaceProps {
+interface Props {
   isVisible: boolean;
   isRecording: boolean;
-  isPlaying?: boolean;
+  isPlaying: boolean;
   recordingDuration: number;
-  playbackProgress?: number;
+  playbackProgress: number;
   meterLevel: number;
   hasRecording: boolean;
+  cardId: string;
   onStartRecording: () => Promise<void>;
   onStopRecording: () => Promise<void>;
-  onStartPlayback?: () => Promise<void>;
-  onStopPlayback?: () => Promise<void>;
-  onDeleteRecording?: () => void;
+  onStartPlayback: () => Promise<void>;
+  onStopPlayback: () => Promise<void>;
+  onDeleteRecording: () => void;
   onClose: () => void;
+  setIsPlaying: (playing: boolean) => void;
+  setPlaybackProgress: (progress: number) => void;
+  uploadedRecording?: Recording | null;
+}
+
+async function configureAudioSession() {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+      shouldDuckAndroid: true,
+    });
+  } catch (error) {
+    console.error('Error configuring audio session:', error);
+  }
 }
 
 export function RecordingInterface({
   isVisible,
   isRecording,
-  isPlaying = false,
+  isPlaying,
   recordingDuration,
-  playbackProgress = 0,
+  playbackProgress,
   meterLevel,
   hasRecording,
+  cardId,
   onStartRecording,
   onStopRecording,
   onStartPlayback,
   onStopPlayback,
   onDeleteRecording,
   onClose,
-}: RecordingInterfaceProps) {
+  setIsPlaying,
+  setPlaybackProgress,
+  uploadedRecording,
+}: Props) {
   const { theme } = useTheme();
+  const { user } = useAuth();
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [currentRecording, setCurrentRecording] = useState<LocalRecording | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const sound = useRef<Audio.Sound>();
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (sound.current) {
+        sound.current.unloadAsync();
+      }
+    };
+  }, []);
+
+  const handleStartRecording = async () => {
+    try {
+      if (!user) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'You must be logged in to record',
+        });
+        return;
+      }
+
+      await onStartRecording();
+    } catch (error) {
+      console.error('Error starting recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to start recording',
+      });
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      await onStopRecording();
+
+      if (!recording) return;
+
+      const uri = recording.getURI();
+      if (!uri) {
+        throw new Error('No recording URI available');
+      }
+
+      // Generate a path for permanent storage
+      const filePath = generateRecordingPath(cardId);
+
+      // Save the recording file
+      await saveRecordingFile(uri, filePath);
+
+      // Save to local database
+      const savedRecording = await saveLocalRecording({
+        card_id: cardId,
+        user_id: user!.id,
+        file_path: filePath,
+        duration: recordingDuration,
+      });
+
+      setCurrentRecording(savedRecording);
+      setRecording(null);
+
+      // Try to sync immediately if possible
+      try {
+        setIsSyncing(true);
+        await syncRecordings();
+      } catch (error) {
+        console.error('Error syncing after recording:', error);
+      } finally {
+        setIsSyncing(false);
+      }
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Recording saved',
+      });
+    } catch (error) {
+      console.error('Error saving recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to save recording',
+      });
+    }
+  };
+
+  const handleStartPlayback = async () => {
+    try {
+      if (!currentRecording && !uploadedRecording) {
+        console.error('No recording available for playback');
+        return;
+      }
+
+      // Configure audio session
+      await configureAudioSession();
+
+      if (!sound.current) {
+        // Determine the audio source - prefer uploaded recording URL
+        const uri = uploadedRecording?.audio_url || 
+                   (currentRecording && await getRecordingUri(currentRecording.file_path));
+                   
+        if (!uri) {
+          throw new Error('No valid audio URI available');
+        }
+
+        console.log('Playing audio from:', uri);
+
+        const { sound: newSound, status } = await Audio.Sound.createAsync(
+          { uri },
+          { 
+            progressUpdateIntervalMillis: 100,
+            shouldPlay: true,
+            volume: 1.0,
+          },
+          (status) => {
+            if (status.isLoaded) {
+              const durationMillis = status.durationMillis ?? 1;
+              setPlaybackProgress(status.positionMillis / durationMillis);
+              
+              if (status.didJustFinish) {
+                setIsPlaying(false);
+                setPlaybackProgress(0);
+                if (sound.current) {
+                  sound.current.unloadAsync();
+                  sound.current = undefined;
+                }
+              }
+            }
+          }
+        );
+
+        console.log('Sound created with status:', status);
+        sound.current = newSound;
+      } else {
+        await sound.current.playAsync();
+      }
+
+      setIsPlaying(true);
+      onStartPlayback();
+    } catch (error) {
+      console.error('Error playing recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to play recording',
+      });
+    }
+  };
+
+  const handleStopPlayback = async () => {
+    try {
+      if (!sound.current) return;
+
+      await sound.current.stopAsync();
+      await sound.current.setPositionAsync(0);
+      setIsPlaying(false);
+      setPlaybackProgress(0);
+      onStopPlayback();
+    } catch (error) {
+      console.error('Error stopping playback:', error);
+    }
+  };
+
+  const handleDeleteRecording = async () => {
+    try {
+      if (currentRecording) {
+        // Delete local recording
+        await deleteRecordingFile(currentRecording.file_path);
+        await deleteLocalRecording(currentRecording.id);
+        setCurrentRecording(null);
+      }
+
+      // Clean up sound
+      if (sound.current) {
+        await sound.current.unloadAsync();
+        sound.current = undefined;
+      }
+      
+      setPlaybackProgress(0);
+      setIsPlaying(false);
+      onDeleteRecording();
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Recording deleted',
+      });
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete recording',
+      });
+    }
+  };
 
   useEffect(() => {
     Animated.spring(slideAnim, {
@@ -47,6 +275,11 @@ export function RecordingInterface({
     }).start();
   }, [isVisible, slideAnim]);
 
+  const translateY = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [200, 0],
+  });
+
   const formatDuration = (ms: number) => {
     const seconds = Math.floor(ms / 1000);
     const minutes = Math.floor(seconds / 60);
@@ -54,10 +287,7 @@ export function RecordingInterface({
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  const translateY = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [200, 0],
-  });
+  if (!isVisible) return null;
 
   return (
     <Animated.View
@@ -73,20 +303,28 @@ export function RecordingInterface({
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.colors.grey0 }]}>
+          <Text style={[styles.title, { color: isRecording ? theme.colors.error : 
+            (hasRecording ? theme.colors.grey0 : theme.colors.primary) }]}>
             {isRecording ? 'Recording...' : (hasRecording ? formatDuration(recordingDuration) : 'Record Practice')}
           </Text>
-          <Button
-            type="clear"
-            icon={
-              <MaterialIcons
-                name="close"
-                size={24}
-                color={theme.colors.grey3}
-              />
-            }
-            onPress={onClose}
-          />
+          <View style={styles.headerRight}>
+            {currentRecording && !currentRecording.synced && (
+              <Text style={[styles.syncStatus, { color: theme.colors.warning }]}>
+                {isSyncing ? 'Syncing...' : 'Not synced'}
+              </Text>
+            )}
+            <Button
+              type="clear"
+              icon={
+                <MaterialIcons
+                  name="close"
+                  size={24}
+                  color={theme.colors.grey3}
+                />
+              }
+              onPress={onClose}
+            />
+          </View>
         </View>
 
         <View style={styles.waveformContainer}>
@@ -111,7 +349,7 @@ export function RecordingInterface({
                   />
                 }
                 buttonStyle={styles.secondaryButton}
-                onPress={onDeleteRecording}
+                onPress={handleDeleteRecording}
               />
               <Button
                 type="clear"
@@ -128,7 +366,7 @@ export function RecordingInterface({
                     backgroundColor: `${theme.colors.primary}15`,
                   },
                 ]}
-                onPress={isPlaying ? onStopPlayback : onStartPlayback}
+                onPress={isPlaying ? handleStopPlayback : handleStartPlayback}
               />
               <Button
                 type="clear"
@@ -140,7 +378,7 @@ export function RecordingInterface({
                   />
                 }
                 buttonStyle={styles.secondaryButton}
-                onPress={onStartRecording}
+                onPress={handleStartRecording}
               />
             </>
           ) : (
@@ -161,7 +399,7 @@ export function RecordingInterface({
                     : `${theme.colors.primary}15`,
                 },
               ]}
-              onPress={isRecording ? onStopRecording : onStartRecording}
+              onPress={isRecording ? handleStopRecording : handleStartRecording}
             />
           )}
         </View>
@@ -180,8 +418,8 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 16,
-    height: 230, // Increased from 180 to 220 to ensure buttons are visible above navbar
-    paddingBottom: 32, // Added extra padding at the bottom to lift content above navbar
+    height: 230,
+    paddingBottom: 32,
     ...Platform.select({
       web: {
         boxShadow: '0 -2px 4px -1px rgba(65, 57, 57, 0.06)',
@@ -207,9 +445,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  syncStatus: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   waveformContainer: {
     width: '100%',
