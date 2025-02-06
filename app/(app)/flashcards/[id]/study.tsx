@@ -643,7 +643,7 @@ export default function StudyScreen() {
                   color={theme.colors.grey5}
                 />
               }
-              onPress={() => router.push(`/flashcards/${id}/recordings`)}
+              onPress={() => router.push(`/flashcards/${currentCard.id}/recordings`)}
             />
             <Button
               type="clear"
@@ -885,6 +885,8 @@ export default function StudyScreen() {
           setIsPlaying={setIsPlaying}
           setPlaybackProgress={setPlaybackProgress}
           uploadedRecording={uploadedRecording}
+          setHasRecording={setHasRecording}
+          setUploadedRecording={setUploadedRecording}
         />
       </Container>
     </SafeAreaView>

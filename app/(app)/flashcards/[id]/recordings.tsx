@@ -1,10 +1,11 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
+import { useFocusEffect } from '@react-navigation/native';
 import { Container } from '../../../../components/layout/Container';
 import { getCardRecordings, deleteRecording } from '../../../../lib/api/audio';
 import type { Recording } from '../../../../types/audio';
@@ -13,6 +14,7 @@ import Toast from 'react-native-toast-message';
 export default function RecordingsScreen() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
   const sound = useRef<Audio.Sound>();
   
@@ -20,21 +22,24 @@ export default function RecordingsScreen() {
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
 
-  useEffect(() => {
-    loadRecordings();
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (sound.current) {
-        sound.current.unloadAsync();
-      }
-    };
-  }, []);
+  // Load recordings when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      loadRecordings();
+      return () => {
+        if (sound.current) {
+          sound.current.unloadAsync();
+        }
+      };
+    }, [id])
+  );
 
   const loadRecordings = async () => {
     try {
+      console.log('Loading recordings for card:', id);
+      setLoading(true);
       const data = await getCardRecordings(id as string);
+      console.log('Loaded recordings:', data);
       setRecordings(data);
     } catch (error) {
       console.error('Error loading recordings:', error);
@@ -121,6 +126,25 @@ export default function RecordingsScreen() {
     const remainingSeconds = seconds % 60;
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
+
+  const onRefresh = useCallback(async () => {
+    console.log('Refreshing recordings for card:', id);
+    setRefreshing(true);
+    try {
+      const data = await getCardRecordings(id as string);
+      console.log('Refreshed recordings:', data);
+      setRecordings(data);
+    } catch (error) {
+      console.error('Error refreshing recordings:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to refresh recordings',
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  }, [id]);
 
   const renderItem = ({ item }: { item: Recording }) => {
     const isPlaying = currentlyPlaying === item.id;
@@ -209,6 +233,8 @@ export default function RecordingsScreen() {
             renderItem={renderItem}
             keyExtractor={item => item.id}
             contentContainerStyle={styles.list}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
           />
         )}
       </Container>

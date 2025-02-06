@@ -45,7 +45,7 @@ export async function syncRecordings(): Promise<void> {
         });
 
         // Update local record with sync status and remote URL
-        await updateRecordingAfterSync(recording.id, uploaded.audio_url);
+        await updateRecordingAfterSync(recording.id, uploaded.audio_url, uploaded.id);
 
         console.log(`Synced recording ${recording.id}`);
       } catch (error) {

@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { generateRecordingPath, saveRecordingFile, getRecordingUri, deleteRecordingFile } from '../../lib/fs/recordings';
 import { saveLocalRecording, deleteLocalRecording } from '../../lib/db';
 import { syncRecordings } from '../../lib/sync/recordings';
+import { getCardRecordings } from '../../lib/api/audio';
 import type { LocalRecording, Recording } from '../../types/audio';
 import Toast from 'react-native-toast-message';
 import { WaveformVisualizer } from './WaveformVisualizer';
@@ -29,6 +30,8 @@ interface Props {
   setIsPlaying: (playing: boolean) => void;
   setPlaybackProgress: (progress: number) => void;
   uploadedRecording?: Recording | null;
+  setHasRecording: (hasRecording: boolean) => void;
+  setUploadedRecording: React.Dispatch<React.SetStateAction<Recording | null>>;
 }
 
 async function configureAudioSession() {
@@ -62,6 +65,8 @@ export function RecordingInterface({
   setIsPlaying,
   setPlaybackProgress,
   uploadedRecording,
+  setHasRecording,
+  setUploadedRecording,
 }: Props) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -70,6 +75,7 @@ export function RecordingInterface({
   const [isSyncing, setIsSyncing] = useState(false);
   const sound = useRef<Audio.Sound>();
   const slideAnim = useRef(new Animated.Value(0)).current;
+  const [isRendered, setIsRendered] = useState(false);
 
   // Clean up on unmount
   useEffect(() => {
@@ -134,12 +140,21 @@ export function RecordingInterface({
       try {
         setIsSyncing(true);
         await syncRecordings();
+        
+        // After successful sync, reload the recording from the server
+        const recordings = await getCardRecordings(cardId);
+        const latestRecording = recordings[0]; // Get the most recent recording
+        if (latestRecording) {
+          setUploadedRecording(latestRecording);
+        }
       } catch (error) {
         console.error('Error syncing after recording:', error);
+        // Even if sync fails, we still have the local recording
       } finally {
         setIsSyncing(false);
       }
 
+      setHasRecording(true);
       Toast.show({
         type: 'success',
         text1: 'Success',
@@ -267,12 +282,20 @@ export function RecordingInterface({
   };
 
   useEffect(() => {
+    if (isVisible) {
+      setIsRendered(true);
+    }
+    
     Animated.spring(slideAnim, {
       toValue: isVisible ? 1 : 0,
       friction: 8,
       tension: 10,
       useNativeDriver: true,
-    }).start();
+    }).start(() => {
+      if (!isVisible) {
+        setIsRendered(false);
+      }
+    });
   }, [isVisible, slideAnim]);
 
   const translateY = slideAnim.interpolate({
@@ -287,7 +310,7 @@ export function RecordingInterface({
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  if (!isVisible) return null;
+  if (!isRendered && !isVisible) return null;
 
   return (
     <Animated.View
@@ -298,6 +321,7 @@ export function RecordingInterface({
           borderTopColor: theme.colors.grey2,
           transform: [{ translateY }],
           opacity: slideAnim,
+          pointerEvents: isVisible ? 'auto' : 'none',
         },
       ]}
     >

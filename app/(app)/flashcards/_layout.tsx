@@ -9,6 +9,7 @@ export default function FlashcardsLayout() {
       <Stack.Screen name="[id]/study" />
       <Stack.Screen name="[id]/edit" />
       <Stack.Screen name="[id]/cards/create" />
+      <Stack.Screen name="[id]/recordings" />
     </Stack>
   );
 } 

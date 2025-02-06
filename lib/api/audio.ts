@@ -410,6 +410,7 @@ export async function uploadRecording(cardId: string, file: RecordingFile): Prom
 }
 
 export async function getCardRecordings(cardId: string): Promise<Recording[]> {
+  console.log('Fetching recordings from API for card:', cardId);
   const { data, error } = await supabase
     .rpc('get_card_recordings', {
       p_card_id: cardId,
@@ -420,6 +421,7 @@ export async function getCardRecordings(cardId: string): Promise<Recording[]> {
     throw new Error('Failed to fetch recordings');
   }
 
+  console.log('API response:', data);
   return data || [];
 }
 
