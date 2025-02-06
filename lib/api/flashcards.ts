@@ -522,4 +522,102 @@ export async function getDailyActivity(daysBack: number = 30): Promise<DailyActi
     console.error('Error in getDailyActivity:', error);
     throw error;
   }
+}
+
+export interface RecentActivity {
+  id: string;
+  deck_id: string;
+  deck_name: string;
+  cards_reviewed: number;
+  accuracy: number;
+  study_minutes: number;
+  created_at: string;
+}
+
+export async function getRecentActivity(limit: number = 5): Promise<RecentActivity[]> {
+  try {
+    // First get study sessions with deck info
+    const { data: sessions, error: sessionsError } = await supabase
+      .from('study_sessions')
+      .select(`
+        id,
+        deck_id,
+        cards_reviewed,
+        duration,
+        created_at,
+        ended_at,
+        decks:decks (
+          name
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (sessionsError) {
+      console.error('Error getting study sessions:', sessionsError);
+      throw sessionsError;
+    }
+
+    // Then get accuracy for each session
+    const sessionsWithAccuracy = await Promise.all((sessions || []).map(async (session: any) => {
+      const { data: reviews, error: reviewsError } = await supabase
+        .from('card_reviews')
+        .select('rating')
+        .eq('deck_id', session.deck_id)
+        .gte('created_at', session.created_at)
+        .lte('created_at', session.ended_at || session.created_at);
+
+      if (reviewsError) {
+        console.error('Error getting reviews:', reviewsError);
+        return {
+          ...session,
+          accuracy: 0,
+        };
+      }
+
+      const goodReviews = (reviews || []).filter(r => r.rating >= 3).length;
+      const accuracy = reviews?.length 
+        ? Math.round((goodReviews / reviews.length) * 100)
+        : 0;
+
+      return {
+        ...session,
+        accuracy,
+      };
+    }));
+
+    return sessionsWithAccuracy.map(session => {
+      // Calculate study minutes based on created_at and ended_at if duration is not available
+      let studyMinutes = 0;
+      if (session.duration) {
+        // Parse PostgreSQL interval string (e.g., "1 hour 30 minutes" or "45 minutes")
+        const durationStr = session.duration.toString();
+        if (durationStr.includes('hour')) {
+          const hours = parseInt(durationStr.split('hour')[0]) || 0;
+          const minutes = parseInt(durationStr.split('minutes')[0].split('hour')[1]) || 0;
+          studyMinutes = hours * 60 + minutes;
+        } else {
+          studyMinutes = parseInt(durationStr.split('minutes')[0]) || 0;
+        }
+      } else if (session.ended_at) {
+        // Calculate minutes between created_at and ended_at
+        const start = new Date(session.created_at);
+        const end = new Date(session.ended_at);
+        studyMinutes = Math.round((end.getTime() - start.getTime()) / (1000 * 60));
+      }
+
+      return {
+        id: session.id,
+        deck_id: session.deck_id,
+        deck_name: session.decks?.name || 'Unknown Deck',
+        cards_reviewed: session.cards_reviewed || 0,
+        accuracy: session.accuracy,
+        study_minutes: studyMinutes,
+        created_at: session.created_at,
+      };
+    });
+  } catch (error) {
+    console.error('Error in getRecentActivity:', error);
+    throw error;
+  }
 } 

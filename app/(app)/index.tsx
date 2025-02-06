@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, ScrollView, StyleSheet, Platform, Pressable } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, ScrollView, StyleSheet, Platform, Pressable, RefreshControl } from 'react-native';
 import { Text, useTheme } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Container } from '../../components/layout/Container';
@@ -7,12 +7,80 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../../contexts/AuthContext';
+import { getUserStatistics, getRecentActivity } from '../../lib/api/flashcards';
+import type { UserStatistics, RecentActivity } from '../../lib/api/flashcards';
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
   const isWeb = Platform.OS === 'web';
+  const [stats, setStats] = useState<UserStatistics | null>(null);
+  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = useCallback(async () => {
+    try {
+      const [statsData, activityData] = await Promise.all([
+        getUserStatistics(),
+        getRecentActivity(5),
+      ]);
+      setStats(statsData);
+      setRecentActivity(activityData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+    }
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadData]);
+
+  function formatStudyTime(minutes: number): string {
+    if (minutes < 60) {
+      return `${minutes}m`;
+    }
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+
+  function formatTimeAgo(date: string): string {
+    const now = new Date();
+    const then = new Date(date);
+    const diffInSeconds = Math.floor((now.getTime() - then.getTime()) / 1000);
+    
+    if (diffInSeconds < 60) {
+      return 'just now';
+    }
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+      return `${diffInMinutes}m ago`;
+    }
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+      return `${diffInHours}h ago`;
+    }
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays === 1) {
+      return 'yesterday';
+    }
+    
+    return `${diffInDays}d ago`;
+  }
 
   // Placeholder data (replace with real data later)
   const studyStreak = 5;
@@ -23,20 +91,21 @@ export default function HomeScreen() {
     { id: '2', name: 'Common Verbs', progress: 40, lastStudied: '1d ago' },
   ];
 
-  // Example statistics data (replace with real data later)
-  const stats = {
-    streak: 7,
-    cardsLearned: 124,
-    minutesListened: 45,
-    accuracy: 92,
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[theme.colors.primary]} // Android
+              tintColor={theme.colors.primary} // iOS
+              progressBackgroundColor={theme.colors.grey0} // Android
+            />
+          }
         >
           <View style={styles.welcomeSection}>
             <View style={styles.welcomeHeader}>
@@ -48,21 +117,23 @@ export default function HomeScreen() {
                   {user?.email}
                 </Text>
               </View>
-              <View 
-                style={[
-                  styles.streakContainer,
-                  { backgroundColor: theme.colors.warning + '20' }
-                ]}
-              >
-                <MaterialIcons 
-                  name="local-fire-department" 
-                  size={20} 
-                  color={theme.colors.warning}
-                />
-                <Text style={[styles.streakText, { color: theme.colors.warning }]}>
-                  {stats.streak} Day Streak
-                </Text>
-              </View>
+              {stats && (
+                <View 
+                  style={[
+                    styles.streakContainer,
+                    { backgroundColor: theme.colors.warning + '20' }
+                  ]}
+                >
+                  <MaterialIcons 
+                    name="local-fire-department" 
+                    size={20} 
+                    color={theme.colors.warning}
+                  />
+                  <Text style={[styles.streakText, { color: theme.colors.warning }]}>
+                    {stats.day_streak} Day Streak
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
 
@@ -117,7 +188,7 @@ export default function HomeScreen() {
                   color={theme.colors.primary}
                 />
                 <Text style={[styles.statValue, { color: theme.colors.primary }]}>
-                  {stats.cardsLearned}
+                  {stats?.total_cards_learned ?? 0}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
                   Cards Learned
@@ -131,15 +202,15 @@ export default function HomeScreen() {
                 ]}
               >
                 <MaterialIcons
-                  name="headset"
+                  name="schedule"
                   size={24}
                   color={theme.colors.success}
                 />
                 <Text style={[styles.statValue, { color: theme.colors.success }]}>
-                  {stats.minutesListened}m
+                  {stats ? formatStudyTime(stats.study_time_minutes) : '0m'}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
-                  Audio Time
+                  Study Time
                 </Text>
               </View>
 
@@ -155,7 +226,7 @@ export default function HomeScreen() {
                   color={theme.colors.warning}
                 />
                 <Text style={[styles.statValue, { color: theme.colors.warning }]}>
-                  {stats.accuracy}%
+                  {stats?.accuracy ?? 0}%
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
                   Accuracy
@@ -165,36 +236,79 @@ export default function HomeScreen() {
           </View>
 
           {/* Daily Overview Card */}
-          <View style={[styles.section, { backgroundColor: theme.colors.grey0 }]}>
-            <View style={styles.welcomeHeader}>
-              <View>
-                <Text style={[styles.greeting, { color: theme.colors.grey5 }]}>
-                  Good morning
-                </Text>
-                <Text style={[styles.subtitle, { color: theme.colors.grey3 }]}>
-                  Keep up the great work!
-                </Text>
-              </View>
-              <View style={styles.streakContainer}>
-                <MaterialIcons name="local-fire-department" size={24} color="#EA580C" />
-                <Text style={[styles.streakText, { color: theme.colors.grey5 }]}>
-                  {studyStreak} day streak
+          <View 
+            style={[
+              styles.section, 
+              { 
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey1,
+              }
+            ]}
+          >
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <MaterialIcons
+                  name="today"
+                  size={24}
+                  color={theme.colors.grey5}
+                />
+                <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
+                  Today's Overview
                 </Text>
               </View>
             </View>
 
             <View style={styles.statsGrid}>
-              <View style={[styles.statCard, { backgroundColor: theme.colors.grey1 }]}>
-                <MaterialIcons name="trending-up" size={24} color="#4F46E5" />
-                <Text style={[styles.statValue, { color: theme.colors.grey5 }]}>{dailyGoal}%</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>Daily Goal</Text>
+              <View 
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.primary + '10' }
+                ]}
+              >
+                <MaterialIcons
+                  name="schedule"
+                  size={24}
+                  color={theme.colors.primary}
+                />
+                <Text style={[styles.statValue, { color: theme.colors.primary }]}>
+                  {cardsToReview}
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
+                  Cards Due
+                </Text>
               </View>
-              <View style={[styles.statCard, { backgroundColor: theme.colors.grey1 }]}>
-                <MaterialIcons name="schedule" size={24} color="#059669" />
-                <Text style={[styles.statValue, { color: theme.colors.grey5 }]}>{cardsToReview}</Text>
-                <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>Cards Due</Text>
+
+              <View 
+                style={[
+                  styles.statCard,
+                  { backgroundColor: theme.colors.success + '10' }
+                ]}
+              >
+                <MaterialIcons
+                  name="trending-up"
+                  size={24}
+                  color={theme.colors.success}
+                />
+                <Text style={[styles.statValue, { color: theme.colors.success }]}>
+                  {stats?.accuracy ?? 0}%
+                </Text>
+                <Text style={[styles.statLabel, { color: theme.colors.grey4 }]}>
+                  Today's Accuracy
+                </Text>
               </View>
             </View>
+
+            {stats && stats.total_cards_learned > 0 ? (
+              <Text style={[styles.overviewMessage, { color: theme.colors.grey4 }]}>
+                {stats.day_streak > 0
+                  ? `Keep up your ${stats.day_streak} day streak! You're making great progress.`
+                  : "Start reviewing to build your streak!"}
+              </Text>
+            ) : (
+              <Text style={[styles.overviewMessage, { color: theme.colors.grey4 }]}>
+                Welcome to LinguaFlow! Start by creating your first deck or reviewing cards.
+              </Text>
+            )}
           </View>
 
           {/* Quick Actions */}
@@ -246,71 +360,66 @@ export default function HomeScreen() {
               Recent Activity
             </Text>
             <View style={styles.recentDecks}>
-              {recentDecks.map((deck) => (
-                <Pressable
-                  key={deck.id}
-                  style={({ pressed }) => [
-                    styles.recentDeck,
-                    {
-                      backgroundColor: theme.colors.grey1,
-                      opacity: pressed ? 0.8 : 1,
-                    },
-                  ]}
-                  onPress={() => router.push(`/flashcards/${deck.id}`)}
-                >
-                  <View style={styles.recentDeckInfo}>
-                    <Text style={[styles.recentDeckName, { color: theme.colors.grey5 }]}>
-                      {deck.name}
-                    </Text>
-                    <Text style={[styles.recentDeckTime, { color: theme.colors.grey3 }]}>
-                      {deck.lastStudied}
-                    </Text>
-                  </View>
-                  <View style={styles.recentDeckProgress}>
-                    <View 
-                      style={[
-                        styles.progressBar,
-                        { backgroundColor: theme.colors.grey2 }
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.progressFill,
-                          {
-                            width: `${deck.progress}%`,
-                            backgroundColor: '#4F46E5',
-                          },
-                        ]}
-                      />
+              {recentActivity.length > 0 ? (
+                recentActivity.map((activity) => (
+                  <Pressable
+                    key={activity.id}
+                    style={({ pressed }) => [
+                      styles.recentDeck,
+                      {
+                        backgroundColor: theme.colors.grey1,
+                        opacity: pressed ? 0.8 : 1,
+                      },
+                    ]}
+                    onPress={() => router.push(`/flashcards/${activity.deck_id}`)}
+                  >
+                    <View style={styles.recentDeckInfo}>
+                      <Text style={[styles.recentDeckName, { color: theme.colors.grey5 }]}>
+                        {activity.deck_name}
+                      </Text>
+                      <Text style={[styles.recentDeckTime, { color: theme.colors.grey3 }]}>
+                        {formatTimeAgo(activity.created_at)}
+                      </Text>
                     </View>
-                    <Text style={[styles.progressText, { color: theme.colors.grey4 }]}>
-                      {deck.progress}%
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
-          </View>
-
-          {/* Study Recommendations */}
-          <View style={[styles.section, { backgroundColor: theme.colors.grey0 }]}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
-              Recommended
-            </Text>
-            <View style={[styles.recommendationCard, { backgroundColor: theme.colors.grey1 }]}>
-              <MaterialIcons name="lightbulb" size={24} color="#B45309" />
-              <Text style={[styles.recommendationText, { color: theme.colors.grey5 }]}>
-                Practice speaking with audio cards to improve pronunciation
-              </Text>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.recommendationButton,
-                  { opacity: pressed ? 0.8 : 1 }
-                ]}
-                onPress={() => router.push('/audio')}
-              >
-                <Text style={styles.recommendationButtonText}>Try Now</Text>
-              </Pressable>
+                    <View style={styles.activityStats}>
+                      <View style={styles.activityStat}>
+                        <MaterialIcons name="school" size={16} color={theme.colors.primary} />
+                        <Text style={[styles.activityStatText, { color: theme.colors.grey4 }]}>
+                          {activity.cards_reviewed} cards
+                        </Text>
+                      </View>
+                      <View style={styles.activityStat}>
+                        <MaterialIcons name="schedule" size={16} color={theme.colors.success} />
+                        <Text style={[styles.activityStatText, { color: theme.colors.grey4 }]}>
+                          {formatStudyTime(activity.study_minutes)}
+                        </Text>
+                      </View>
+                      <View style={styles.activityStat}>
+                        <MaterialIcons name="trending-up" size={16} color={theme.colors.warning} />
+                        <Text style={[styles.activityStatText, { color: theme.colors.grey4 }]}>
+                          {activity.accuracy}% accuracy
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))
+              ) : (
+                <View 
+                  style={[
+                    styles.emptyStateContainer,
+                    { backgroundColor: theme.colors.grey1 }
+                  ]}
+                >
+                  <MaterialIcons
+                    name="history"
+                    size={24}
+                    color={theme.colors.grey3}
+                  />
+                  <Text style={[styles.emptyStateText, { color: theme.colors.grey4 }]}>
+                    No recent activity yet
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
         </ScrollView>
@@ -484,46 +593,42 @@ const styles = StyleSheet.create({
   recentDeckTime: {
     fontSize: 14,
   },
-  recentDeckProgress: {
+  activityStats: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+  },
+  activityStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  activityStatText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  emptyStateContainer: {
+    padding: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    gap: 12,
+  },
+  emptyStateText: {
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  sectionHeader: {
+    marginBottom: 20,
+  },
+  sectionTitleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
   },
-  progressBar: {
-    flex: 1,
-    height: 4,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '500',
-    minWidth: 40,
-  },
-  recommendationCard: {
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    gap: 16,
-  },
-  recommendationText: {
-    fontSize: 16,
-    fontWeight: '500',
-    textAlign: 'center',
-  },
-  recommendationButton: {
-    backgroundColor: '#B45309',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  recommendationButtonText: {
-    color: 'white',
+  overviewMessage: {
     fontSize: 15,
-    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: '500',
   },
 }); 
