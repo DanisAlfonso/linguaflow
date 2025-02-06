@@ -498,4 +498,28 @@ export async function getResponseDistribution(daysBack: number = 30): Promise<Re
     console.error('Error in getResponseDistribution:', error);
     throw error;
   }
+}
+
+export interface DailyActivity {
+  date: string;
+  cards_reviewed: number;
+  study_minutes: number;
+  accuracy: number;
+}
+
+export async function getDailyActivity(daysBack: number = 30): Promise<DailyActivity[]> {
+  try {
+    const { data, error } = await supabase
+      .rpc('get_user_daily_activity', { p_days_back: daysBack });
+
+    if (error) {
+      console.error('Error getting daily activity:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('Error in getDailyActivity:', error);
+    throw error;
+  }
 } 

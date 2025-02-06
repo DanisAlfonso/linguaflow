@@ -3,14 +3,38 @@ declare module 'victory-native' {
 
   interface VictoryStyleInterface {
     data?: {
-      fill?: string;
+      fill?: string | ((props: any) => string);
       width?: number;
       [key: string]: any;
     };
     labels?: {
+      fill?: string;
+      fontSize?: number;
       [key: string]: any;
     };
     parent?: ViewStyle;
+  }
+
+  interface VictoryTooltipProps {
+    flyoutStyle?: {
+      stroke?: string;
+      fill?: string;
+      strokeWidth?: number;
+      [key: string]: any;
+    };
+    cornerRadius?: number;
+    pointerLength?: number;
+    flyoutPadding?: {
+      top?: number;
+      bottom?: number;
+      left?: number;
+      right?: number;
+    };
+    style?: {
+      fill?: string;
+      fontSize?: number;
+      [key: string]: any;
+    };
   }
 
   interface VictoryAxisCommonProps {
@@ -38,7 +62,7 @@ declare module 'victory-native' {
       };
       [key: string]: any;
     };
-    tickFormat?: (value: number) => string;
+    tickFormat?: ((value: number) => string) | string[];
     tickValues?: number[];
     dependentAxis?: boolean;
   }
@@ -77,6 +101,15 @@ declare module 'victory-native' {
     };
   }
 
+  interface VictoryScatterProps {
+    data?: any[];
+    x?: string;
+    y?: string;
+    size?: number;
+    style?: VictoryStyleInterface;
+    labelComponent?: React.ReactElement;
+  }
+
   export const VictoryTheme: {
     material: any;
   };
@@ -84,4 +117,6 @@ declare module 'victory-native' {
   export class VictoryChart extends React.Component<VictoryChartProps> {}
   export class VictoryAxis extends React.Component<VictoryAxisCommonProps> {}
   export class VictoryBar extends React.Component<VictoryBarProps> {}
+  export class VictoryScatter extends React.Component<VictoryScatterProps> {}
+  export class VictoryTooltip extends React.Component<VictoryTooltipProps> {}
 } 

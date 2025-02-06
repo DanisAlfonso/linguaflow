@@ -3,10 +3,10 @@ import { View, StyleSheet, Platform, ScrollView, ActivityIndicator, RefreshContr
 import { Text, useTheme } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { VictoryBar, VictoryChart, VictoryAxis } from 'victory-native';
+import { VictoryBar, VictoryChart, VictoryAxis, VictoryScatter, VictoryTooltip } from 'victory-native';
 import { Container } from '../components/layout/Container';
-import { getUserStatistics, getHourlyActivity, getResponseDistribution } from '../lib/api/flashcards';
-import type { UserStatistics, HourlyActivity, ResponseDistribution } from '../lib/api/flashcards';
+import { getUserStatistics, getHourlyActivity, getResponseDistribution, getDailyActivity } from '../lib/api/flashcards';
+import type { UserStatistics, HourlyActivity, ResponseDistribution, DailyActivity } from '../lib/api/flashcards';
 import Toast from 'react-native-toast-message';
 
 export default function StatisticsScreen() {
@@ -17,6 +17,7 @@ export default function StatisticsScreen() {
   const [stats, setStats] = useState<UserStatistics | null>(null);
   const [hourlyActivity, setHourlyActivity] = useState<HourlyActivity[]>([]);
   const [responseDistribution, setResponseDistribution] = useState<ResponseDistribution[]>([]);
+  const [dailyActivity, setDailyActivity] = useState<DailyActivity[]>([]);
 
   // Mock data for testing the chart
   const mockHourlyActivity = [
@@ -40,16 +41,55 @@ export default function StatisticsScreen() {
     { hour_of_day: 23, cards_reviewed: 15 },
   ];
 
+  // Add mock data for response distribution
+  const mockResponseDistribution = [
+    { response_bucket: '< 1s', count: 120 },
+    { response_bucket: '1-2s', count: 250 },
+    { response_bucket: '2-3s', count: 180 },
+    { response_bucket: '3-5s', count: 90 },
+    { response_bucket: '5s+', count: 45 },
+  ];
+
+  // Mock data for daily activity heatmap (last 30 days)
+  const mockDailyActivity = Array.from({ length: 30 }, (_, index) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (29 - index)); // Start from 30 days ago
+    
+    // Generate realistic study patterns
+    let intensity = 0;
+    const dayOfWeek = date.getDay();
+    
+    // More activity on weekdays
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      intensity = Math.floor(Math.random() * 50) + 30; // 30-80 cards on weekdays
+    } else {
+      intensity = Math.floor(Math.random() * 30) + 10; // 10-40 cards on weekends
+    }
+    
+    // Occasionally add some zero-activity days
+    if (Math.random() < 0.1) {
+      intensity = 0;
+    }
+    
+    return {
+      date: date.toISOString().split('T')[0],
+      cards_reviewed: intensity,
+      day_of_week: dayOfWeek,
+    };
+  });
+
   const loadStats = useCallback(async () => {
     try {
-      const [statsData, responseData] = await Promise.all([
+      const [statsData, hourlyData, responseData, dailyData] = await Promise.all([
         getUserStatistics(),
+        getHourlyActivity(),
         getResponseDistribution(),
+        getDailyActivity(),
       ]);
       setStats(statsData);
-      // Use mock data instead of API call
-      setHourlyActivity(mockHourlyActivity);
+      setHourlyActivity(hourlyData);
       setResponseDistribution(responseData);
+      setDailyActivity(dailyData);
     } catch (error) {
       console.error('Error loading statistics:', error);
       Toast.show({
@@ -76,6 +116,25 @@ export default function StatisticsScreen() {
     }
     initialLoad();
   }, [loadStats]);
+
+  // Helper function to get color based on intensity
+  const getIntensityColor = useCallback((intensity: number) => {
+    if (intensity === 0) return theme.colors.grey2;
+    
+    const maxIntensity = Math.max(...dailyActivity.map(d => d.cards_reviewed));
+    const normalizedIntensity = intensity / maxIntensity;
+    
+    // Use success color with varying opacity
+    return theme.colors.success + Math.round(normalizedIntensity * 255).toString(16).padStart(2, '0');
+  }, [theme.colors.success, theme.colors.grey2, dailyActivity]);
+
+  // Helper function to check if chart has data
+  const hasData = useCallback((data: any[]) => {
+    return data.length > 0 && data.some(item => {
+      const value = 'cards_reviewed' in item ? item.cards_reviewed : item.count;
+      return value > 0;
+    });
+  }, []);
 
   function formatStudyTime(minutes: number): string {
     if (minutes < 60) {
@@ -382,99 +441,210 @@ export default function StatisticsScreen() {
             </View>
 
             {/* Hourly Activity Chart Section */}
-            <View 
-              style={[
-                styles.section,
-                { 
-                  backgroundColor: theme.colors.grey0,
-                  borderColor: theme.colors.grey1,
-                }
-              ]}
-            >
-              <View style={styles.sectionHeader}>
-                <View style={styles.sectionTitleContainer}>
-                  <MaterialIcons
-                    name="bar-chart"
-                    size={24}
-                    color={theme.colors.grey5}
-                  />
-                  <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
-                    Hourly Activity
+            {hasData(hourlyActivity) ? (
+              <View 
+                style={[
+                  styles.section,
+                  { 
+                    backgroundColor: theme.colors.grey0,
+                    borderColor: theme.colors.grey1,
+                  }
+                ]}
+              >
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <MaterialIcons
+                      name="bar-chart"
+                      size={24}
+                      color={theme.colors.grey5}
+                    />
+                    <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
+                      Hourly Activity
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.chartWrapper}>
+                  <VictoryChart
+                    padding={{ top: 40, bottom: 50, left: 50, right: 20 }}
+                    domainPadding={{ x: 10 }}
+                    domain={{ x: [0, 23] }}
+                    height={220}
+                  >
+                    <VictoryAxis
+                      tickValues={Array.from({ length: 8 }, (_, i) => i * 3)} // Show every 3 hours
+                      tickFormat={(hour: number) => {
+                        if (hour === 0) return 'Midnight';
+                        if (hour === 12) return 'Noon';
+                        if (hour < 12) return `${hour}AM`;
+                        return `${hour-12}PM`;
+                      }}
+                      style={{
+                        axis: { stroke: theme.colors.grey3 },
+                        ticks: { stroke: theme.colors.grey3 },
+                        tickLabels: { 
+                          fill: theme.colors.grey3,
+                          fontSize: 10,
+                          angle: -45,
+                          textAnchor: 'end',
+                          padding: 8,
+                        },
+                        grid: { stroke: 'transparent' },
+                      }}
+                    />
+                    <VictoryAxis
+                      dependentAxis
+                      tickFormat={(cards: number) => Math.round(cards).toString()}
+                      style={{
+                        axis: { stroke: theme.colors.grey3 },
+                        ticks: { stroke: theme.colors.grey3 },
+                        tickLabels: { 
+                          fill: theme.colors.grey3,
+                          fontSize: 11,
+                        },
+                        grid: { 
+                          stroke: theme.colors.grey2,
+                          strokeWidth: 1,
+                        },
+                      }}
+                    />
+                    <VictoryBar
+                      data={Array.from({ length: 24 }, (_, hour) => {
+                        const activityData = hourlyActivity.find(h => h.hour_of_day === hour);
+                        return {
+                          hour,
+                          cards: activityData ? activityData.cards_reviewed : 0,
+                        };
+                      })}
+                      x="hour"
+                      y="cards"
+                      barRatio={0.7}
+                      style={{
+                        data: {
+                          fill: theme.colors.success,
+                        },
+                      }}
+                      animate={{
+                        duration: 200,
+                        onLoad: { duration: 200 },
+                      }}
+                    />
+                  </VictoryChart>
+                  <Text style={[styles.chartSubtitle, { color: theme.colors.grey3 }]}>
+                    Average cards reviewed per hour • Last 30 days
                   </Text>
                 </View>
               </View>
+            ) : null}
 
-              <View style={styles.chartWrapper}>
-                <VictoryChart
-                  padding={{ top: 40, bottom: 50, left: 50, right: 20 }}
-                  domainPadding={{ x: 10 }}
-                  domain={{ x: [0, 23] }}
-                  height={220}
-                >
-                  <VictoryAxis
-                    tickValues={Array.from({ length: 8 }, (_, i) => i * 3)} // Show every 3 hours
-                    tickFormat={(hour: number) => {
-                      if (hour === 0) return 'Midnight';
-                      if (hour === 12) return 'Noon';
-                      if (hour < 12) return `${hour}AM`;
-                      return `${hour-12}PM`;
-                    }}
-                    style={{
-                      axis: { stroke: theme.colors.grey3 },
-                      ticks: { stroke: theme.colors.grey3 },
-                      tickLabels: { 
-                        fill: theme.colors.grey3,
-                        fontSize: 10,
-                        angle: -45,
-                        textAnchor: 'end',
-                        padding: 8,
-                      },
-                      grid: { stroke: 'transparent' },
-                    }}
-                  />
-                  <VictoryAxis
-                    dependentAxis
-                    tickFormat={(cards: number) => Math.round(cards).toString()}
-                    style={{
-                      axis: { stroke: theme.colors.grey3 },
-                      ticks: { stroke: theme.colors.grey3 },
-                      tickLabels: { 
-                        fill: theme.colors.grey3,
-                        fontSize: 11,
-                      },
-                      grid: { 
-                        stroke: theme.colors.grey2,
-                        strokeWidth: 1,
-                      },
-                    }}
-                  />
-                  <VictoryBar
-                    data={Array.from({ length: 24 }, (_, hour) => {
-                      const activityData = hourlyActivity.find(h => h.hour_of_day === hour);
-                      return {
-                        hour,
-                        cards: activityData ? activityData.cards_reviewed : 0,
-                      };
-                    })}
-                    x="hour"
-                    y="cards"
-                    barRatio={0.7}
-                    style={{
-                      data: {
-                        fill: theme.colors.success,
-                      },
-                    }}
-                    animate={{
-                      duration: 200,
-                      onLoad: { duration: 200 },
-                    }}
-                  />
-                </VictoryChart>
-                <Text style={[styles.chartSubtitle, { color: theme.colors.grey3 }]}>
-                  Average cards reviewed per hour • Last 30 days
+            {/* Response Distribution Chart Section */}
+            {hasData(responseDistribution) ? (
+              <View 
+                style={[
+                  styles.section,
+                  { 
+                    backgroundColor: theme.colors.grey0,
+                    borderColor: theme.colors.grey1,
+                  }
+                ]}
+              >
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionTitleContainer}>
+                    <MaterialIcons
+                      name="timer"
+                      size={24}
+                      color={theme.colors.grey5}
+                    />
+                    <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
+                      Response Time Distribution
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.chartWrapper}>
+                  <VictoryChart
+                    padding={{ top: 40, bottom: 50, left: 50, right: 20 }}
+                    domainPadding={{ x: 20 }}
+                    height={220}
+                  >
+                    <VictoryAxis
+                      style={{
+                        axis: { stroke: theme.colors.grey3 },
+                        ticks: { stroke: theme.colors.grey3 },
+                        tickLabels: { 
+                          fill: theme.colors.grey3,
+                          fontSize: 10,
+                          angle: -45,
+                          textAnchor: 'end',
+                          padding: 8,
+                        },
+                        grid: { stroke: 'transparent' },
+                      }}
+                    />
+                    <VictoryAxis
+                      dependentAxis
+                      tickFormat={(count: number) => Math.round(count).toString()}
+                      style={{
+                        axis: { stroke: theme.colors.grey3 },
+                        ticks: { stroke: theme.colors.grey3 },
+                        tickLabels: { 
+                          fill: theme.colors.grey3,
+                          fontSize: 11,
+                        },
+                        grid: { 
+                          stroke: theme.colors.grey2,
+                          strokeWidth: 1,
+                        },
+                      }}
+                    />
+                    <VictoryBar
+                      data={responseDistribution}
+                      x="response_bucket"
+                      y="count"
+                      barRatio={0.7}
+                      style={{
+                        data: {
+                          fill: theme.colors.primary,
+                        },
+                      }}
+                      animate={{
+                        duration: 200,
+                        onLoad: { duration: 200 },
+                      }}
+                    />
+                  </VictoryChart>
+                  <Text style={[styles.chartSubtitle, { color: theme.colors.grey3 }]}>
+                    Distribution of response times • Last 30 days
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            {/* Add an empty state message if no charts are shown */}
+            {!hasData(hourlyActivity) && !hasData(responseDistribution) && (
+              <View 
+                style={[
+                  styles.section,
+                  styles.emptyStateContainer,
+                  { 
+                    backgroundColor: theme.colors.grey0,
+                    borderColor: theme.colors.grey1,
+                  }
+                ]}
+              >
+                <MaterialIcons
+                  name="analytics"
+                  size={48}
+                  color={theme.colors.grey3}
+                />
+                <Text style={[styles.emptyStateTitle, { color: theme.colors.grey5 }]}>
+                  No Activity Yet
+                </Text>
+                <Text style={[styles.emptyStateText, { color: theme.colors.grey3 }]}>
+                  Start studying to see your statistics and progress charts
                 </Text>
               </View>
-            </View>
+            )}
           </>
         ) : (
           <View style={styles.errorContainer}>
@@ -592,5 +762,39 @@ const styles = StyleSheet.create({
   chartSubtitle: {
     fontSize: 12,
     marginTop: 8,
+  },
+  heatmapLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 16,
+    marginTop: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+  },
+  legendText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    minHeight: 200,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  emptyStateText: {
+    fontSize: 14,
+    textAlign: 'center',
   },
 }); 
