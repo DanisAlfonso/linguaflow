@@ -3,6 +3,8 @@ import type { AudioFile, AudioSegment, AudioUploadResponse, CardAudioSegment, Re
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system';
 import { decode as base64Decode } from 'base-64';
+import { getLocalRecordings, deleteLocalRecording } from '../db';
+import { deleteRecordingFile } from '../fs/recordings';
 
 // Convert base64 to Uint8Array
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -458,5 +460,54 @@ export async function deleteRecording(recordingId: string): Promise<void> {
   if (deleteError) {
     console.error('Error deleting recording:', deleteError);
     throw new Error('Failed to delete recording');
+  }
+}
+
+export async function cleanupLocalRecordings(cardId: string): Promise<void> {
+  try {
+    console.log('🧹 Starting cleanup of local recordings for card:', cardId);
+
+    // Get all local recordings for the card
+    const localRecordings = await getLocalRecordings(cardId);
+    console.log('📱 Found local recordings:', localRecordings.length);
+    
+    // Delete each recording file and its database entry
+    for (const recording of localRecordings) {
+      try {
+        console.log(`🗑️ Deleting recording file: ${recording.file_path}`);
+        await deleteRecordingFile(recording.file_path);
+        console.log(`🗑️ Deleting local recording entry: ${recording.id}`);
+        await deleteLocalRecording(recording.id);
+        console.log(`✅ Successfully deleted recording: ${recording.id}`);
+      } catch (error) {
+        console.error(`❌ Error cleaning up recording ${recording.id}:`, error);
+      }
+    }
+
+    // Get all Supabase recordings for the card
+    console.log('🔍 Checking Supabase recordings for card:', cardId);
+    const { data: supabaseRecordings } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('card_id', cardId);
+    
+    console.log('☁️ Found Supabase recordings:', supabaseRecordings?.length || 0);
+
+    // Delete each recording from Supabase storage and database
+    if (supabaseRecordings && supabaseRecordings.length > 0) {
+      for (const recording of supabaseRecordings) {
+        try {
+          console.log(`🗑️ Deleting Supabase recording: ${recording.id}`);
+          await deleteRecording(recording.id);
+          console.log(`✅ Successfully deleted Supabase recording: ${recording.id}`);
+        } catch (error) {
+          console.error(`❌ Error deleting Supabase recording ${recording.id}:`, error);
+        }
+      }
+    }
+
+    console.log('✅ Cleanup completed for card:', cardId);
+  } catch (error) {
+    console.error('❌ Error cleaning up local recordings:', error);
   }
 } 

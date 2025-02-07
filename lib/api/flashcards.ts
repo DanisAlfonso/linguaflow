@@ -2,7 +2,7 @@ import { supabase } from '../supabase';
 import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
 import { createNewCard } from '@/lib/spaced-repetition/fsrs';
-import { getCardAudioSegments, deleteAudioFile } from './audio';
+import { getCardAudioSegments, deleteAudioFile, cleanupLocalRecordings } from './audio';
 
 export async function createDeck(
   data: {
@@ -134,13 +134,44 @@ export async function updateCard(
 }
 
 export async function deleteCard(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('cards')
-    .delete()
-    .eq('id', id);
+  try {
+    console.log('🗑️ Starting deletion process for card:', id);
 
-  if (error) {
-    console.error('Error in deleteCard:', error);
+    // First clean up local recordings
+    console.log('📱 Cleaning up local recordings for card:', id);
+    await cleanupLocalRecordings(id);
+    console.log('✅ Local recordings cleaned up successfully');
+
+    // Get recordings before deletion to verify cleanup
+    const { data: recordings } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('card_id', id);
+    console.log('📊 Found recordings for card:', recordings?.length || 0);
+
+    // Then delete the card from Supabase
+    console.log('🗑️ Deleting card from Supabase...');
+    const { error } = await supabase
+      .from('cards')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('❌ Error in deleteCard:', error);
+      throw error;
+    }
+
+    console.log('✅ Card deleted successfully');
+
+    // Verify recordings deletion
+    const { data: remainingRecordings } = await supabase
+      .from('recordings')
+      .select('*')
+      .eq('card_id', id);
+    console.log('📊 Remaining recordings after deletion:', remainingRecordings?.length || 0);
+
+  } catch (error) {
+    console.error('❌ Error in deleteCard:', error);
     throw error;
   }
 }
@@ -192,13 +223,65 @@ export async function updateDeck(
 }
 
 export async function deleteDeck(id: string): Promise<void> {
-  const { error } = await supabase
-    .from('decks')
-    .delete()
-    .eq('id', id);
+  try {
+    console.log('🗑️ Starting deletion process for deck:', id);
 
-  if (error) {
-    console.error('Error in deleteDeck:', error);
+    // First get all cards in the deck
+    const { data: cards, error: cardsError } = await supabase
+      .from('cards')
+      .select('id')
+      .eq('deck_id', id);
+
+    if (cardsError) {
+      console.error('❌ Error fetching deck cards:', cardsError);
+      throw cardsError;
+    }
+
+    console.log('📊 Found cards in deck:', cards?.length || 0);
+
+    // Clean up recordings for each card
+    if (cards && cards.length > 0) {
+      console.log('🧹 Cleaning up recordings for all cards in deck...');
+      for (const card of cards) {
+        console.log(`📱 Processing card: ${card.id}`);
+        await cleanupLocalRecordings(card.id);
+      }
+      console.log('✅ All card recordings cleaned up');
+    }
+
+    // Delete the deck (this will cascade delete cards and recordings)
+    console.log('🗑️ Deleting deck from Supabase...');
+    const { error } = await supabase
+      .from('decks')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error('❌ Error deleting deck:', error);
+      throw error;
+    }
+
+    console.log('✅ Deck deleted successfully');
+
+    // Verify cleanup
+    const { data: remainingCards } = await supabase
+      .from('cards')
+      .select('id')
+      .eq('deck_id', id);
+    console.log('📊 Remaining cards after deletion:', remainingCards?.length || 0);
+
+    if (cards) {
+      for (const card of cards) {
+        const { data: remainingRecordings } = await supabase
+          .from('recordings')
+          .select('*')
+          .eq('card_id', card.id);
+        console.log(`📊 Remaining recordings for card ${card.id}:`, remainingRecordings?.length || 0);
+      }
+    }
+
+  } catch (error) {
+    console.error('❌ Error in deleteDeck:', error);
     throw error;
   }
 }
