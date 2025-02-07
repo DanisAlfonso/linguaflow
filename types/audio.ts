@@ -39,6 +39,7 @@ export interface Recording {
   audio_url: string;
   duration: number;
   created_at: string;
+  name?: string;
 }
 
 export interface RecordingFile {

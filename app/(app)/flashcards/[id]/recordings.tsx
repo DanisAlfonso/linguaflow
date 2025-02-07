@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, FlatList } from 'react-native';
-import { Text, Button, useTheme } from '@rneui/themed';
+import { View, StyleSheet, FlatList, Modal, Pressable } from 'react-native';
+import { Text, Button, useTheme, Input } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,12 +10,16 @@ import { Container } from '../../../../components/layout/Container';
 import { getCardRecordings, deleteRecording } from '../../../../lib/api/audio';
 import type { Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
+import { supabase } from '../../../../lib/supabase';
 
 export default function RecordingsScreen() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  const [isRenameModalVisible, setIsRenameModalVisible] = useState(false);
+  const [newName, setNewName] = useState('');
   const sound = useRef<Audio.Sound>();
   
   const router = useRouter();
@@ -146,11 +150,58 @@ export default function RecordingsScreen() {
     }
   }, [id]);
 
+  const handleLongPress = (recording: Recording) => {
+    setSelectedRecording(recording);
+    setNewName(recording.name || formatDate(recording.created_at));
+    setIsRenameModalVisible(true);
+  };
+
+  const handleRename = async () => {
+    if (!selectedRecording || !newName.trim()) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('recordings')
+        .update({ name: newName.trim() })
+        .eq('id', selectedRecording.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      setRecordings(prev => 
+        prev.map(r => 
+          r.id === selectedRecording.id 
+            ? { ...r, name: newName.trim() } 
+            : r
+        )
+      );
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Recording renamed',
+      });
+    } catch (error) {
+      console.error('Error renaming recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to rename recording',
+      });
+    } finally {
+      setIsRenameModalVisible(false);
+      setSelectedRecording(null);
+      setNewName('');
+    }
+  };
+
   const renderItem = ({ item }: { item: Recording }) => {
     const isPlaying = currentlyPlaying === item.id;
 
     return (
-      <View 
+      <Pressable 
+        onLongPress={() => handleLongPress(item)}
         style={[
           styles.recordingItem,
           { backgroundColor: theme.colors.grey0 }
@@ -158,7 +209,7 @@ export default function RecordingsScreen() {
       >
         <View style={styles.recordingInfo}>
           <Text style={[styles.date, { color: theme.colors.grey3 }]}>
-            {formatDate(item.created_at)}
+            {item.name || formatDate(item.created_at)}
           </Text>
           <Text style={[styles.duration, { color: theme.colors.grey2 }]}>
             {formatDuration(item.duration)}
@@ -188,7 +239,7 @@ export default function RecordingsScreen() {
             onPress={() => handleDelete(item.id)}
           />
         </View>
-      </View>
+      </Pressable>
     );
   };
 
@@ -237,6 +288,62 @@ export default function RecordingsScreen() {
             onRefresh={onRefresh}
           />
         )}
+
+        <Modal
+          visible={isRenameModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsRenameModalVisible(false)}
+        >
+          <Pressable 
+            style={styles.modalOverlay}
+            onPress={() => setIsRenameModalVisible(false)}
+          >
+            <Pressable 
+              style={[
+                styles.modalContent,
+                { backgroundColor: theme.colors.background }
+              ]}
+              onPress={e => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
+                Rename Recording
+              </Text>
+              <Input
+                value={newName}
+                onChangeText={setNewName}
+                autoFocus
+                containerStyle={styles.input}
+                inputContainerStyle={[
+                  styles.inputField,
+                  {
+                    borderColor: theme.colors.grey2,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                  },
+                ]}
+                inputStyle={[
+                  styles.inputText,
+                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                ]}
+              />
+              <View style={styles.modalButtons}>
+                <Button
+                  title="Cancel"
+                  type="clear"
+                  onPress={() => setIsRenameModalVisible(false)}
+                  titleStyle={{ color: theme.colors.grey3 }}
+                />
+                <Button
+                  title="Rename"
+                  type="clear"
+                  onPress={handleRename}
+                  disabled={!newName.trim()}
+                  titleStyle={{ color: theme.colors.primary }}
+                />
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </Container>
     </SafeAreaView>
   );
@@ -301,6 +408,41 @@ const styles = StyleSheet.create({
   recordingControls: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 12,
+    padding: 24,
+    gap: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  input: {
+    paddingHorizontal: 0,
+  },
+  inputField: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    height: 48,
+  },
+  inputText: {
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
     gap: 8,
   },
 }); 
