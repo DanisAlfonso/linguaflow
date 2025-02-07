@@ -794,7 +794,7 @@ export default function AudioScreen() {
                     Ready to add new content?
                   </Text>
                   <Text style={[styles.uploadDescription, { color: theme.colors.grey3 }]}>
-                    Upload your audio tracks and start creating your library
+                    Import audio from your device or cloud to build your personal library
                   </Text>
                 </View>
                 <Pressable
@@ -813,7 +813,7 @@ export default function AudioScreen() {
                     style={styles.uploadButtonGradient}
                   >
                     <MaterialIcons name="add" size={24} color="white" style={styles.buttonIcon} />
-                    <Text style={styles.buttonText}>New Track</Text>
+                    <Text style={styles.buttonText}>Add Audio</Text>
                   </LinearGradient>
                 </Pressable>
               </View>
