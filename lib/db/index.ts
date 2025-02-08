@@ -1,13 +1,34 @@
-import * as SQLite from 'expo-sqlite';
+import { Platform } from 'react-native';
 import type { LocalRecording, LocalRecordingInput } from '../../types/audio';
 
+// Define SQLite types
+type SQLiteType = {
+  openDatabaseAsync: (name: string) => Promise<SQLiteDatabase>;
+};
+
+type SQLiteDatabase = {
+  execAsync: (sql: string) => Promise<void>;
+  getAllAsync: <T>(sql: string, params?: any[]) => Promise<T[]>;
+  getFirstAsync: <T>(sql: string, params?: any[]) => Promise<T | null>;
+  runAsync: (sql: string, params?: any[]) => Promise<{ changes: number }>;
+};
+
+// Conditionally import SQLite only for native platforms
+let SQLite: SQLiteType | null = null;
+if (Platform.OS !== 'web') {
+  SQLite = require('expo-sqlite');
+}
+
 // Database instance and initialization state
-let db: SQLite.SQLiteDatabase | null = null;
+let db: SQLiteDatabase | null = null;
 let isInitializing = false;
 let initializationError: Error | null = null;
 
 // Ensure database is initialized
-async function ensureDatabase(): Promise<SQLite.SQLiteDatabase> {
+async function ensureDatabase(): Promise<SQLiteDatabase | null> {
+  // On web platform, return null as we don't need SQLite
+  if (Platform.OS === 'web') return null;
+  
   if (db) return db;
   
   if (initializationError) {
@@ -29,6 +50,10 @@ async function ensureDatabase(): Promise<SQLite.SQLiteDatabase> {
 
 // Initialize the database
 export async function initDatabase(): Promise<void> {
+  // Skip initialization on web platform
+  if (Platform.OS === 'web') return;
+  if (!SQLite) return;
+
   if (db) return;
   if (isInitializing) return;
 
@@ -71,8 +96,13 @@ export async function initDatabase(): Promise<void> {
 
 // Get all recordings for a card
 export async function getLocalRecordings(cardId: string): Promise<LocalRecording[]> {
+  // On web platform, return empty array as we don't store recordings locally
+  if (Platform.OS === 'web') return [];
+
   try {
     const database = await ensureDatabase();
+    if (!database) return [];
+
     const result = await database.getAllAsync<LocalRecording>(
       'SELECT * FROM recordings WHERE card_id = ? ORDER BY created_at DESC;',
       [cardId]
@@ -90,8 +120,15 @@ export async function getLocalRecordings(cardId: string): Promise<LocalRecording
 
 // Save a recording locally
 export async function saveLocalRecording(recording: LocalRecordingInput): Promise<LocalRecording> {
+  // On web platform, throw error as we don't support local recording
+  if (Platform.OS === 'web') {
+    throw new Error('Local recording storage is not supported on web platform');
+  }
+
   try {
     const database = await ensureDatabase();
+    if (!database) throw new Error('Database not initialized');
+
     const id = Math.random().toString(36).substring(7);
     const created_at = new Date().toISOString();
 
@@ -121,8 +158,13 @@ export async function saveLocalRecording(recording: LocalRecordingInput): Promis
 
 // Delete a recording locally
 export async function deleteLocalRecording(id: string): Promise<void> {
+  // On web platform, do nothing as we don't store recordings locally
+  if (Platform.OS === 'web') return;
+
   try {
     const database = await ensureDatabase();
+    if (!database) return;
+
     const result = await database.runAsync(
       'DELETE FROM recordings WHERE id = ?;',
       [id]
@@ -143,8 +185,13 @@ export async function updateRecordingAfterSync(
   audio_url: string, 
   remote_id: string
 ): Promise<void> {
+  // On web platform, do nothing as we don't store recordings locally
+  if (Platform.OS === 'web') return;
+
   try {
     const database = await ensureDatabase();
+    if (!database) return;
+
     const result = await database.runAsync(
       'UPDATE recordings SET synced = 1, audio_url = ?, remote_id = ? WHERE id = ?;',
       [audio_url, remote_id, id]
@@ -161,8 +208,13 @@ export async function updateRecordingAfterSync(
 
 // Get all unsynced recordings
 export async function getUnsyncedRecordings(): Promise<LocalRecording[]> {
+  // On web platform, return empty array as we don't store recordings locally
+  if (Platform.OS === 'web') return [];
+
   try {
     const database = await ensureDatabase();
+    if (!database) return [];
+
     const result = await database.getAllAsync<LocalRecording>(
       'SELECT * FROM recordings WHERE synced = 0;'
     );
@@ -179,8 +231,13 @@ export async function getUnsyncedRecordings(): Promise<LocalRecording[]> {
 
 // Get a specific recording by ID
 export async function getLocalRecordingById(id: string): Promise<LocalRecording | null> {
+  // On web platform, return null as we don't store recordings locally
+  if (Platform.OS === 'web') return null;
+
   try {
     const database = await ensureDatabase();
+    if (!database) return null;
+
     const result = await database.getFirstAsync<LocalRecording>(
       'SELECT * FROM recordings WHERE id = ?;',
       [id]
