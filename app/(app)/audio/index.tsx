@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, Platform, Pressable, TextInput, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, Platform, Pressable, TextInput, RefreshControl, Animated } from 'react-native';
 import { Text, useTheme, Button } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,12 +10,23 @@ import { UploadAudioModal } from '../../../components/audio/UploadAudioModal';
 import type { AudioTrack, AudioPlaylist } from '../../../types/audio-player';
 import type { AudioFile } from '../../../types/audio';
 import { Audio, AVPlaybackStatus } from 'expo-av';
-import { getAudioFileUrl, deleteTrack, validateTrackFile } from '../../../lib/api/audio';
+import { getAudioFileUrl, deleteTrack, validateTrackFile, uploadAudioFile, createAudioFile } from '../../../lib/api/audio';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../../lib/supabase';
 import { Dialog } from '@rneui/base';
 import { Overlay } from '@rneui/base';
 import { BlurView } from 'expo-blur';
+
+// Add upload status to AudioTrack type
+interface AudioTrackWithUpload extends AudioTrack {
+  isUploading?: boolean;
+  uploadProgress?: number;
+}
+
+interface UploadingTrackInfo {
+  progress: number;
+  animatedProgress: Animated.Value;
+}
 
 export default function AudioScreen() {
   const { theme } = useTheme();
@@ -30,7 +41,7 @@ export default function AudioScreen() {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isUploadModalVisible, setIsUploadModalVisible] = useState(false);
-  const [recentTracks, setRecentTracks] = useState<AudioTrack[]>([]);
+  const [recentTracks, setRecentTracks] = useState<AudioTrackWithUpload[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isAllTracksModalVisible, setIsAllTracksModalVisible] = useState(false);
   const [allTracks, setAllTracks] = useState<AudioTrack[]>([]);
@@ -49,6 +60,7 @@ export default function AudioScreen() {
   const [editingPlaylistId, setEditingPlaylistId] = useState<string | null>(null);
   const [showPlaylistRename, setShowPlaylistRename] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [uploadingTracks, setUploadingTracks] = useState<Record<string, UploadingTrackInfo>>({});
 
   // Placeholder waveform data for testing
   const mockWaveformData = Array.from({ length: 200 }, () => Math.random());
@@ -753,6 +765,207 @@ export default function AudioScreen() {
     setShowPlaylistRename(false);
   };
 
+  // Add new upload handler
+  const handleUploadStart = async (file: any, metadata: { title: string; description: string }) => {
+    // Create a temporary track for immediate display
+    const tempTrack: AudioTrackWithUpload = {
+      id: `temp-${Date.now()}`,
+      userId: '',
+      title: metadata.title,
+      description: metadata.description,
+      audioFileId: '',
+      trackType: 'upload',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      isUploading: true,
+      uploadProgress: 0,
+    };
+
+    try {
+      // Add to recent tracks immediately
+      setRecentTracks(prev => [tempTrack, ...prev]);
+
+      // Create animated progress value
+      const animatedProgress = new Animated.Value(0);
+
+      // Start tracking upload progress
+      setUploadingTracks(prev => ({
+        ...prev,
+        [tempTrack.id]: { 
+          progress: 0,
+          animatedProgress
+        }
+      }));
+
+      // Simulate upload progress with smooth animations
+      const animateToProgress = (toValue: number, duration: number) => {
+        return new Promise<void>(resolve => {
+          Animated.timing(animatedProgress, {
+            toValue,
+            duration,
+            useNativeDriver: false,
+          }).start(() => {
+            setUploadingTracks(prev => ({
+              ...prev,
+              [tempTrack.id]: { 
+                ...prev[tempTrack.id],
+                progress: toValue 
+              }
+            }));
+            resolve();
+          });
+        });
+      };
+
+      // Sequence of progress animations
+      await animateToProgress(30, 500);
+      await animateToProgress(50, 800);
+      await animateToProgress(70, 1000);
+      await animateToProgress(85, 1200);
+
+      // Upload the audio file
+      const uploadResponse = await uploadAudioFile({
+        uri: file.uri,
+        type: file.mimeType || 'audio/mpeg',
+        name: file.name,
+        file: Platform.OS === 'web' ? file.file : undefined,
+      });
+
+      // Create audio file record
+      const audioFile = await createAudioFile(
+        uploadResponse.path,
+        file.name,
+        file.mimeType || 'audio/mpeg'
+      );
+
+      // Create the actual track record
+      const { data: trackData, error: trackError } = await supabase
+        .from('audio_tracks')
+        .insert({
+          title: metadata.title,
+          description: metadata.description,
+          audio_file_id: audioFile.id,
+          track_type: 'upload',
+          user_id: (await supabase.auth.getUser()).data.user?.id
+        })
+        .select()
+        .single();
+
+      if (trackError) throw trackError;
+
+      // Animate to 100%
+      await animateToProgress(100, 500);
+
+      // Replace temp track with actual track
+      const newTrack: AudioTrackWithUpload = {
+        ...trackData,
+        audioFile,
+        createdAt: new Date(trackData.created_at),
+        updatedAt: new Date(trackData.updated_at),
+      };
+
+      setRecentTracks(prev => 
+        prev.map(track => track.id === tempTrack.id ? newTrack : track)
+      );
+
+      // Remove from uploading tracks after a brief delay
+      setTimeout(() => {
+        setUploadingTracks(prev => {
+          const { [tempTrack.id]: _, ...rest } = prev;
+          return rest;
+        });
+      }, 500);
+
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Audio uploaded successfully',
+      });
+
+    } catch (error) {
+      console.error('Error uploading audio:', error);
+      // Remove the temporary track on error
+      setRecentTracks(prev => prev.filter(track => track.id !== tempTrack.id));
+      setUploadingTracks(prev => {
+        const { [tempTrack.id]: _, ...rest } = prev;
+        return rest;
+      });
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to upload audio',
+      });
+    }
+  };
+
+  // Modify the track item rendering to use animated progress
+  const renderTrackContent = (track: AudioTrackWithUpload) => {
+    const isUploading = track.id.startsWith('temp-');
+    const uploadInfo = uploadingTracks[track.id];
+    const uploadProgress = uploadInfo?.progress || 0;
+
+    return (
+      <Pressable
+        style={styles.recentTrackContent}
+        onPress={() => !isUploading && playTrack(track)}
+        onLongPress={(event) => !isUploading && handleLongPressTrack(track, event)}
+      >
+        <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
+          <MaterialIcons 
+            name={isUploading ? "cloud-upload" : "music-note"} 
+            size={24} 
+            color={theme.colors.grey3} 
+          />
+        </View>
+        <Text 
+          style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
+          numberOfLines={1}
+        >
+          {track.title}
+        </Text>
+        {isUploading ? (
+          <View style={styles.uploadProgressContainer}>
+            <View style={[
+              styles.uploadProgressBar,
+              { backgroundColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : '#E5E7EB' }
+            ]}>
+              <Animated.View
+                style={[
+                  styles.uploadProgressFill,
+                  {
+                    width: uploadInfo?.animatedProgress.interpolate({
+                      inputRange: [0, 100],
+                      outputRange: ['0%', '100%']
+                    })
+                  }
+                ]}
+              >
+                <LinearGradient
+                  colors={theme.mode === 'dark' 
+                    ? ['#818CF8', '#6366F1'] // Brighter colors for dark mode
+                    : [theme.colors.primary, theme.colors.secondary]
+                  }
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.uploadProgressGradient}
+                />
+              </Animated.View>
+            </View>
+            <Text style={[styles.uploadProgressText, { color: theme.colors.grey3 }]}>
+              {Math.round(uploadProgress)}%
+            </Text>
+          </View>
+        ) : (
+          <Text 
+            style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
+          >
+            {track.duration ? formatTime(track.duration * 1000) : '--:--'}
+          </Text>
+        )}
+      </Pressable>
+    );
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
@@ -913,35 +1126,15 @@ export default function AudioScreen() {
               {recentTracks.map((track) => (
                 <React.Fragment key={track.id}>
                   <Pressable
-                    key={track.id}
                     style={[
                       styles.recentTrackCard,
                       { backgroundColor: theme.colors.grey0 }
                     ]}
                   >
-                    <Pressable
-                      style={styles.recentTrackContent}
-                      onPress={() => playTrack(track)}
-                      onLongPress={(event) => handleLongPressTrack(track, event)}
-                    >
-                      <View style={[styles.recentTrackArt, { backgroundColor: theme.colors.grey1 }]}>
-                        <MaterialIcons name="music-note" size={24} color={theme.colors.grey3} />
-                      </View>
-                      <Text 
-                        style={[styles.recentTrackTitle, { color: theme.colors.grey5 }]}
-                        numberOfLines={1}
-                      >
-                        {track.title}
-                      </Text>
-                      <Text 
-                        style={[styles.recentTrackDuration, { color: theme.colors.grey3 }]}
-                      >
-                        {track.duration ? formatTime(track.duration * 1000) : '--:--'}
-                      </Text>
-                    </Pressable>
+                    {renderTrackContent(track)}
                   </Pressable>
 
-                  {editingTrackId === track.id && (
+                  {editingTrackId === track.id && !track.id.startsWith('temp-') && (
                     <Overlay
                       isVisible={true}
                       onBackdropPress={handleCloseMenu}
@@ -1296,7 +1489,7 @@ export default function AudioScreen() {
       <UploadAudioModal
         isVisible={isUploadModalVisible}
         onClose={() => setIsUploadModalVisible(false)}
-        onUploadComplete={handleUploadComplete}
+        onUploadStart={handleUploadStart}
       />
 
       {/* All Tracks Modal */}
@@ -2020,5 +2213,35 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  uploadProgressContainer: {
+    marginTop: 4,
+    width: '100%',
+  },
+  uploadProgressBar: {
+    height: 4,
+    borderRadius: 2,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  uploadProgressFill: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  uploadProgressGradient: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  uploadProgressText: {
+    fontSize: 12,
+    textAlign: 'center',
   },
 }); 

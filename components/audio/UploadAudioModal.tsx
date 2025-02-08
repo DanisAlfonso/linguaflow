@@ -1,47 +1,32 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   StyleSheet,
   Platform,
   Pressable,
-  ActivityIndicator,
   TextInput,
-  Animated,
 } from 'react-native';
-import { Text, useTheme, Button, Dialog } from '@rneui/themed';
+import { Text, useTheme, Dialog } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { uploadAudioFile, createAudioFile } from '../../lib/api/audio';
 import Toast from 'react-native-toast-message';
 import { LinearGradient } from 'expo-linear-gradient';
 
 interface UploadAudioModalProps {
   isVisible: boolean;
   onClose: () => void;
-  onUploadComplete: (audioFile: any) => void;
+  onUploadStart: (file: any, metadata: { title: string; description: string }) => void;
 }
 
 export function UploadAudioModal({
   isVisible,
   onClose,
-  onUploadComplete,
+  onUploadStart,
 }: UploadAudioModalProps) {
   const { theme } = useTheme();
-  const [isUploading, setIsUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const animatedProgress = React.useRef(new Animated.Value(0)).current;
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerResult | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-
-  // Update animated progress when uploadProgress changes
-  useEffect(() => {
-    Animated.timing(animatedProgress, {
-      toValue: uploadProgress,
-      duration: 500,
-      useNativeDriver: false,
-    }).start();
-  }, [uploadProgress]);
 
   const handleFilePick = async () => {
     try {
@@ -85,97 +70,30 @@ export function UploadAudioModal({
     }
   };
 
-  const simulateProgress = useCallback(() => {
-    // Reset progress
-    setUploadProgress(0);
-    animatedProgress.setValue(0);
-
-    // Simulate progress in steps
-    const steps = [
-      { value: 30, duration: 500 },
-      { value: 50, duration: 800 },
-      { value: 70, duration: 1000 },
-      { value: 85, duration: 1200 },
-    ];
-
-    // Chain the animations
-    const animations = steps.map((step, index) =>
-      Animated.timing(animatedProgress, {
-        toValue: step.value,
-        duration: step.duration,
-        useNativeDriver: false,
-      })
-    );
-
-    Animated.sequence(animations).start();
-  }, [animatedProgress]);
-
   const handleUpload = async () => {
-    if (!selectedFile || selectedFile.canceled) return;
+    if (!selectedFile || selectedFile.canceled || !title.trim()) return;
 
     try {
-      setIsUploading(true);
-      simulateProgress();
-      
       const file = selectedFile.assets[0];
-
-      // Upload the audio file
-      const uploadResponse = await uploadAudioFile({
-        uri: file.uri,
-        type: file.mimeType || 'audio/mpeg',
-        name: file.name,
-        file: Platform.OS === 'web' ? file.file : undefined,
-      });
-
-      // Once upload is complete, animate to 100%
-      Animated.timing(animatedProgress, {
-        toValue: 100,
-        duration: 500,
-        useNativeDriver: false,
-      }).start();
-
-      setUploadProgress(100);
-
-      // Create audio file record
-      const audioFile = await createAudioFile(
-        uploadResponse.path,
-        file.name,
-        file.mimeType || 'audio/mpeg'
-      );
-
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: 'Audio uploaded successfully',
-      });
-
-      // Wait for the final animation to complete
-      setTimeout(() => {
-        onUploadComplete(audioFile);
-        onClose();
-      }, 500);
+      
+      // Pass the file and metadata to parent for upload handling
+      onUploadStart(file, { title: title.trim(), description: description.trim() });
+      
+      // Reset form and close modal
+      setSelectedFile(null);
+      setTitle('');
+      setDescription('');
+      onClose();
 
     } catch (error) {
-      console.error('Error uploading audio:', error);
+      console.error('Error preparing upload:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to upload audio',
+        text2: 'Failed to prepare upload',
       });
-    } finally {
-      setIsUploading(false);
     }
   };
-
-  // Update progress text based on animated value
-  const [displayProgress, setDisplayProgress] = useState(0);
-  
-  useEffect(() => {
-    const listener = animatedProgress.addListener(({ value }) => {
-      setDisplayProgress(Math.round(value));
-    });
-    return () => animatedProgress.removeListener(listener);
-  }, [animatedProgress]);
 
   const renderUploadArea = () => (
     <Pressable
@@ -210,11 +128,6 @@ export function UploadAudioModal({
       </LinearGradient>
     </Pressable>
   );
-
-  const progressWidth = animatedProgress.interpolate({
-    inputRange: [0, 100],
-    outputRange: ['0%', '100%'],
-  });
 
   return (
     <Dialog
@@ -278,38 +191,9 @@ export function UploadAudioModal({
         />
       </View>
 
-      {isUploading && (
-        <View style={styles.progressSection}>
-          <View style={styles.progressContainer}>
-            <Animated.View 
-              style={[
-                styles.progressBackground,
-                {
-                  width: animatedProgress.interpolate({
-                    inputRange: [0, 100],
-                    outputRange: ['0%', '100%']
-                  })
-                }
-              ]}
-            >
-              <LinearGradient
-                colors={[theme.colors.primary, theme.colors.secondary]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.progressBar}
-              />
-            </Animated.View>
-          </View>
-          <Text style={[styles.progressText, { color: theme.colors.grey3 }]}>
-            {isUploading ? 'Uploading...' : 'Adding...'} {displayProgress}%
-          </Text>
-        </View>
-      )}
-
       <View style={styles.dialogActions}>
         <Pressable
           onPress={onClose}
-          disabled={isUploading}
           style={({ pressed }) => [
             styles.cancelButton,
             { 
@@ -319,8 +203,7 @@ export function UploadAudioModal({
                   : 'rgba(255, 255, 255, 0.1)'
                 : pressed
                   ? theme.colors.grey1
-                  : theme.colors.grey0,
-              opacity: isUploading ? 0.5 : 1
+                  : theme.colors.grey0
             }
           ]}
         >
@@ -340,17 +223,13 @@ export function UploadAudioModal({
           >
             <Pressable
               onPress={handleUpload}
-              disabled={!selectedFile || isUploading || !title.trim()}
+              disabled={!selectedFile || !title.trim()}
               style={({ pressed }) => [
                 styles.buttonContent,
-                { opacity: (!selectedFile || isUploading || !title.trim()) ? 0.5 : pressed ? 0.9 : 1 }
+                { opacity: (!selectedFile || !title.trim()) ? 0.5 : pressed ? 0.9 : 1 }
               ]}
             >
-              {isUploading ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <Text style={styles.addButtonText}>Add to Library</Text>
-              )}
+              <Text style={styles.addButtonText}>Add to Library</Text>
             </Pressable>
           </LinearGradient>
         </View>
@@ -428,33 +307,6 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 80,
     textAlignVertical: 'top',
-  },
-  progressSection: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  progressContainer: {
-    height: 4,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 2,
-    overflow: 'hidden',
-    marginBottom: 8,
-  },
-  progressBar: {
-    flex: 1,
-    borderRadius: 2,
-  },
-  progressText: {
-    fontSize: 12,
-    textAlign: 'center',
-  },
-  progressBackground: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    overflow: 'hidden',
-    borderRadius: 2,
   },
   dialogActions: {
     flexDirection: 'row',
