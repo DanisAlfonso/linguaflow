@@ -227,7 +227,7 @@ export function UploadAudioModal({
     >
       <View style={styles.modalHeader}>
         <Text h4 style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
-          Upload Audio
+          Add Audio
         </Text>
         <Pressable
           onPress={onClose}
@@ -301,32 +301,60 @@ export function UploadAudioModal({
             </Animated.View>
           </View>
           <Text style={[styles.progressText, { color: theme.colors.grey3 }]}>
-            Uploading... {displayProgress}%
+            {isUploading ? 'Uploading...' : 'Adding...'} {displayProgress}%
           </Text>
         </View>
       )}
 
-      <Dialog.Actions>
-        <Button
-          type="clear"
-          title="Cancel"
+      <View style={styles.dialogActions}>
+        <Pressable
           onPress={onClose}
           disabled={isUploading}
-          titleStyle={{ color: theme.colors.grey3 }}
-        />
-        <Button
-          title={isUploading ? 'Uploading...' : 'Upload'}
-          onPress={handleUpload}
-          disabled={!selectedFile || isUploading || !title.trim()}
-          loading={isUploading}
-          buttonStyle={{
-            backgroundColor: theme.colors.primary,
-            borderRadius: 12,
-            paddingHorizontal: 20,
-            paddingVertical: 10,
-          }}
-        />
-      </Dialog.Actions>
+          style={({ pressed }) => [
+            styles.cancelButton,
+            { 
+              backgroundColor: theme.mode === 'dark' 
+                ? pressed 
+                  ? 'rgba(255, 255, 255, 0.05)'
+                  : 'rgba(255, 255, 255, 0.1)'
+                : pressed
+                  ? theme.colors.grey1
+                  : theme.colors.grey0,
+              opacity: isUploading ? 0.5 : 1
+            }
+          ]}
+        >
+          <Text style={[
+            styles.cancelButtonText,
+            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }
+          ]}>
+            Cancel
+          </Text>
+        </Pressable>
+        <View style={styles.addButton}>
+          <LinearGradient
+            colors={['#4F46E5', '#6366F1']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.addButtonGradient}
+          >
+            <Pressable
+              onPress={handleUpload}
+              disabled={!selectedFile || isUploading || !title.trim()}
+              style={({ pressed }) => [
+                styles.buttonContent,
+                { opacity: (!selectedFile || isUploading || !title.trim()) ? 0.5 : pressed ? 0.9 : 1 }
+              ]}
+            >
+              {isUploading ? (
+                <ActivityIndicator color="white" size="small" />
+              ) : (
+                <Text style={styles.addButtonText}>Add to Library</Text>
+              )}
+            </Pressable>
+          </LinearGradient>
+        </View>
+      </View>
     </Dialog>
   );
 }
@@ -427,5 +455,45 @@ const styles = StyleSheet.create({
     left: 0,
     overflow: 'hidden',
     borderRadius: 2,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    padding: 16,
+    paddingBottom: 20,
+    backgroundColor: 'transparent',
+    gap: 12,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  cancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  cancelButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  addButton: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  addButtonGradient: {
+    borderRadius: 12,
+  },
+  buttonContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    minWidth: 140,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 }); 
