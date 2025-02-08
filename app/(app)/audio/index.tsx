@@ -110,7 +110,7 @@ export default function AudioScreen() {
   };
 
   const formatTime = (milliseconds: number) => {
-    const totalSeconds = Math.floor(milliseconds / 1000);
+    const totalSeconds = Math.round(milliseconds / 1000);
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
@@ -285,7 +285,8 @@ export default function AudioScreen() {
         ...track,
         createdAt: new Date(track.created_at),
         updatedAt: new Date(track.updated_at),
-        audioFile: track.audio_file
+        audioFile: track.audio_file,
+        duration: track.duration || 0 // Ensure duration is included and has a default value
       })));
     } catch (error) {
       console.error('Error fetching recent tracks:', error);
@@ -838,7 +839,55 @@ export default function AudioScreen() {
         file.mimeType || 'audio/mpeg'
       );
 
-      // Create the actual track record
+      // Get audio duration before creating track record
+      let duration = 0;
+      if (Platform.OS === 'web' && file.file instanceof Blob) {
+        const url = URL.createObjectURL(file.file);
+        const audio = document.createElement('audio');
+        try {
+          await new Promise((resolve, reject) => {
+            audio.addEventListener('loadedmetadata', () => {
+              console.log('Web audio metadata loaded, duration:', audio.duration);
+              // Convert duration to seconds and round to nearest integer
+              duration = Math.round(audio.duration);
+              resolve(null);
+            });
+            audio.addEventListener('error', (e) => {
+              console.error('Error loading audio metadata:', e);
+              reject(new Error('Failed to load audio metadata'));
+            });
+            audio.src = url;
+          });
+        } catch (error) {
+          console.error('Error getting audio duration:', error);
+          // Fallback: try to get duration after file is uploaded
+          const { sound } = await Audio.Sound.createAsync(
+            { uri: file.uri },
+            { shouldPlay: false }
+          );
+          const status = await sound.getStatusAsync();
+          if (status.isLoaded && status.durationMillis) {
+            duration = Math.round(status.durationMillis / 1000);
+            console.log('Got duration from fallback method:', duration);
+          }
+          await sound.unloadAsync();
+        } finally {
+          URL.revokeObjectURL(url);
+        }
+      } else {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: file.uri },
+          { shouldPlay: false }
+        );
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded && status.durationMillis) {
+          // Convert milliseconds to seconds and round to nearest integer
+          duration = Math.round(status.durationMillis / 1000);
+        }
+        await sound.unloadAsync();
+      }
+
+      // Create the actual track record with duration
       const { data: trackData, error: trackError } = await supabase
         .from('audio_tracks')
         .insert({
@@ -846,6 +895,7 @@ export default function AudioScreen() {
           description: metadata.description,
           audio_file_id: audioFile.id,
           track_type: 'upload',
+          duration: duration, // Add duration to the track record
           user_id: (await supabase.auth.getUser()).data.user?.id
         })
         .select()
@@ -862,6 +912,7 @@ export default function AudioScreen() {
         audioFile,
         createdAt: new Date(trackData.created_at),
         updatedAt: new Date(trackData.updated_at),
+        duration: duration, // Include duration in the new track
       };
 
       setRecentTracks(prev => 
