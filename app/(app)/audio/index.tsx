@@ -7,15 +7,19 @@ import { Container } from '../../../components/layout/Container';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Waveform } from '../../../components/audio/Waveform';
 import { UploadAudioModal } from '../../../components/audio/UploadAudioModal';
-import type { AudioTrack, AudioPlaylist } from '../../../types/audio-player';
+import type { AudioTrack, AudioPlaylist, AudioTrackType } from '../../../types/audio-player';
 import type { AudioFile } from '../../../types/audio';
 import { Audio, AVPlaybackStatus } from 'expo-av';
 import { getAudioFileUrl, deleteTrack, validateTrackFile, uploadAudioFile, createAudioFile } from '../../../lib/api/audio';
+import { ensureAudioDirectory, generateAudioPath, saveAudioFile as saveAudioFileToStorage, deleteAudioFile } from '../../../lib/fs/audio';
+import { saveAudioFolder, saveAudioFile, getAudioFilesInFolder, getSubfolders, ensureDatabase } from '../../../lib/db';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../../lib/supabase';
 import { Dialog } from '@rneui/base';
 import { Overlay } from '@rneui/base';
 import { BlurView } from 'expo-blur';
+import { useAuth } from '../../../contexts/AuthContext';
+import * as FileSystem from 'expo-file-system';
 
 // Add upload status to AudioTrack type
 interface AudioTrackWithUpload extends AudioTrack {
@@ -30,6 +34,7 @@ interface UploadingTrackInfo {
 
 export default function AudioScreen() {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const sound = useRef<Audio.Sound>();
   const [currentTrack, setCurrentTrack] = useState<AudioTrack | null>(null);
   const [currentPlaylist, setCurrentPlaylist] = useState<AudioPlaylist | null>(null);
@@ -274,20 +279,30 @@ export default function AudioScreen() {
   // Fetch recent tracks
   const fetchRecentTracks = async () => {
     try {
-      const { data: tracks, error } = await supabase
-        .from('audio_tracks')
-        .select('*, audio_file:audio_files(*)')
-        .order('created_at', { ascending: false })
-        .limit(10);
-
-      if (error) throw error;
-      setRecentTracks(tracks.map(track => ({
-        ...track,
+      // Fetch from local SQLite database
+      const tracks = await getAudioFilesInFolder(null); // null means root folder
+      
+      const formattedTracks: AudioTrackWithUpload[] = tracks.map(track => ({
+        id: track.id,
+        userId: track.user_id,
+        title: track.title,
+        description: '',
+        audioFileId: track.id,
+        audioFile: {
+          id: track.id,
+          file_path: track.file_path,
+          original_filename: track.original_filename,
+          mime_type: track.mime_type,
+          created_at: new Date(track.created_at),
+          updated_at: new Date(track.updated_at),
+        },
+        trackType: 'local' as AudioTrackType,
         createdAt: new Date(track.created_at),
         updatedAt: new Date(track.updated_at),
-        audioFile: track.audio_file,
-        duration: track.duration || 0 // Ensure duration is included and has a default value
-      })));
+        duration: track.duration,
+      }));
+
+      setRecentTracks(formattedTracks);
     } catch (error) {
       console.error('Error fetching recent tracks:', error);
       Toast.show({
@@ -306,19 +321,6 @@ export default function AudioScreen() {
   // Function to play a specific track
   const playTrack = async (track: AudioTrack) => {
     try {
-      // Validate that the file exists before attempting to play
-      const isValid = await validateTrackFile(track.id);
-      if (!isValid) {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Audio file not found',
-        });
-        // Refresh the track list to remove invalid tracks
-        fetchRecentTracks();
-        return;
-      }
-
       // Unload current sound if exists
       if (sound.current) {
         await sound.current.unloadAsync();
@@ -327,33 +329,47 @@ export default function AudioScreen() {
       setCurrentTrack(track);
       setIsLoading(true);
 
-      const signedUrl = await getAudioFileUrl(track.audioFile!.file_path);
-      
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: signedUrl },
-        { 
-          shouldPlay: true,
-          volume,
-          isLooping: false,
-          progressUpdateIntervalMillis: 100,
-        },
-        onPlaybackStatusUpdate,
-        true
-      );
+      let audioUri: string;
+      if (track.trackType === 'local') {
+        // For local files, use the file path directly
+        audioUri = track.audioFile!.file_path;
+      } else {
+        // For cloud files, get a signed URL
+        audioUri = await getAudioFileUrl(track.audioFile!.file_path);
+      }
 
-      sound.current = newSound;
-      setIsPlaying(true);
-      setIsLoading(false);
+      try {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: audioUri },
+          { 
+            shouldPlay: true,
+            volume,
+            isLooping: false,
+            progressUpdateIntervalMillis: 100,
+          },
+          onPlaybackStatusUpdate,
+          true
+        );
 
-      // Increment play count
-      await supabase.rpc('increment_track_play_count', { p_track_id: track.id });
+        sound.current = newSound;
+        setIsPlaying(true);
+        setIsLoading(false);
+      } catch (audioError) {
+        console.error('Error creating audio:', audioError);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to load audio file',
+        });
+        setIsLoading(false);
+      }
     } catch (error) {
       console.error('Error playing track:', error);
       setIsLoading(false);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to play track',
+        text2: error instanceof Error ? error.message : 'Failed to play audio',
       });
     }
   };
@@ -516,7 +532,22 @@ export default function AudioScreen() {
   // Add handleDeleteTrack function
   const handleDeleteTrack = async (track: AudioTrack) => {
     try {
-      await deleteTrack(track.id);
+      if (track.trackType === 'local') {
+        // Delete from local storage first
+        await deleteAudioFile(track.audioFile!.file_path);
+        
+        // Delete from SQLite database
+        const database = await ensureDatabase();
+        if (!database) throw new Error('Database not initialized');
+        
+        await database.runAsync(
+          'DELETE FROM audio_files WHERE id = ?',
+          [track.id]
+        );
+      } else {
+        // Delete from Supabase
+        await deleteTrack(track.id);
+      }
       
       // If this was the current track, stop playback
       if (currentTrack?.id === track.id) {
@@ -533,6 +564,9 @@ export default function AudioScreen() {
         fetchAllTracks();
       }
       
+      // Close the context menu
+      handleCloseMenu();
+      
       Toast.show({
         type: 'success',
         text1: 'Success',
@@ -545,6 +579,8 @@ export default function AudioScreen() {
         text1: 'Error',
         text2: 'Failed to delete track',
       });
+      // Close the context menu even on error
+      handleCloseMenu();
     }
   };
 
@@ -604,13 +640,24 @@ export default function AudioScreen() {
       const track = recentTracks.find(t => t.id === editingTrackId);
       if (!track) return;
 
-      // Update track in database
-      const { error } = await supabase
-        .from('audio_tracks')
-        .update({ title: newTrackName.trim() })
-        .eq('id', editingTrackId);
+      if (track.trackType === 'local') {
+        // Update local database only
+        const database = await ensureDatabase();
+        if (!database) throw new Error('Database not initialized');
 
-      if (error) throw error;
+        await database.runAsync(
+          'UPDATE audio_files SET title = ?, updated_at = ? WHERE id = ?',
+          [newTrackName.trim(), new Date().toISOString(), editingTrackId]
+        );
+      } else {
+        // Update Supabase
+        const { error } = await supabase
+          .from('audio_tracks')
+          .update({ title: newTrackName.trim() })
+          .eq('id', editingTrackId);
+
+        if (error) throw error;
+      }
 
       // Update local state
       setRecentTracks(prevTracks =>
@@ -1021,9 +1068,11 @@ export default function AudioScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container>
         <View style={styles.headerSection}>
-          <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
-            Audio Player
-          </Text>
+          <View style={styles.headerTop}>
+            <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
+              Audio Player
+            </Text>
+          </View>
           <Text style={[styles.subtitle, { color: theme.colors.grey3 }]}>
             Create and manage your audio tracks
           </Text>
@@ -1772,6 +1821,12 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     marginBottom: 24,
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   title: {
     fontSize: 36,

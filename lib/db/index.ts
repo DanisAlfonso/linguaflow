@@ -25,7 +25,7 @@ let isInitializing = false;
 let initializationError: Error | null = null;
 
 // Ensure database is initialized
-async function ensureDatabase(): Promise<SQLiteDatabase | null> {
+export async function ensureDatabase(): Promise<SQLiteDatabase | null> {
   // On web platform, return null as we don't need SQLite
   if (Platform.OS === 'web') return null;
   
@@ -81,6 +81,47 @@ export async function initDatabase(): Promise<void> {
 
       CREATE INDEX IF NOT EXISTS idx_recordings_card_id ON recordings(card_id);
       CREATE INDEX IF NOT EXISTS idx_recordings_synced ON recordings(synced);
+
+      -- New tables for audio library
+      CREATE TABLE IF NOT EXISTS audio_folders (
+        id TEXT PRIMARY KEY,
+        parent_id TEXT NULL,
+        name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        FOREIGN KEY (parent_id) REFERENCES audio_folders(id) ON DELETE CASCADE,
+        UNIQUE(parent_id, path)
+      );
+
+      CREATE TABLE IF NOT EXISTS audio_files (
+        id TEXT PRIMARY KEY,
+        folder_id TEXT NULL,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        artist TEXT,
+        album TEXT,
+        genre TEXT,
+        year INTEGER,
+        duration INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        size INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        synced BOOLEAN DEFAULT 0,
+        remote_id TEXT,
+        remote_url TEXT,
+        FOREIGN KEY (folder_id) REFERENCES audio_folders(id) ON DELETE SET NULL,
+        UNIQUE(file_path)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_audio_folders_parent ON audio_folders(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_audio_folders_path ON audio_folders(path);
+      CREATE INDEX IF NOT EXISTS idx_audio_files_folder ON audio_files(folder_id);
+      CREATE INDEX IF NOT EXISTS idx_audio_files_synced ON audio_files(synced);
     `);
 
     db = database;
@@ -252,6 +293,257 @@ export async function getLocalRecordingById(id: string): Promise<LocalRecording 
     };
   } catch (error) {
     console.error('Error getting recording by id:', error);
+    throw error;
+  }
+}
+
+// New functions for audio library
+
+export interface LocalAudioFolder {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  path: string;
+  created_at: string;
+  updated_at: string;
+  user_id: string;
+}
+
+export interface LocalAudioFile {
+  id: string;
+  folder_id: string | null;
+  user_id: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  genre?: string;
+  year?: number;
+  duration: number;
+  file_path: string;
+  original_filename: string;
+  mime_type: string;
+  size: number;
+  created_at: string;
+  updated_at: string;
+  synced: boolean;
+  remote_id: string | null;
+  remote_url: string | null;
+}
+
+// Get all audio files in a folder
+export async function getAudioFilesInFolder(folderId: string | null): Promise<LocalAudioFile[]> {
+  if (Platform.OS === 'web') return [];
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return [];
+
+    const result = await database.getAllAsync<LocalAudioFile>(
+      'SELECT * FROM audio_files WHERE folder_id IS ? ORDER BY title ASC;',
+      [folderId]
+    );
+
+    return result.map(file => ({
+      ...file,
+      synced: Boolean(file.synced),
+      remote_url: file.remote_url || null,
+      remote_id: file.remote_id || null
+    }));
+  } catch (error) {
+    console.error('Error getting audio files:', error);
+    throw error;
+  }
+}
+
+// Get all subfolders in a folder
+export async function getSubfolders(parentId: string | null): Promise<LocalAudioFolder[]> {
+  if (Platform.OS === 'web') return [];
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return [];
+
+    return await database.getAllAsync<LocalAudioFolder>(
+      'SELECT * FROM audio_folders WHERE parent_id IS ? ORDER BY name ASC;',
+      [parentId]
+    );
+  } catch (error) {
+    console.error('Error getting subfolders:', error);
+    throw error;
+  }
+}
+
+// Save a new audio folder
+export async function saveAudioFolder(folder: Omit<LocalAudioFolder, 'id' | 'created_at' | 'updated_at'>): Promise<LocalAudioFolder> {
+  if (Platform.OS === 'web') {
+    throw new Error('Local folder storage is not supported on web platform');
+  }
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) throw new Error('Database not initialized');
+
+    const id = Math.random().toString(36).substring(7);
+    const timestamp = new Date().toISOString();
+
+    const result = await database.runAsync(
+      `INSERT INTO audio_folders (id, parent_id, name, path, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      [id, folder.parent_id, folder.name, folder.path, timestamp, timestamp, folder.user_id]
+    );
+
+    if (result.changes === 0) {
+      throw new Error('Failed to insert folder');
+    }
+
+    return {
+      id,
+      ...folder,
+      created_at: timestamp,
+      updated_at: timestamp
+    };
+  } catch (error) {
+    console.error('Error saving audio folder:', error);
+    throw error;
+  }
+}
+
+// Save a new audio file
+export async function saveAudioFile(file: Omit<LocalAudioFile, 'id' | 'created_at' | 'updated_at' | 'synced' | 'remote_id' | 'remote_url'>): Promise<LocalAudioFile> {
+  if (Platform.OS === 'web') {
+    throw new Error('Local audio storage is not supported on web platform');
+  }
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) throw new Error('Database not initialized');
+
+    const id = Math.random().toString(36).substring(7);
+    const timestamp = new Date().toISOString();
+
+    const result = await database.runAsync(
+      `INSERT INTO audio_files (
+        id, folder_id, user_id, title, artist, album, genre, year,
+        duration, file_path, original_filename, mime_type, size,
+        created_at, updated_at, synced, remote_id, remote_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, NULL);`,
+      [
+        id, file.folder_id, file.user_id, file.title, file.artist, file.album,
+        file.genre, file.year, file.duration, file.file_path, file.original_filename,
+        file.mime_type, file.size, timestamp, timestamp
+      ]
+    );
+
+    if (result.changes === 0) {
+      throw new Error('Failed to insert audio file');
+    }
+
+    return {
+      id,
+      ...file,
+      created_at: timestamp,
+      updated_at: timestamp,
+      synced: false,
+      remote_id: null,
+      remote_url: null
+    };
+  } catch (error) {
+    console.error('Error saving audio file:', error);
+    throw error;
+  }
+}
+
+// Delete an audio file
+export async function deleteAudioFile(id: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return;
+
+    const result = await database.runAsync(
+      'DELETE FROM audio_files WHERE id = ?;',
+      [id]
+    );
+
+    if (result.changes === 0) {
+      console.warn('No audio file found to delete with id:', id);
+    }
+  } catch (error) {
+    console.error('Error deleting audio file:', error);
+    throw error;
+  }
+}
+
+// Delete a folder and all its contents
+export async function deleteAudioFolder(id: string): Promise<void> {
+  if (Platform.OS === 'web') return;
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return;
+
+    // Note: Due to ON DELETE CASCADE, this will automatically delete all subfolders
+    const result = await database.runAsync(
+      'DELETE FROM audio_folders WHERE id = ?;',
+      [id]
+    );
+
+    if (result.changes === 0) {
+      console.warn('No folder found to delete with id:', id);
+    }
+  } catch (error) {
+    console.error('Error deleting folder:', error);
+    throw error;
+  }
+}
+
+// Get all unsynced audio files
+export async function getUnsyncedAudioFiles(): Promise<LocalAudioFile[]> {
+  if (Platform.OS === 'web') return [];
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return [];
+
+    const result = await database.getAllAsync<LocalAudioFile>(
+      'SELECT * FROM audio_files WHERE synced = 0;'
+    );
+
+    return result.map(file => ({
+      ...file,
+      synced: false,
+      remote_url: null,
+      remote_id: null
+    }));
+  } catch (error) {
+    console.error('Error getting unsynced audio files:', error);
+    throw error;
+  }
+}
+
+// Update sync status for an audio file
+export async function updateAudioFileAfterSync(
+  id: string,
+  remote_url: string,
+  remote_id: string
+): Promise<void> {
+  if (Platform.OS === 'web') return;
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return;
+
+    const result = await database.runAsync(
+      'UPDATE audio_files SET synced = 1, remote_url = ?, remote_id = ? WHERE id = ?;',
+      [remote_url, remote_id, id]
+    );
+
+    if (result.changes === 0) {
+      throw new Error('Audio file not found');
+    }
+  } catch (error) {
+    console.error('Error updating audio file after sync:', error);
     throw error;
   }
 } 

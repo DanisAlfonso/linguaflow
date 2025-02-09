@@ -7,6 +7,21 @@ export interface AudioFile {
   updated_at: Date;
 }
 
+export type AudioTrackType = 'upload' | 'recording' | 'local';
+
+export interface AudioTrack {
+  id: string;
+  userId: string;
+  title: string;
+  description: string;
+  audioFileId: string;
+  audioFile?: AudioFile;
+  trackType: AudioTrackType;
+  createdAt: Date;
+  updatedAt: Date;
+  duration?: number;
+}
+
 export interface AudioSegment {
   id: string;
   card_id: string;

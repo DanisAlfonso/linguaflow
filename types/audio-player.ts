@@ -1,6 +1,6 @@
 import { AudioFile } from './audio';
 
-export type AudioTrackType = 'recording' | 'upload';
+export type AudioTrackType = 'recording' | 'upload' | 'local';
 export type PlaylistVisibility = 'private' | 'public' | 'unlisted';
 
 export interface AudioTrack {
