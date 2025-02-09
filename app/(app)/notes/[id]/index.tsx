@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, TextInput, Platform } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, TextInput, Platform, ActivityIndicator } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,6 +10,7 @@ import { getNoteById, updateNote, deleteNote } from '../../../../lib/db/notes';
 import { NoteWithAttachments, ColorPreset } from '../../../../types/notes';
 import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
+import Toast from 'react-native-toast-message';
 
 export default function NoteScreen() {
   const { theme } = useTheme();
@@ -21,6 +22,8 @@ export default function NoteScreen() {
   const [content, setContent] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [lastSavedContent, setLastSavedContent] = useState('');
+  const [lastSavedTitle, setLastSavedTitle] = useState('');
 
   useEffect(() => {
     if (user && id) {
@@ -36,6 +39,8 @@ export default function NoteScreen() {
         setNote(fetchedNote);
         setTitle(fetchedNote.title);
         setContent(fetchedNote.content || '');
+        setLastSavedTitle(fetchedNote.title);
+        setLastSavedContent(fetchedNote.content || '');
       }
     } catch (error) {
       console.error('Error loading note:', error);
@@ -44,8 +49,10 @@ export default function NoteScreen() {
     }
   };
 
-  const handleSave = async () => {
+  // Debounced auto-save
+  const autoSave = useCallback(async () => {
     if (!note) return;
+    if (title === lastSavedTitle && content === lastSavedContent) return;
 
     try {
       setIsSaving(true);
@@ -54,13 +61,34 @@ export default function NoteScreen() {
         content,
         color_preset: note.color_preset || undefined,
       });
-      router.back();
+      setLastSavedTitle(title);
+      setLastSavedContent(content);
+      Toast.show({
+        type: 'success',
+        text1: 'Changes saved',
+        position: 'bottom',
+        visibilityTime: 1000,
+      });
     } catch (error) {
-      console.error('Error saving note:', error);
+      console.error('Error auto-saving note:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to save changes',
+        position: 'bottom',
+      });
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [note, title, content, lastSavedTitle, lastSavedContent]);
+
+  // Set up auto-save timer
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      autoSave();
+    }, 1000); // Auto-save 1 second after last change
+
+    return () => clearTimeout(timer);
+  }, [title, content, autoSave]);
 
   const handleDelete = async () => {
     if (!note) return;
@@ -96,10 +124,7 @@ export default function NoteScreen() {
           if (!note) return;
           try {
             await updateNote(note.id, { color_preset: color });
-            const updatedNote = await getNoteById(note.id);
-            if (updatedNote) {
-              setNote(updatedNote);
-            }
+            setNote({ ...note, color_preset: color });
           } catch (error) {
             console.error('Error updating color:', error);
           }
@@ -143,7 +168,17 @@ export default function NoteScreen() {
           <Button
             type="clear"
             icon={<MaterialIcons name="arrow-back" size={24} color={theme.mode === 'dark' ? 'white' : theme.colors.primary} />}
-            onPress={() => router.back()}
+            onPress={() => {
+              if (isSaving) {
+                Toast.show({
+                  type: 'info',
+                  text1: 'Saving changes...',
+                  position: 'bottom',
+                });
+                return;
+              }
+              router.back();
+            }}
           />
           <View style={styles.headerActions}>
             <Button
@@ -165,27 +200,14 @@ export default function NoteScreen() {
                 }
               }}
             />
-            <View style={styles.saveButtonWrapper}>
-              <LinearGradient
-                colors={['#4F46E5', '#818CF8']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.saveButtonGradient}
-              >
-                <Button
-                  title="Save"
-                  loading={isSaving}
-                  loadingProps={{ color: 'white' }}
-                  onPress={handleSave}
-                  type="clear"
-                  titleStyle={[
-                    styles.saveButtonText,
-                    { opacity: isSaving ? 0.7 : 1 }
-                  ]}
-                  buttonStyle={styles.saveButton}
+            {isSaving && (
+              <View style={styles.saveIndicator}>
+                <ActivityIndicator 
+                  size="small" 
+                  color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3} 
                 />
-              </LinearGradient>
-            </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -307,28 +329,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  saveButtonWrapper: {
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  saveButtonGradient: {
-    borderRadius: 8,
-    minWidth: 88,
-  },
-  saveButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    backgroundColor: 'transparent',
-    borderRadius: 8,
-    minHeight: 0,
-    height: 40,
-  },
-  saveButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    marginHorizontal: 0,
-    marginVertical: 0,
-    lineHeight: 20,
+  saveIndicator: {
+    marginLeft: 8,
+    opacity: 0.6,
   },
 }); 
