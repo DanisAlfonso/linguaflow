@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
 import { useAuth } from '../../../../contexts/AuthContext';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { createNote } from '../../../../lib/db/notes';
 import { ColorPreset } from '../../../../types/notes';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -14,6 +14,7 @@ export default function NewNoteScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
+  const { folder } = useLocalSearchParams<{ folder: string }>();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [selectedColor, setSelectedColor] = useState<ColorPreset>('blue');
@@ -29,10 +30,14 @@ export default function NewNoteScreen() {
           title: title.trim(),
           content: content.trim(),
           color_preset: selectedColor,
+          folder_path: folder || '/',
         },
         user.id
       );
-      router.back();
+      router.replace({
+        pathname: '/notes',
+        params: { refresh: Date.now() }
+      });
     } catch (error) {
       console.error('Error creating note:', error);
     } finally {
