@@ -644,6 +644,7 @@ export default function NotesScreen() {
         <Pressable
           style={[
             styles.noteCard,
+            styles.folderCard,
             view === 'grid' ? styles.gridCard : styles.listCard,
             cardStyle,
             isWeb && isHovered && {
@@ -659,15 +660,27 @@ export default function NotesScreen() {
           onHoverIn={() => isWeb && setHoveredNoteId(folder.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
         >
+          <LinearGradient
+            colors={[
+              theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
+              'transparent'
+            ]}
+            style={styles.folderGradient}
+          />
           <View style={[styles.colorStrip, colorStyle]}/>
+          <View style={styles.folderTab}>
+            <View style={[styles.folderTabInner, { backgroundColor: colorStyle.backgroundColor }]} />
+          </View>
           <View style={styles.noteContent}>
             <View style={styles.noteHeader}>
-              <MaterialIcons 
-                name="folder" 
-                size={24} 
-                color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3}
-                style={styles.folderIcon}
-              />
+              <View style={styles.folderIconContainer}>
+                <MaterialIcons 
+                  name="folder" 
+                  size={28}
+                  color={colorStyle.backgroundColor || (theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3)}
+                  style={styles.folderIcon}
+                />
+              </View>
               <Text style={[styles.noteTitle, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]} numberOfLines={2}>
                 {folder.name}
               </Text>
@@ -1843,6 +1856,44 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  folderCard: {
+    borderTopLeftRadius: 2,
+    borderTopRightRadius: 12,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    overflow: 'hidden',
+  },
+  folderGradient: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '100%',
+    zIndex: 0,
+  },
+  folderTab: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: 40,
+    height: 14,
+    zIndex: 1,
+  },
+  folderTabInner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+  },
+  folderIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
   },
   folderIcon: {
     marginRight: 8,
