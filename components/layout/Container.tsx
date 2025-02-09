@@ -5,9 +5,10 @@ import { useTheme } from '@rneui/themed';
 type ContainerProps = {
   children: React.ReactNode;
   style?: any;
+  noPadding?: boolean;
 };
 
-export function Container({ children, style }: ContainerProps) {
+export function Container({ children, style, noPadding }: ContainerProps) {
   const { width } = useWindowDimensions();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
@@ -19,6 +20,7 @@ export function Container({ children, style }: ContainerProps) {
         styles.container,
         {
           backgroundColor: theme.colors.background,
+          paddingHorizontal: noPadding ? 0 : 20,
         },
         isWeb && isWideScreen && styles.webContainer,
         style,
@@ -33,7 +35,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     width: '100%',
-    paddingHorizontal: 20,
   },
   webContainer: {
     maxWidth: 1200,

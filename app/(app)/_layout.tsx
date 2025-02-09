@@ -108,12 +108,12 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="audio/index"
+            name="notes"
             options={{
-              title: 'Audio',
+              title: 'Notes',
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
-                  name="headset" 
+                  name="edit" 
                   size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
@@ -122,12 +122,13 @@ export default function AppLayout() {
             }}
           />
           <Tabs.Screen
-            name="notes/index"
+            name="audio/index"
             options={{
-              title: 'Notes',
+              title: 'Audio',
+              href: '/audio',
               tabBarIcon: ({ color, size, focused }) => (
                 <MaterialIcons 
-                  name="edit" 
+                  name="headset" 
                   size={focused ? BASE_ICON_SIZE + 2 : BASE_ICON_SIZE} 
                   color={color}
                   style={focused ? styles.activeIcon : null}
@@ -149,6 +150,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   activeIcon: {
-    transform: [{translateY: -3}], // Increased from -2 to maintain proportion with new sizes
+    transform: [{ scale: 1.1 }],
   },
 }); 
