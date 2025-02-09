@@ -52,7 +52,7 @@ export default function NoteScreen() {
       await updateNote(note.id, {
         title,
         content,
-        color_preset: note.color_preset,
+        color_preset: note.color_preset || undefined,
       });
       router.back();
     } catch (error) {
@@ -150,12 +150,13 @@ export default function NoteScreen() {
               type="clear"
               icon={
                 <MaterialIcons
-                  name={note.is_pinned ? 'push-pin' : 'push-pin-outlined'}
+                  name={note?.is_pinned ? 'push-pin' : 'push-pin'}
                   size={24}
                   color={theme.mode === 'dark' ? 'white' : theme.colors.primary}
                 />
               }
               onPress={async () => {
+                if (!note) return;
                 try {
                   await updateNote(note.id, { is_pinned: !note.is_pinned });
                   setNote({ ...note, is_pinned: !note.is_pinned });
@@ -163,11 +164,6 @@ export default function NoteScreen() {
                   console.error('Error updating pin status:', error);
                 }
               }}
-            />
-            <Button
-              type="clear"
-              icon={<MaterialIcons name="delete-outline" size={24} color={theme.colors.error} />}
-              onPress={handleDelete}
             />
             <View style={styles.saveButtonWrapper}>
               <LinearGradient

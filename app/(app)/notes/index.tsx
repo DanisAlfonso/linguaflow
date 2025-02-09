@@ -1,15 +1,17 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, RefreshControl, Animated, LayoutAnimation, Platform, UIManager, useWindowDimensions } from 'react-native';
-import { Text, Button, FAB, useTheme } from '@rneui/themed';
+import { View, StyleSheet, ScrollView, Pressable, RefreshControl, Animated, LayoutAnimation, Platform, UIManager, useWindowDimensions, ViewStyle } from 'react-native';
+import { Text, Button, FAB, useTheme, Overlay, Input } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getNotes } from '../../../lib/db/notes';
+import { getNotes, updateNote, deleteNote } from '../../../lib/db/notes';
 import { NoteWithAttachments, ColorPreset } from '../../../types/notes';
 import { format } from 'date-fns';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import Toast from 'react-native-toast-message';
+import { BlurView } from 'expo-blur';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -25,9 +27,23 @@ export default function NotesScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [view, setView] = useState<'grid' | 'list'>('grid');
   const [hoveredNoteId, setHoveredNoteId] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+  const [newNoteName, setNewNoteName] = useState('');
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const opacityAnim = useRef(new Animated.Value(1)).current;
   const { width: windowWidth } = useWindowDimensions();
+
+  // Color presets with names
+  const COLOR_PRESETS: Record<ColorPreset, { colors: string, name: string }> = {
+    blue: { colors: theme.colors.primary, name: 'Blue' },
+    purple: { colors: '#8B5CF6', name: 'Purple' },
+    green: { colors: '#10B981', name: 'Green' },
+    orange: { colors: '#F97316', name: 'Orange' },
+    pink: { colors: '#EC4899', name: 'Pink' },
+  } as const;
 
   // Memoize the card width calculation to avoid recalculation on every render
   const getCardWidth = useMemo(() => {
@@ -36,9 +52,24 @@ export default function NotesScreen() {
     const containerPadding = isWeb ? 40 : 12;
     const gap = 24;
     const numColumns = isWeb ? 3 : 2;
-    return isWeb 
-      ? (maxWidth - (containerPadding * 2) - (gap * (numColumns - 1))) / numColumns 
-      : (windowWidth - (containerPadding * 2) - gap) / 2;
+    
+    console.log('=== Layout Debug ===');
+    console.log('Window Width:', windowWidth);
+    console.log('Container Padding:', containerPadding);
+    console.log('Gap:', gap);
+    console.log('Platform:', Platform.OS);
+    
+    if (isWeb) {
+      const webWidth = (maxWidth - (containerPadding * 2) - (gap * (numColumns - 1))) / numColumns;
+      console.log('Web Card Width:', webWidth);
+      return webWidth;
+    } else {
+      const availableWidth = windowWidth - (containerPadding * 2);
+      const cardWidth = (availableWidth * 0.45);
+      console.log('Available Width:', availableWidth);
+      console.log('Mobile Card Width:', cardWidth);
+      return cardWidth;
+    }
   }, [windowWidth]);
 
   useEffect(() => {
@@ -142,26 +173,183 @@ export default function NotesScreen() {
     setView(view === 'grid' ? 'list' : 'grid');
   };
 
+  const gridContainer: ViewStyle = {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 24,
+    paddingHorizontal: Platform.OS === 'web' ? 40 : 12,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    width: '100%',
+  };
+
+  const handleLongPressNote = (noteId: string, event: any) => {
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
+    setEditingNoteId(noteId);
+  };
+
+  const handleMenuOptionPress = (option: 'color' | 'edit' | 'rename' | 'delete') => {
+    if (!editingNoteId) return;
+
+    if (option === 'color') {
+      setShowColorPicker(true);
+    } else if (option === 'edit') {
+      router.push(`/notes/${editingNoteId}`);
+      setEditingNoteId(null);
+    } else if (option === 'rename') {
+      const note = notes.find(n => n.id === editingNoteId);
+      if (note) {
+        setNewNoteName(note.title);
+        setShowRename(true);
+      }
+    } else if (option === 'delete') {
+      handleDeleteNote(editingNoteId);
+    }
+  };
+
+  const handleCloseMenu = () => {
+    setEditingNoteId(null);
+    setShowColorPicker(false);
+    setShowRename(false);
+  };
+
+  const handleChangeColor = async (noteId: string, colorKey: ColorPreset) => {
+    try {
+      const note = notes.find(n => n.id === noteId);
+      if (!note) return;
+
+      // Only include the color_preset field for update
+      await updateNote(noteId, {
+        color_preset: colorKey
+      });
+
+      // Update local state
+      setNotes(prevNotes => 
+        prevNotes.map(n => 
+          n.id === noteId ? { ...n, color_preset: colorKey } : n
+        )
+      );
+
+      Toast.show({
+        type: 'success',
+        text1: 'Color updated successfully',
+      });
+    } catch (error) {
+      console.error('Error updating color:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to update color',
+      });
+    } finally {
+      setShowColorPicker(false);
+      setEditingNoteId(null);
+    }
+  };
+
+  const handleRenameNote = async () => {
+    if (!editingNoteId || !newNoteName.trim()) return;
+
+    try {
+      const note = notes.find(n => n.id === editingNoteId);
+      if (!note) return;
+
+      // Only include the title field for update
+      await updateNote(editingNoteId, {
+        title: newNoteName.trim()
+      });
+
+      // Update local state
+      setNotes(prevNotes => 
+        prevNotes.map(n => 
+          n.id === editingNoteId ? { ...n, title: newNoteName.trim() } : n
+        )
+      );
+
+      Toast.show({
+        type: 'success',
+        text1: 'Note renamed successfully',
+      });
+    } catch (error) {
+      console.error('Error renaming note:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to rename note',
+      });
+    } finally {
+      setShowRename(false);
+      setEditingNoteId(null);
+    }
+  };
+
+  const handleDeleteNote = async (noteId: string) => {
+    try {
+      // Delete note from the database
+      await deleteNote(noteId);
+      
+      // Update local state
+      setNotes(prevNotes => prevNotes.filter(n => n.id !== noteId));
+
+      Toast.show({
+        type: 'success',
+        text1: 'Note deleted successfully',
+      });
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to delete note',
+      });
+    } finally {
+      setEditingNoteId(null);
+    }
+  };
+
   const renderNoteCard = (note: NoteWithAttachments) => {
     const isWeb = Platform.OS === 'web';
     const colorStyle = getColorStyle(note.color_preset);
     const isHovered = hoveredNoteId === note.id;
 
+    const cardStyle = {
+      backgroundColor: theme.mode === 'dark' ? '#1F1F1F' : theme.colors.grey0,
+      borderWidth: 1,
+      borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    };
+
+    console.log('=== Card Debug ===');
+    console.log('Note ID:', note.id);
+    console.log('Window Width:', windowWidth);
+    console.log('View Mode:', view);
+
     return (
-      <Animated.View key={note.id} style={[{ transform: [{ scale: scaleAnim }], opacity: opacityAnim }]}>
+      <Animated.View 
+        key={note.id} 
+        style={[
+          { transform: [{ scale: scaleAnim }], opacity: opacityAnim },
+          view === 'grid' && { width: '46%' }  // Increase width to 48%
+        ]}
+      >
         <Pressable
           style={[
             styles.noteCard,
-            view === 'grid' ? [styles.gridCard, { width: getCardWidth }] : styles.listCard,
-            { backgroundColor: theme.mode === 'dark' ? '#1F1F1F' : theme.colors.grey0 },
+            view === 'grid' ? styles.gridCard : styles.listCard,
+            cardStyle,
             isWeb && isHovered && {
               transform: [{ translateY: -4 }],
               shadowOffset: { width: 0, height: 8 },
               shadowOpacity: 0.15,
               shadowRadius: 12,
+              borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
             },
           ]}
           onPress={() => router.push(`/notes/${note.id}`)}
+          onLongPress={(event) => handleLongPressNote(note.id, event)}
           onHoverIn={() => isWeb && setHoveredNoteId(note.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
         >
@@ -180,6 +368,235 @@ export default function NotesScreen() {
             </View>
           </View>
         </Pressable>
+
+        {editingNoteId === note.id && (
+          <Overlay
+            isVisible={true}
+            onBackdropPress={handleCloseMenu}
+            overlayStyle={styles.overlayContainer}
+            backdropStyle={styles.backdrop}
+            animationType="fade"
+          >
+            <Pressable 
+              style={StyleSheet.absoluteFill}
+              onPress={handleCloseMenu}
+            >
+              <View style={StyleSheet.absoluteFill}>
+                <BlurView 
+                  intensity={30} 
+                  style={StyleSheet.absoluteFill}
+                  tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                />
+              </View>
+            </Pressable>
+            <View 
+              style={[
+                styles.contextMenu,
+                {
+                  position: 'absolute',
+                  left: menuPosition.x,
+                  top: menuPosition.y,
+                  width: menuPosition.width,
+                  opacity: 1,
+                  backgroundColor: Platform.OS === 'ios' 
+                    ? 'rgba(250, 250, 250, 0.8)' 
+                    : theme.mode === 'dark' 
+                      ? 'rgba(30, 30, 30, 0.95)'
+                      : 'rgba(255, 255, 255, 0.95)',
+                },
+              ]}
+            >
+              <Pressable onPress={(e) => e.stopPropagation()}>
+                {!showColorPicker && !showRename ? (
+                  // Main Menu
+                  <>
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.menuOption,
+                        pressed && styles.menuOptionPressed,
+                      ]}
+                      onPress={() => handleMenuOptionPress('color')}
+                    >
+                      <MaterialIcons 
+                        name="palette" 
+                        size={20} 
+                        color={theme.colors.grey4}
+                      />
+                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                        Choose Color
+                      </Text>
+                      <MaterialIcons 
+                        name="chevron-right" 
+                        size={20} 
+                        color={theme.colors.grey4}
+                        style={styles.menuOptionIcon} 
+                      />
+                    </Pressable>
+                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.menuOption,
+                        pressed && styles.menuOptionPressed,
+                      ]}
+                      onPress={() => handleMenuOptionPress('edit')}
+                    >
+                      <MaterialIcons 
+                        name="edit" 
+                        size={20} 
+                        color={theme.colors.grey4}
+                      />
+                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                        Edit Note
+                      </Text>
+                    </Pressable>
+                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.menuOption,
+                        pressed && styles.menuOptionPressed,
+                      ]}
+                      onPress={() => handleMenuOptionPress('rename')}
+                    >
+                      <MaterialIcons 
+                        name="drive-file-rename-outline" 
+                        size={20} 
+                        color={theme.colors.grey4}
+                      />
+                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
+                        Rename
+                      </Text>
+                    </Pressable>
+                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                    <Pressable
+                      style={({ pressed }) => [
+                        styles.menuOption,
+                        pressed && styles.menuOptionPressed,
+                      ]}
+                      onPress={() => handleMenuOptionPress('delete')}
+                    >
+                      <MaterialIcons 
+                        name="delete-outline" 
+                        size={20} 
+                        color="#DC2626" 
+                      />
+                      <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
+                        Delete Note
+                      </Text>
+                    </Pressable>
+                  </>
+                ) : showRename ? (
+                  // Rename Interface
+                  <>
+                    <View style={styles.colorPickerHeader}>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.backButton,
+                          pressed && styles.backButtonPressed,
+                        ]}
+                        onPress={() => setShowRename(false)}
+                      >
+                        <MaterialIcons 
+                          name="arrow-back" 
+                          size={20} 
+                          color={theme.colors.grey4} 
+                        />
+                      </Pressable>
+                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                        Rename Note
+                      </Text>
+                    </View>
+                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                    <View style={styles.renameContainer}>
+                      <Input
+                        value={newNoteName}
+                        onChangeText={setNewNoteName}
+                        placeholder="Enter note title"
+                        autoFocus
+                        returnKeyType="done"
+                        onSubmitEditing={handleRenameNote}
+                        containerStyle={styles.renameInput}
+                        inputContainerStyle={[
+                          styles.renameInputContainer,
+                          { borderColor: theme.colors.grey2 }
+                        ]}
+                        inputStyle={[
+                          styles.renameInputText,
+                          { color: theme.colors.grey4 }
+                        ]}
+                      />
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.renameButton,
+                          pressed && styles.renameButtonPressed,
+                        ]}
+                        onPress={handleRenameNote}
+                      >
+                        <Text style={styles.renameButtonText}>
+                          Save
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : (
+                  // Color Picker
+                  <>
+                    <View style={styles.colorPickerHeader}>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.backButton,
+                          pressed && styles.backButtonPressed,
+                        ]}
+                        onPress={() => setShowColorPicker(false)}
+                      >
+                        <MaterialIcons 
+                          name="arrow-back" 
+                          size={20} 
+                          color={theme.colors.grey4} 
+                        />
+                      </Pressable>
+                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
+                        Choose Color
+                      </Text>
+                    </View>
+                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
+                    {Object.keys(COLOR_PRESETS).map((colorKey) => {
+                      const isSelected = notes.find(n => n.id === editingNoteId)?.color_preset === colorKey;
+                      return (
+                        <Pressable
+                          key={colorKey}
+                          style={({ pressed }) => [
+                            styles.colorOption,
+                            pressed && styles.colorOptionPressed,
+                          ]}
+                          onPress={() => handleChangeColor(editingNoteId, colorKey as ColorPreset)}
+                        >
+                          <View style={styles.colorPreviewContainer}>
+                            <View style={[styles.colorPreview, getColorStyle(colorKey as ColorPreset)]} />
+                          </View>
+                          <Text style={[
+                            styles.colorName,
+                            { color: theme.colors.grey4 },
+                            isSelected && styles.colorNameSelected
+                          ]}>
+                            {COLOR_PRESETS[colorKey as ColorPreset].name}
+                          </Text>
+                          {isSelected && (
+                            <MaterialIcons 
+                              name="check" 
+                              size={20} 
+                              color={theme.colors.grey4}
+                              style={styles.checkIcon} 
+                            />
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                )}
+              </Pressable>
+            </View>
+          </Overlay>
+        )}
       </Animated.View>
     );
   };
@@ -223,7 +640,7 @@ export default function NotesScreen() {
               />
             }
           >
-            <View style={[styles.notesContainer, view === 'grid' && styles.gridContainer]}>
+            <View style={[styles.notesContainer, view === 'grid' && gridContainer]}>
               {notes.length > 0 ? (
                 notes.map(renderNoteCard)
               ) : (
@@ -296,15 +713,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 24,
     paddingHorizontal: Platform.OS === 'web' ? 40 : 12,
-    ...(Platform.OS === 'web' && {
-      justifyContent: 'center',
-      alignItems: 'flex-start',
-      maxWidth: 1200,
-      alignSelf: 'center',
-      width: '100%',
-      marginLeft: 'auto',
-      marginRight: 'auto',
-    }),
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   noteCard: {
     borderRadius: 12,
@@ -416,5 +827,132 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 32,
     height: 32,
+  },
+  overlayContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
+  backdrop: {
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.5)',
+  },
+  contextMenu: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 8,
+      },
+      web: {
+        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+      },
+    }),
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  menuOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  menuOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  menuOptionIcon: {
+    marginLeft: 'auto',
+  },
+  menuDivider: {
+    height: 1,
+    width: '100%',
+  },
+  colorPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  backButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  backButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  colorPickerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  colorOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  colorOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  colorPreviewContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  colorPreview: {
+    width: '100%',
+    height: '100%',
+  },
+  colorName: {
+    fontSize: 16,
+    fontWeight: '500',
+    flex: 1,
+  },
+  colorNameSelected: {
+    fontWeight: '600',
+  },
+  checkIcon: {
+    marginLeft: 'auto',
+  },
+  renameContainer: {
+    padding: 12,
+    gap: 12,
+  },
+  renameInput: {
+    paddingHorizontal: 0,
+    marginBottom: 0,
+  },
+  renameInputContainer: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+  },
+  renameInputText: {
+    fontSize: 16,
+  },
+  renameButton: {
+    backgroundColor: '#4F46E5',
+    borderRadius: 8,
+    padding: 12,
+    alignItems: 'center',
+  },
+  renameButtonPressed: {
+    opacity: 0.8,
+  },
+  renameButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 }); 
