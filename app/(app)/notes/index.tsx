@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, RefreshControl, Animated, LayoutAnimation, Platform, UIManager, useWindowDimensions, ViewStyle } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, RefreshControl, Animated, LayoutAnimation, Platform, UIManager, useWindowDimensions, ViewStyle, TextInput } from 'react-native';
 import { Text, Button, FAB, useTheme, Overlay, Input, Dialog } from '@rneui/themed';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -44,6 +44,10 @@ export default function NotesScreen() {
   const [selectedItemType, setSelectedItemType] = useState<'note' | 'folder' | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [folderToDelete, setFolderToDelete] = useState<(typeof folders)[0] | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState<'created' | 'updated' | 'accessed' | 'title'>('updated');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [showSortMenu, setShowSortMenu] = useState(false);
   
   // Separate folders and notes
   const { folders, notes: filteredNotes } = useMemo(() => {
@@ -94,6 +98,62 @@ export default function NotesScreen() {
       notes: regularNotes
     };
   }, [notes, currentFolder]);
+
+  // Add this after the folders/notes separation
+  const sortedAndFilteredNotes = useMemo(() => {
+    let result = [...filteredNotes];
+    
+    // Apply search filter
+    if (searchQuery) {
+      result = result.filter(note => 
+        note.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (note.content && note.content.toLowerCase().includes(searchQuery.toLowerCase()))
+      );
+    }
+    
+    // Apply sorting
+    result.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'updated':
+          comparison = new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+          break;
+        case 'created':
+          comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          break;
+        case 'accessed':
+          comparison = new Date(b.last_accessed_at).getTime() - new Date(a.last_accessed_at).getTime();
+          break;
+      }
+      
+      return sortDirection === 'asc' ? -comparison : comparison;
+    });
+    
+    return result;
+  }, [filteredNotes, searchQuery, sortBy, sortDirection]);
+
+  const sortedFolders = useMemo(() => {
+    let result = [...folders];
+    
+    // Apply search filter to folders
+    if (searchQuery) {
+      result = result.filter(folder => 
+        folder.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+    
+    // Always sort folders alphabetically, but respect sort direction
+    result.sort((a, b) => {
+      const comparison = a.name.localeCompare(b.name);
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+    
+    return result;
+  }, [folders, searchQuery, sortDirection]);
 
   // Color presets with names
   const COLOR_PRESETS: Record<ColorPreset, { colors: string, name: string }> = {
@@ -1462,17 +1522,71 @@ export default function NotesScreen() {
       <Container noPadding>
         <View style={[styles.content, { paddingHorizontal: 12 }]}>
           <View style={styles.header}>
-            <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>Notes</Text>
-            <View style={styles.headerActions}>
+            <View style={styles.headerTop}>
+              <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>Notes</Text>
+              <View style={styles.headerActions}>
+                <Button
+                  type="clear"
+                  icon={<MaterialIcons name={view === 'grid' ? 'grid-view' : 'view-list'} size={24} color={theme.colors.primary}/>}
+                  onPress={toggleView}
+                />
+                <Button
+                  type="clear"
+                  icon={<MaterialIcons name="create-new-folder" size={24} color={theme.colors.primary}/>}
+                  onPress={() => setShowCreateFolder(true)}
+                />
+              </View>
+            </View>
+
+            <View style={styles.searchContainer}>
+              <View style={[
+                styles.searchInputContainer,
+                { 
+                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey5,
+                  borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+                }
+              ]}>
+                <MaterialIcons 
+                  name="search" 
+                  size={20} 
+                  color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
+                />
+                <TextInput
+                  style={[
+                    styles.searchInput,
+                    { color: theme.mode === 'dark' ? 'white' : theme.colors.black }
+                  ]}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search notes and folders..."
+                  placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
+                />
+                {searchQuery ? (
+                  <Pressable
+                    onPress={() => setSearchQuery('')}
+                    style={({ pressed }) => [
+                      styles.clearButton,
+                      pressed && styles.clearButtonPressed
+                    ]}
+                  >
+                    <MaterialIcons 
+                      name="close" 
+                      size={20} 
+                      color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
               <Button
                 type="clear"
-                icon={<MaterialIcons name={view === 'grid' ? 'grid-view' : 'view-list'} size={24} color={theme.colors.primary}/>}
-                onPress={toggleView}
-              />
-              <Button
-                type="clear"
-                icon={<MaterialIcons name="create-new-folder" size={24} color={theme.colors.primary}/>}
-                onPress={() => setShowCreateFolder(true)}
+                icon={
+                  <MaterialIcons 
+                    name="sort" 
+                    size={24} 
+                    color={theme.colors.primary}
+                  />
+                }
+                onPress={() => setShowSortMenu(true)}
               />
             </View>
           </View>
@@ -1481,6 +1595,85 @@ export default function NotesScreen() {
             currentPath={currentFolder}
             onNavigate={setCurrentFolder}
           />
+
+          <Overlay
+            isVisible={showSortMenu}
+            onBackdropPress={() => setShowSortMenu(false)}
+            overlayStyle={[
+              styles.sortMenu,
+              { 
+                backgroundColor: theme.mode === 'dark' 
+                  ? theme.colors.grey0 
+                  : 'white' 
+              }
+            ]}
+          >
+            <View style={styles.sortMenuHeader}>
+              <Text style={[
+                styles.sortMenuTitle,
+                { color: theme.mode === 'dark' ? 'white' : theme.colors.black }
+              ]}>
+                Sort by
+              </Text>
+              <Pressable
+                onPress={() => setShowSortMenu(false)}
+                style={({ pressed }) => [
+                  styles.closeButton,
+                  pressed && styles.closeButtonPressed
+                ]}
+              >
+                <MaterialIcons 
+                  name="close" 
+                  size={20} 
+                  color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
+                />
+              </Pressable>
+            </View>
+            {[
+              { value: 'title', label: 'Title', icon: 'sort-by-alpha' },
+              { value: 'updated', label: 'Last updated', icon: 'update' },
+              { value: 'created', label: 'Date created', icon: 'event' },
+              { value: 'accessed', label: 'Last accessed', icon: 'visibility' },
+            ].map(option => (
+              <Pressable
+                key={option.value}
+                style={({ pressed }) => [
+                  styles.sortOption,
+                  pressed && styles.sortOptionPressed,
+                  sortBy === option.value && styles.sortOptionSelected
+                ]}
+                onPress={() => {
+                  if (sortBy === option.value) {
+                    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                  } else {
+                    setSortBy(option.value as typeof sortBy);
+                    setSortDirection('desc');
+                  }
+                }}
+              >
+                <View style={styles.sortOptionContent}>
+                  <MaterialIcons 
+                    name={option.icon as any}
+                    size={20}
+                    color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
+                  />
+                  <Text style={[
+                    styles.sortOptionText,
+                    { color: theme.mode === 'dark' ? 'white' : theme.colors.black }
+                  ]}>
+                    {option.label}
+                  </Text>
+                </View>
+                {sortBy === option.value && (
+                  <MaterialIcons 
+                    name={sortDirection === 'asc' ? 'arrow-upward' : 'arrow-downward'}
+                    size={20}
+                    color={theme.colors.primary}
+                  />
+                )}
+              </Pressable>
+            ))}
+          </Overlay>
 
           <CreateFolderModal
             isVisible={showCreateFolder}
@@ -1533,20 +1726,30 @@ export default function NotesScreen() {
             }
           >
             <View style={[styles.notesContainer, view === 'grid' && gridContainer]}>
-              {folders.length === 0 && filteredNotes.length === 0 ? (
+              {sortedFolders.length === 0 && sortedAndFilteredNotes.length === 0 ? (
                 <View style={styles.emptyState}>
                   <MaterialIcons name="folder-open" size={64} color={theme.colors.grey3}/>
                   <Text h4 style={[styles.emptyStateTitle, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>
-                    {currentFolder === '/' ? 'No notes yet' : 'This folder is empty'}
+                    {searchQuery 
+                      ? 'No matching notes or folders' 
+                      : currentFolder === '/' 
+                        ? 'No notes yet' 
+                        : 'This folder is empty'
+                    }
                   </Text>
                   <Text style={[styles.emptyStateText, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]}>
-                    {currentFolder === '/' ? 'Create your first note to get started' : 'Create a note in this folder'}
+                    {searchQuery 
+                      ? 'Try a different search term'
+                      : currentFolder === '/' 
+                        ? 'Create your first note to get started' 
+                        : 'Create a note in this folder'
+                    }
                   </Text>
                 </View>
               ) : (
                 <>
-                  {folders.map(renderFolderCard)}
-                  {filteredNotes.map(renderNoteCard)}
+                  {sortedFolders.map(renderFolderCard)}
+                  {sortedAndFilteredNotes.map(renderNoteCard)}
                 </>
               )}
             </View>
@@ -1589,10 +1792,13 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   header: {
+    paddingVertical: 16,
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    marginBottom: 16,
   },
   title: {
     fontSize: 32,
@@ -1913,5 +2119,78 @@ const styles = StyleSheet.create({
   folderOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 44,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+  },
+  searchInput: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 16,
+    height: 44,
+    padding: 0,
+  },
+  clearButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  clearButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  sortMenu: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 12,
+    padding: 0,
+  },
+  sortMenuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+  },
+  sortMenuTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  closeButton: {
+    padding: 4,
+    borderRadius: 12,
+  },
+  closeButtonPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  sortOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  sortOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  sortOptionSelected: {
+    backgroundColor: 'rgba(79, 70, 229, 0.1)',
+  },
+  sortOptionContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sortOptionText: {
+    fontSize: 16,
   },
 }); 
