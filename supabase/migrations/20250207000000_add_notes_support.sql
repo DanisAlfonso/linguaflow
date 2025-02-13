@@ -1,9 +1,34 @@
+-- Drop existing indexes if they exist
+DROP INDEX IF EXISTS notes_user_id_idx;
+DROP INDEX IF EXISTS notes_created_at_idx;
+DROP INDEX IF EXISTS notes_folder_path_idx;
+DROP INDEX IF EXISTS note_attachments_note_id_idx;
+
+-- Drop existing policies if they exist
+DROP POLICY IF EXISTS "Users can view their own notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can create their own notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can update their own notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can delete their own notes" ON public.notes;
+DROP POLICY IF EXISTS "Users can view their own note attachments" ON public.note_attachments;
+DROP POLICY IF EXISTS "Users can create their own note attachments" ON public.note_attachments;
+DROP POLICY IF EXISTS "Users can delete their own note attachments" ON public.note_attachments;
+
+-- Drop existing triggers if they exist
+DROP TRIGGER IF EXISTS update_note_last_accessed_trigger ON public.notes;
+DROP TRIGGER IF EXISTS update_note_timestamp_trigger ON public.notes;
+
+-- Drop existing functions if they exist
+DROP FUNCTION IF EXISTS update_note_last_accessed();
+DROP FUNCTION IF EXISTS update_note_timestamp();
+
 -- Create notes table
 create table if not exists public.notes (
     id uuid default gen_random_uuid() primary key,
     user_id uuid references auth.users(id) on delete cascade not null,
     title text not null,
     content text,
+    rich_content jsonb,
+    content_format text default 'plain' check (content_format in ('plain', 'rich')),
     language text,
     tags text[] default array[]::text[],
     is_pinned boolean default false,
