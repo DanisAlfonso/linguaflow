@@ -5,10 +5,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Header } from '../../components/layout/Header';
 import { useTheme } from '@rneui/themed';
+import { useTabBar } from '../../contexts/TabBarContext';
 
 export default function AppLayout() {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
+  const { isTabBarVisible } = useTabBar();
   const isWeb = Platform.OS === 'web';
   const translateY = useRef(new Animated.Value(0)).current;
 
@@ -80,8 +82,7 @@ export default function AppLayout() {
       <View style={styles.content}>
         <Tabs
           screenOptions={{
-            tabBarActiveTintColor: theme.colors.primary,
-            tabBarInactiveTintColor: theme.colors.grey4,
+            headerShown: false,
             tabBarStyle: {
               position: 'absolute',
               bottom: 0,
@@ -90,33 +91,34 @@ export default function AppLayout() {
               backgroundColor: theme.colors.grey0,
               borderTopWidth: 1,
               borderTopColor: theme.colors.grey1,
-              elevation: Platform.OS === 'android' ? 8 : 0,
-              shadowColor: '#000',
-              shadowOffset: {
-                width: 0,
-                height: -4,
-              },
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
-              height: 76,
+              height: isWeb ? 64 : 76,
               paddingBottom: 12,
               paddingTop: 12,
               transform: [{
                 translateY: translateY
               }],
               zIndex: 1,
+              display: isTabBarVisible ? 'flex' : 'none',
               ...Platform.select({
                 ios: {
                   borderTopWidth: 0.5,
                   borderTopColor: theme.colors.grey2,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: -4 },
+                  shadowOpacity: 0.1,
+                  shadowRadius: 8,
                 },
                 android: {
                   borderTopWidth: 0,
+                  elevation: 8,
+                },
+                web: {
+                  boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.05)',
                 },
               }),
             },
             tabBarLabelStyle: {
-              fontSize: 13, // Increased from 12
+              fontSize: 13,
               fontWeight: '500',
               marginTop: 4,
             },
@@ -124,9 +126,10 @@ export default function AppLayout() {
               marginBottom: -2,
             },
             tabBarItemStyle: {
-              paddingVertical: 6, // Increased from 4
+              paddingVertical: 6,
             },
-            headerShown: false,
+            tabBarActiveTintColor: theme.colors.primary,
+            tabBarInactiveTintColor: theme.colors.grey4,
           }}
         >
           <Tabs.Screen

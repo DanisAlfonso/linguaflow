@@ -19,6 +19,8 @@ import Toast from 'react-native-toast-message';
 import { uploadRecording } from '../../../../lib/api/audio';
 import { initDatabase } from '../../../../lib/db';
 import { ensureRecordingsDirectory } from '../../../../lib/fs/recordings';
+import { useStudySettings } from '../../../../contexts/StudySettingsContext';
+import { useTabBar } from '../../../../contexts/TabBarContext';
 
 // Keyboard shortcuts for web
 const KEYBOARD_SHORTCUTS = {
@@ -87,6 +89,23 @@ export default function StudyScreen() {
   const isMandarin = deck?.language === 'Mandarin';
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
+
+  const { distractionFreeMode } = useStudySettings();
+  const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
+
+  // Effect to handle tab bar visibility
+  useEffect(() => {
+    if (distractionFreeMode) {
+      temporarilyHideTabBar();
+    } else {
+      restoreTabBar();
+    }
+
+    // Restore tab bar when leaving the screen
+    return () => {
+      restoreTabBar();
+    };
+  }, [distractionFreeMode]);
 
   // Handle keyboard shortcuts on web
   useEffect(() => {
@@ -596,7 +615,13 @@ export default function StudyScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[
+      styles.container, 
+      { 
+        backgroundColor: theme.colors.background,
+        paddingBottom: distractionFreeMode ? 0 : undefined 
+      }
+    ]}>
       <Container>
         <View style={styles.header}>
           <View style={styles.headerLeft}>

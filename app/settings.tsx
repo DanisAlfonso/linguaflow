@@ -5,6 +5,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Container } from '../components/layout/Container';
 import { useAppTheme } from '../contexts/ThemeContext';
+import { useStudySettings } from '../contexts/StudySettingsContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SwitchMenuItem = {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -31,9 +33,33 @@ type Section = {
 export default function SettingsScreen() {
   const { theme } = useTheme();
   const { themeMode, setThemeMode } = useAppTheme();
+  const { distractionFreeMode, setDistractionFreeMode } = useStudySettings();
   const router = useRouter();
   const [notifications, setNotifications] = React.useState(true);
   const [autoPlay, setAutoPlay] = React.useState(true);
+
+  // Load distraction-free mode setting on component mount
+  React.useEffect(() => {
+    const loadDistractionFreeMode = async () => {
+      try {
+        const value = await AsyncStorage.getItem('distractionFreeMode');
+        setDistractionFreeMode(value === 'true');
+      } catch (error) {
+        console.error('Error loading distraction-free mode setting:', error);
+      }
+    };
+    loadDistractionFreeMode();
+  }, []);
+
+  // Save distraction-free mode setting when changed
+  const handleDistractionFreeModeChange = async (value: boolean) => {
+    try {
+      await AsyncStorage.setItem('distractionFreeMode', value.toString());
+      setDistractionFreeMode(value);
+    } catch (error) {
+      console.error('Error saving distraction-free mode setting:', error);
+    }
+  };
 
   const sections: Section[] = [
     {
@@ -65,6 +91,13 @@ export default function SettingsScreen() {
     {
       title: 'Learning Settings',
       items: [
+        {
+          icon: 'remove-red-eye',
+          label: 'Distraction-Free Mode',
+          type: 'switch',
+          value: distractionFreeMode,
+          onChange: setDistractionFreeMode,
+        },
         {
           icon: 'school',
           label: 'Study Reminders',
