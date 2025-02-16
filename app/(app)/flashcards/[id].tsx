@@ -524,6 +524,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     gap: 32,
+    paddingBottom: Platform.OS === 'web' ? 32 : 100,
   },
   overview: {
     gap: 24,
