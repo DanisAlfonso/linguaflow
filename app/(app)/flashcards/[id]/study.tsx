@@ -21,6 +21,7 @@ import { initDatabase } from '../../../../lib/db';
 import { ensureRecordingsDirectory } from '../../../../lib/fs/recordings';
 import { useStudySettings } from '../../../../contexts/StudySettingsContext';
 import { useTabBar } from '../../../../contexts/TabBarContext';
+import { AnimatedCard } from '../../../../components/flashcards/AnimatedCard';
 
 // Keyboard shortcuts for web
 const KEYBOARD_SHORTCUTS = {
@@ -90,7 +91,7 @@ export default function StudyScreen() {
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
 
-  const { distractionFreeMode } = useStudySettings();
+  const { distractionFreeMode, cardAnimationType } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
 
   // Effect to handle tab bar visibility
@@ -695,18 +696,9 @@ export default function StudyScreen() {
         )}
 
         <View style={styles.cardContainer}>
-          <Pressable onPress={flipCard}>
-            <View style={styles.cardWrapper}>
-              <Animated.View
-                style={[
-                  styles.card,
-                  frontAnimatedStyle,
-                  {
-                    backgroundColor: theme.colors.grey0,
-                    borderColor: theme.colors.grey2,
-                  },
-                ]}
-              >
+          <AnimatedCard
+            front={
+              <View style={styles.cardContent}>
                 {isMandarin && currentCard.language_specific_data?.mandarin ? (
                   <View style={styles.mandarinContainer}>
                     <MandarinText
@@ -722,7 +714,7 @@ export default function StudyScreen() {
                       </Text>
                     )}
                   </View>
-                ) : frontAudioSegments.length > 0 ? (
+                ) : (
                   <View style={styles.textContainer}>
                     <AudioEnabledText
                       text={currentCard.front}
@@ -731,15 +723,11 @@ export default function StudyScreen() {
                       color={theme.colors.primary}
                       style={styles.audioEnabledText}
                     />
-                    <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                      Click text or press Ctrl+Space to play audio
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.textContainer}>
-                    <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                      {currentCard.front}
-                    </Text>
+                    {frontAudioSegments.length > 0 && (
+                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                        Click text or press Ctrl+Space to play audio
+                      </Text>
+                    )}
                   </View>
                 )}
                 {currentCard.tags && currentCard.tags.length > 0 && (
@@ -756,18 +744,10 @@ export default function StudyScreen() {
                     ))}
                   </View>
                 )}
-              </Animated.View>
-              <Animated.View
-                style={[
-                  styles.card,
-                  styles.cardBack,
-                  backAnimatedStyle,
-                  {
-                    backgroundColor: theme.colors.grey0,
-                    borderColor: theme.colors.grey2,
-                  },
-                ]}
-              >
+              </View>
+            }
+            back={
+              <View style={styles.cardContent}>
                 {isMandarin && currentCard.language_specific_data?.mandarin ? (
                   <View style={styles.mandarinContainer}>
                     <MandarinText
@@ -783,7 +763,7 @@ export default function StudyScreen() {
                       </Text>
                     )}
                   </View>
-                ) : backAudioSegments.length > 0 ? (
+                ) : (
                   <View style={styles.textContainer}>
                     <AudioEnabledText
                       text={currentCard.back}
@@ -792,15 +772,11 @@ export default function StudyScreen() {
                       color={theme.colors.primary}
                       style={styles.audioEnabledText}
                     />
-                    <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                      Click text or press Ctrl+Space to play audio
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.textContainer}>
-                    <Text style={[styles.cardText, { color: theme.colors.grey5 }]}>
-                      {currentCard.back}
-                    </Text>
+                    {backAudioSegments.length > 0 && (
+                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                        Click text or press Ctrl+Space to play audio
+                      </Text>
+                    )}
                   </View>
                 )}
                 {currentCard.notes && (
@@ -808,9 +784,20 @@ export default function StudyScreen() {
                     {currentCard.notes}
                   </Text>
                 )}
-              </Animated.View>
-            </View>
-          </Pressable>
+              </View>
+            }
+            isFlipped={isFlipped}
+            onPress={flipCard}
+            animationType={cardAnimationType}
+            cardStyle={{
+              minHeight: 300,
+              padding: 24,
+              borderRadius: 24,
+              borderWidth: 1,
+              backgroundColor: theme.colors.grey0,
+              borderColor: theme.colors.grey2,
+            }}
+          />
 
           <View style={styles.controls}>
             <Button
@@ -969,25 +956,11 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 32,
   },
-  cardWrapper: Platform.OS === 'web' 
-    ? {
-        // @ts-ignore - React Native Web supports perspective
-        perspective: 1000,
-      } 
-    : {} as ViewStyle,
   card: {
     minHeight: 300,
     padding: 24,
     borderRadius: 24,
     borderWidth: 1,
-    backfaceVisibility: 'hidden',
-    gap: 16,
-  },
-  cardBack: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
   },
   cardText: {
     fontSize: 32,

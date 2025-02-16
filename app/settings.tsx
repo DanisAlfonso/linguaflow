@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, Platform, ScrollView, Pressable, Switch } from 'react-native';
-import { Text, useTheme } from '@rneui/themed';
+import { Text, useTheme, Button } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Container } from '../components/layout/Container';
 import { useAppTheme } from '../contexts/ThemeContext';
-import { useStudySettings } from '../contexts/StudySettingsContext';
+import { useStudySettings, CardAnimationType } from '../contexts/StudySettingsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SwitchMenuItem = {
@@ -33,10 +33,16 @@ type Section = {
 export default function SettingsScreen() {
   const { theme } = useTheme();
   const { themeMode, setThemeMode } = useAppTheme();
-  const { distractionFreeMode, setDistractionFreeMode } = useStudySettings();
+  const { 
+    distractionFreeMode, 
+    setDistractionFreeMode,
+    cardAnimationType,
+    setCardAnimationType 
+  } = useStudySettings();
   const router = useRouter();
   const [notifications, setNotifications] = React.useState(true);
   const [autoPlay, setAutoPlay] = React.useState(true);
+  const [showAnimationModal, setShowAnimationModal] = useState(false);
 
   // Load distraction-free mode setting on component mount
   React.useEffect(() => {
@@ -99,22 +105,10 @@ export default function SettingsScreen() {
           onChange: setDistractionFreeMode,
         },
         {
-          icon: 'school',
-          label: 'Study Reminders',
+          icon: 'animation',
+          label: 'Card Animation',
           type: 'navigate',
-          onPress: () => {},
-        },
-        {
-          icon: 'timer',
-          label: 'Session Duration',
-          type: 'navigate',
-          onPress: () => {},
-        },
-        {
-          icon: 'translate',
-          label: 'Language Pairs',
-          type: 'navigate',
-          onPress: () => {},
+          onPress: () => setShowAnimationModal(true),
         },
       ],
     },
@@ -142,6 +136,95 @@ export default function SettingsScreen() {
       ],
     },
   ];
+
+  const AnimationModal = () => (
+    <View
+      style={[
+        styles.modalOverlay,
+        { backgroundColor: 'rgba(0, 0, 0, 0.5)' }
+      ]}
+    >
+      <View
+        style={[
+          styles.modalContent,
+          {
+            backgroundColor: theme.colors.grey0,
+            borderColor: theme.colors.grey2,
+          }
+        ]}
+      >
+        <Text
+          style={[
+            styles.modalTitle,
+            { color: theme.colors.grey5 }
+          ]}
+        >
+          Card Animation
+        </Text>
+        
+        <View style={styles.animationOptions}>
+          <Pressable
+            style={[
+              styles.animationOption,
+              cardAnimationType === 'flip' && styles.selectedOption,
+              { borderColor: theme.colors.grey2 }
+            ]}
+            onPress={() => {
+              setCardAnimationType('flip');
+              setShowAnimationModal(false);
+            }}
+          >
+            <MaterialIcons
+              name="flip"
+              size={24}
+              color={cardAnimationType === 'flip' ? theme.colors.primary : theme.colors.grey4}
+            />
+            <Text
+              style={[
+                styles.optionText,
+                { color: cardAnimationType === 'flip' ? theme.colors.primary : theme.colors.grey4 }
+              ]}
+            >
+              Horizontal Flip
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.animationOption,
+              cardAnimationType === 'flip-vertical' && styles.selectedOption,
+              { borderColor: theme.colors.grey2 }
+            ]}
+            onPress={() => {
+              setCardAnimationType('flip-vertical');
+              setShowAnimationModal(false);
+            }}
+          >
+            <MaterialIcons
+              name="flip-camera-android"
+              size={24}
+              color={cardAnimationType === 'flip-vertical' ? theme.colors.primary : theme.colors.grey4}
+            />
+            <Text
+              style={[
+                styles.optionText,
+                { color: cardAnimationType === 'flip-vertical' ? theme.colors.primary : theme.colors.grey4 }
+              ]}
+            >
+              Vertical Flip
+            </Text>
+          </Pressable>
+        </View>
+
+        <Button
+          title="Close"
+          type="clear"
+          onPress={() => setShowAnimationModal(false)}
+          containerStyle={styles.closeButton}
+        />
+      </View>
+    </View>
+  );
 
   return (
     <Container>
@@ -192,48 +275,66 @@ export default function SettingsScreen() {
               <View
                 key={item.label}
                 style={[
-                  styles.menuItem,
+                  styles.menuItemContainer,
                   index < section.items.length - 1 && {
                     borderBottomWidth: 1,
                     borderBottomColor: theme.colors.grey1,
                   }
                 ]}
               >
-                <View style={styles.menuItemContent}>
-                  <MaterialIcons
-                    name={item.icon as keyof typeof MaterialIcons.glyphMap}
-                    size={22}
-                    color={theme.colors.grey5}
-                    style={styles.menuItemIcon}
-                  />
-                  <Text
-                    style={[
-                      styles.menuItemLabel,
-                      { color: theme.colors.grey5 }
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                </View>
                 {item.type === 'switch' ? (
-                  <Switch
-                    value={item.value}
-                    onValueChange={item.onChange}
-                    trackColor={{
-                      false: theme.colors.grey2,
-                      true: theme.colors.primary + '80',
-                    }}
-                    thumbColor={item.value ? theme.colors.primary : theme.colors.grey5}
-                    ios_backgroundColor={theme.colors.grey2}
-                  />
+                  <View style={styles.menuItem}>
+                    <View style={styles.menuItemContent}>
+                      <MaterialIcons
+                        name={item.icon as keyof typeof MaterialIcons.glyphMap}
+                        size={22}
+                        color={theme.colors.grey5}
+                        style={styles.menuItemIcon}
+                      />
+                      <Text
+                        style={[
+                          styles.menuItemLabel,
+                          { color: theme.colors.grey5 }
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={item.value}
+                      onValueChange={item.onChange}
+                      trackColor={{
+                        false: theme.colors.grey2,
+                        true: theme.colors.primary + '80',
+                      }}
+                      thumbColor={item.value ? theme.colors.primary : theme.colors.grey5}
+                      ios_backgroundColor={theme.colors.grey2}
+                    />
+                  </View>
                 ) : (
                   <Pressable
                     style={({ pressed }) => [
-                      styles.navigateButton,
-                      pressed && { opacity: 0.7 }
+                      styles.menuItem,
+                      pressed && { opacity: 0.7, backgroundColor: theme.colors.grey1 }
                     ]}
                     onPress={item.onPress}
                   >
+                    <View style={styles.menuItemContent}>
+                      <MaterialIcons
+                        name={item.icon as keyof typeof MaterialIcons.glyphMap}
+                        size={22}
+                        color={theme.colors.grey5}
+                        style={styles.menuItemIcon}
+                      />
+                      <Text
+                        style={[
+                          styles.menuItemLabel,
+                          { color: theme.colors.grey5 }
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </View>
                     <MaterialIcons
                       name="chevron-right"
                       size={20}
@@ -255,6 +356,7 @@ export default function SettingsScreen() {
           Version 1.0.0
         </Text>
       </ScrollView>
+      {showAnimationModal && <AnimationModal />}
     </Container>
   );
 }
@@ -314,6 +416,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     padding: 16,
   },
+  menuItemContainer: {
+    overflow: 'hidden',
+  },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -347,5 +452,51 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     marginTop: 24,
+  },
+  modalOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '90%',
+    maxWidth: 400,
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  animationOptions: {
+    flexDirection: 'row',
+    gap: 16,
+    justifyContent: 'center',
+  },
+  animationOption: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    gap: 8,
+    minWidth: 120,
+  },
+  selectedOption: {
+    borderColor: '#4F46E5',
+    backgroundColor: '#4F46E515',
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  closeButton: {
+    marginTop: 8,
   },
 }); 
