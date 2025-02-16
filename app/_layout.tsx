@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useColorScheme, View } from 'react-native';
+import React, { useState } from 'react';
+import { View } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
-import { ThemeProvider, useTheme } from '@rneui/themed';
+import { ThemeProvider as RNEThemeProvider, useTheme } from '@rneui/themed';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import Toast from 'react-native-toast-message';
 import { AuthProvider } from '../contexts/AuthContext';
-import { lightTheme, darkTheme } from '../theme';
+import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
 import { useBackgroundSync } from '../hooks/useBackgroundSync';
 
 function AppContent() {
@@ -59,22 +59,25 @@ function AppContent() {
   );
 }
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [currentTheme, setCurrentTheme] = useState(colorScheme === 'dark' ? darkTheme : lightTheme);
-
-  // Initialize background sync
-  useBackgroundSync();
-
-  useEffect(() => {
-    setCurrentTheme(colorScheme === 'dark' ? darkTheme : lightTheme);
-  }, [colorScheme]);
-
+function ThemedApp() {
+  const { theme } = useAppTheme();
+  
   return (
-    <ThemeProvider theme={currentTheme}>
+    <RNEThemeProvider theme={theme}>
       <SafeAreaProvider>
         <AppContent />
       </SafeAreaProvider>
+    </RNEThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  // Initialize background sync
+  useBackgroundSync();
+
+  return (
+    <ThemeProvider>
+      <ThemedApp />
     </ThemeProvider>
   );
 }

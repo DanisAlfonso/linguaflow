@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, StyleSheet, Platform, ScrollView, Pressable, Switch } from 'react-native';
 import { Text, useTheme } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Container } from '../components/layout/Container';
+import { useAppTheme } from '../contexts/ThemeContext';
 
 type SwitchMenuItem = {
   icon: keyof typeof MaterialIcons.glyphMap;
@@ -29,10 +30,10 @@ type Section = {
 
 export default function SettingsScreen() {
   const { theme } = useTheme();
+  const { themeMode, setThemeMode } = useAppTheme();
   const router = useRouter();
-  const [notifications, setNotifications] = useState(true);
-  const [darkMode, setDarkMode] = useState(false);
-  const [autoPlay, setAutoPlay] = useState(true);
+  const [notifications, setNotifications] = React.useState(true);
+  const [autoPlay, setAutoPlay] = React.useState(true);
 
   const sections: Section[] = [
     {
@@ -42,8 +43,8 @@ export default function SettingsScreen() {
           icon: 'dark-mode',
           label: 'Dark Mode',
           type: 'switch',
-          value: darkMode,
-          onChange: setDarkMode,
+          value: themeMode === 'dark',
+          onChange: (value) => setThemeMode(value ? 'dark' : 'system'),
         },
         {
           icon: 'notifications',
