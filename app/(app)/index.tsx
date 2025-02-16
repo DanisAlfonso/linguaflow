@@ -435,6 +435,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     gap: 24,
     paddingVertical: 24,
+    paddingBottom: Platform.OS === 'web' ? 24 : 100,
   },
   welcomeSection: {
     marginBottom: 8,
