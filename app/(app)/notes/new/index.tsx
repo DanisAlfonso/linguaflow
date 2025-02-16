@@ -198,12 +198,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   createButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
     backgroundColor: 'transparent',
     borderRadius: 8,
     minHeight: 0,
-    height: 36,
+    height: 44,
   },
   createButtonText: {
     color: 'white',
@@ -211,5 +211,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 0,
     marginVertical: 0,
+    lineHeight: 20,
   },
 }); 

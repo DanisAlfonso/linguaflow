@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { View, StyleSheet, Platform, Keyboard, Animated } from 'react-native';
 import { Redirect, Tabs, Slot } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -10,8 +10,50 @@ export default function AppLayout() {
   const { user, loading } = useAuth();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+  const translateY = useRef(new Animated.Value(0)).current;
 
   const BASE_ICON_SIZE = 28; // Increased from default 24
+
+  useEffect(() => {
+    if (isWeb) return;
+
+    const showSubscription = Platform.OS === 'ios'
+      ? Keyboard.addListener('keyboardWillShow', () => {
+          Animated.timing(translateY, {
+            toValue: 100,
+            duration: 250,
+            useNativeDriver: true,
+          }).start();
+        })
+      : Keyboard.addListener('keyboardDidShow', () => {
+          Animated.timing(translateY, {
+            toValue: 100,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        });
+
+    const hideSubscription = Platform.OS === 'ios'
+      ? Keyboard.addListener('keyboardWillHide', () => {
+          Animated.timing(translateY, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        })
+      : Keyboard.addListener('keyboardDidHide', () => {
+          Animated.timing(translateY, {
+            toValue: 0,
+            duration: 200,
+            useNativeDriver: true,
+          }).start();
+        });
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
 
   if (loading) {
     return null;
@@ -41,6 +83,10 @@ export default function AppLayout() {
             tabBarActiveTintColor: theme.colors.primary,
             tabBarInactiveTintColor: theme.colors.grey4,
             tabBarStyle: {
+              position: 'absolute',
+              bottom: 0,
+              left: 0,
+              right: 0,
               backgroundColor: theme.colors.grey0,
               borderTopWidth: 1,
               borderTopColor: theme.colors.grey1,
@@ -52,9 +98,13 @@ export default function AppLayout() {
               },
               shadowOpacity: 0.1,
               shadowRadius: 8,
-              height: 76, // Increased from 64
-              paddingBottom: 12, // Increased from 8
-              paddingTop: 12, // Increased from 8
+              height: 76,
+              paddingBottom: 12,
+              paddingTop: 12,
+              transform: [{
+                translateY: translateY
+              }],
+              zIndex: 1,
               ...Platform.select({
                 ios: {
                   borderTopWidth: 0.5,

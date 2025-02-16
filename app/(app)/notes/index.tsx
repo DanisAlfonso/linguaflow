@@ -1900,11 +1900,11 @@ const styles = StyleSheet.create({
   },
   fabWrapper: {
     position: 'absolute',
-    bottom: 24,
+    bottom: 100,
     right: 24,
     borderRadius: 34,
     overflow: 'hidden',
-    zIndex: 1000,
+    zIndex: 2,
     elevation: Platform.OS === 'android' ? 12 : undefined,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

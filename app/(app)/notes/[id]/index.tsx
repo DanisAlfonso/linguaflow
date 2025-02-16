@@ -24,6 +24,7 @@ export default function NoteScreen() {
   const [isSaving, setIsSaving] = useState(false);
   const [lastSavedContent, setLastSavedContent] = useState('');
   const [lastSavedTitle, setLastSavedTitle] = useState('');
+  const [hasChanges, setHasChanges] = useState(false);
 
   useEffect(() => {
     if (user && id) {
@@ -51,44 +52,42 @@ export default function NoteScreen() {
 
   // Debounced auto-save
   const autoSave = useCallback(async () => {
-    if (!note) return;
-    if (title === lastSavedTitle && content === lastSavedContent) return;
+    if (!note || !hasChanges) return;
 
     try {
       setIsSaving(true);
       await updateNote(note.id, {
-        title,
-        content,
-        color_preset: note.color_preset || undefined,
+        title: title.trim(),
+        content: content.trim(),
       });
-      setLastSavedTitle(title);
-      setLastSavedContent(content);
-      Toast.show({
-        type: 'success',
-        text1: 'Changes saved',
-        position: 'bottom',
-        visibilityTime: 1000,
-      });
+      setHasChanges(false);
     } catch (error) {
       console.error('Error auto-saving note:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Failed to save changes',
-        position: 'bottom',
-      });
     } finally {
       setIsSaving(false);
     }
-  }, [note, title, content, lastSavedTitle, lastSavedContent]);
+  }, [note, title, content, hasChanges]);
 
   // Set up auto-save timer
   useEffect(() => {
+    if (!hasChanges) return;
+    
     const timer = setTimeout(() => {
       autoSave();
     }, 1000); // Auto-save 1 second after last change
 
     return () => clearTimeout(timer);
-  }, [title, content, autoSave]);
+  }, [title, content, autoSave, hasChanges]);
+
+  // Track changes
+  useEffect(() => {
+    if (note) {
+      setHasChanges(
+        title.trim() !== note.title || 
+        content.trim() !== note.content
+      );
+    }
+  }, [title, content, note]);
 
   const handleDelete = async () => {
     if (!note) return;
@@ -167,18 +166,8 @@ export default function NoteScreen() {
         <View style={styles.header}>
           <Button
             type="clear"
-            icon={<MaterialIcons name="arrow-back" size={24} color={theme.mode === 'dark' ? 'white' : theme.colors.primary} />}
-            onPress={() => {
-              if (isSaving) {
-                Toast.show({
-                  type: 'info',
-                  text1: 'Saving changes...',
-                  position: 'bottom',
-                });
-                return;
-              }
-              router.back();
-            }}
+            icon={<MaterialIcons name="arrow-back" size={24} color={theme.colors.primary} />}
+            onPress={() => router.back()}
           />
           <View style={styles.headerActions}>
             <Button
@@ -200,12 +189,28 @@ export default function NoteScreen() {
                 }
               }}
             />
-            {isSaving && (
-              <View style={styles.saveIndicator}>
-                <ActivityIndicator 
-                  size="small" 
-                  color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3} 
-                />
+            {hasChanges && (
+              <View style={[
+                styles.saveIndicator,
+                { 
+                  backgroundColor: theme.mode === 'dark' 
+                    ? 'rgba(255, 255, 255, 0.1)' 
+                    : 'rgba(0, 0, 0, 0.05)'
+                }
+              ]}>
+                {isSaving ? (
+                  <ActivityIndicator 
+                    size="small" 
+                    color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3} 
+                  />
+                ) : (
+                  <Text style={[
+                    styles.saveIndicatorText, 
+                    { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }
+                  ]}>
+                    Editing
+                  </Text>
+                )}
               </View>
             )}
           </View>
@@ -330,7 +335,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveIndicator: {
-    marginLeft: 8,
-    opacity: 0.6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+  },
+  saveIndicatorText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 }); 

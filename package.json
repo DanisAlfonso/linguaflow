@@ -15,6 +15,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@10play/tentap-editor": "^0.6.1",
     "@expo/vector-icons": "^14.0.4",
     "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-community/netinfo": "11.4.1",
@@ -39,6 +40,7 @@
     "expo-haptics": "~14.0.1",
     "expo-linear-gradient": "~14.0.2",
     "expo-linking": "~7.0.5",
+    "expo-media-library": "~17.0.5",
     "expo-router": "^4.0.17",
     "expo-splash-screen": "~0.29.21",
     "expo-sqlite": "^15.1.2",
@@ -61,8 +63,7 @@
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5",
     "ts-fsrs": "^4.6.1",
-    "victory-native": "^36.9.1",
-    "expo-media-library": "~17.0.5"
+    "victory-native": "^36.9.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
