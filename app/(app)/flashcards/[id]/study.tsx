@@ -91,12 +91,12 @@ export default function StudyScreen() {
   const currentCard = cards[currentCardIndex];
   const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
 
-  const { distractionFreeMode, cardAnimationType } = useStudySettings();
+  const { hideNavigationBar, cardAnimationType } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
 
   // Effect to handle tab bar visibility
   useEffect(() => {
-    if (distractionFreeMode) {
+    if (hideNavigationBar) {
       temporarilyHideTabBar();
     } else {
       restoreTabBar();
@@ -106,7 +106,7 @@ export default function StudyScreen() {
     return () => {
       restoreTabBar();
     };
-  }, [distractionFreeMode]);
+  }, [hideNavigationBar]);
 
   // Handle keyboard shortcuts on web
   useEffect(() => {
@@ -636,7 +636,7 @@ export default function StudyScreen() {
       styles.container, 
       { 
         backgroundColor: theme.colors.background,
-        paddingBottom: distractionFreeMode ? 0 : undefined 
+        paddingBottom: hideNavigationBar ? 0 : undefined 
       }
     ]}>
       <Container>

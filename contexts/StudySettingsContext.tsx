@@ -4,8 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export type CardAnimationType = 'flip' | 'flip-vertical';
 
 type StudySettingsContextType = {
-  distractionFreeMode: boolean;
-  setDistractionFreeMode: (value: boolean) => Promise<void>;
+  hideNavigationBar: boolean;
+  setHideNavigationBar: (value: boolean) => Promise<void>;
   cardAnimationType: CardAnimationType;
   setCardAnimationType: (value: CardAnimationType) => Promise<void>;
 };
@@ -13,19 +13,19 @@ type StudySettingsContextType = {
 const StudySettingsContext = createContext<StudySettingsContextType | undefined>(undefined);
 
 export function StudySettingsProvider({ children }: { children: React.ReactNode }) {
-  const [distractionFreeMode, setDistractionFreeModeState] = useState(false);
+  const [hideNavigationBar, setHideNavigationBarState] = useState(false);
   const [cardAnimationType, setCardAnimationTypeState] = useState<CardAnimationType>('flip');
 
   useEffect(() => {
     // Load settings on mount
     const loadSettings = async () => {
       try {
-        const [distractionMode, animationType] = await Promise.all([
-          AsyncStorage.getItem('distractionFreeMode'),
+        const [hideNavBar, animationType] = await Promise.all([
+          AsyncStorage.getItem('hideNavigationBar'),
           AsyncStorage.getItem('cardAnimationType'),
         ]);
         
-        setDistractionFreeModeState(distractionMode === 'true');
+        setHideNavigationBarState(hideNavBar === 'true');
         setCardAnimationTypeState((animationType as CardAnimationType) || 'flip');
       } catch (error) {
         console.error('Error loading study settings:', error);
@@ -34,12 +34,12 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
     loadSettings();
   }, []);
 
-  const setDistractionFreeMode = async (value: boolean) => {
+  const setHideNavigationBar = async (value: boolean) => {
     try {
-      await AsyncStorage.setItem('distractionFreeMode', value.toString());
-      setDistractionFreeModeState(value);
+      await AsyncStorage.setItem('hideNavigationBar', value.toString());
+      setHideNavigationBarState(value);
     } catch (error) {
-      console.error('Error saving distraction-free mode setting:', error);
+      console.error('Error saving hide navigation bar setting:', error);
     }
   };
 
@@ -55,8 +55,8 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
   return (
     <StudySettingsContext.Provider
       value={{
-        distractionFreeMode,
-        setDistractionFreeMode,
+        hideNavigationBar,
+        setHideNavigationBar,
         cardAnimationType,
         setCardAnimationType,
       }}

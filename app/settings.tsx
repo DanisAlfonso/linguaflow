@@ -34,8 +34,8 @@ export default function SettingsScreen() {
   const { theme } = useTheme();
   const { themeMode, setThemeMode } = useAppTheme();
   const { 
-    distractionFreeMode, 
-    setDistractionFreeMode,
+    hideNavigationBar, 
+    setHideNavigationBar,
     cardAnimationType,
     setCardAnimationType 
   } = useStudySettings();
@@ -44,26 +44,26 @@ export default function SettingsScreen() {
   const [autoPlay, setAutoPlay] = React.useState(true);
   const [showAnimationModal, setShowAnimationModal] = useState(false);
 
-  // Load distraction-free mode setting on component mount
+  // Load hide navigation bar setting on component mount
   React.useEffect(() => {
-    const loadDistractionFreeMode = async () => {
+    const loadHideNavigationBar = async () => {
       try {
-        const value = await AsyncStorage.getItem('distractionFreeMode');
-        setDistractionFreeMode(value === 'true');
+        const value = await AsyncStorage.getItem('hideNavigationBar');
+        setHideNavigationBar(value === 'true');
       } catch (error) {
-        console.error('Error loading distraction-free mode setting:', error);
+        console.error('Error loading hide navigation bar setting:', error);
       }
     };
-    loadDistractionFreeMode();
+    loadHideNavigationBar();
   }, []);
 
-  // Save distraction-free mode setting when changed
-  const handleDistractionFreeModeChange = async (value: boolean) => {
+  // Save hide navigation bar setting when changed
+  const handleHideNavigationBarChange = async (value: boolean) => {
     try {
-      await AsyncStorage.setItem('distractionFreeMode', value.toString());
-      setDistractionFreeMode(value);
+      await AsyncStorage.setItem('hideNavigationBar', value.toString());
+      setHideNavigationBar(value);
     } catch (error) {
-      console.error('Error saving distraction-free mode setting:', error);
+      console.error('Error saving hide navigation bar setting:', error);
     }
   };
 
@@ -99,10 +99,10 @@ export default function SettingsScreen() {
       items: [
         {
           icon: 'remove-red-eye',
-          label: 'Distraction-Free Mode',
+          label: 'Hide Navigation Bar',
           type: 'switch',
-          value: distractionFreeMode,
-          onChange: setDistractionFreeMode,
+          value: hideNavigationBar,
+          onChange: setHideNavigationBar,
         },
         {
           icon: 'animation',
