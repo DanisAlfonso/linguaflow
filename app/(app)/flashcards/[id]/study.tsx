@@ -588,6 +588,22 @@ export default function StudyScreen() {
     init();
   }, []);
 
+  // Add effect to handle tab bar visibility when recording interface is shown
+  useEffect(() => {
+    if (isRecordingEnabled) {
+      temporarilyHideTabBar();
+    } else {
+      restoreTabBar();
+    }
+  }, [isRecordingEnabled]);
+
+  // Handle cleanup when component unmounts
+  useEffect(() => {
+    return () => {
+      restoreTabBar();
+    };
+  }, []);
+
   if (loading || !currentCard) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
