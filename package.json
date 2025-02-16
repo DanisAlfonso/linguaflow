@@ -15,7 +15,6 @@
     "preset": "jest-expo"
   },
   "dependencies": {
-    "@10play/tentap-editor": "^0.6.1",
     "@expo/vector-icons": "^14.0.4",
     "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-community/netinfo": "11.4.1",
