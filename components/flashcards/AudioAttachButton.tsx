@@ -43,11 +43,23 @@ export function AudioAttachButton({
 
       const file = result.assets[0];
       
+      // Get the actual File object on web platform
+      let fileToUpload: File | undefined;
+      if (Platform.OS === 'web') {
+        // On web, we need to fetch the file to get its content
+        const response = await fetch(file.uri);
+        const blob = await response.blob();
+        fileToUpload = new File([blob], file.name, {
+          type: file.mimeType || 'audio/mpeg'
+        });
+      }
+      
       // Upload the audio file
       const uploadResponse = await uploadAudioFile({
         uri: file.uri,
         type: file.mimeType || 'audio/mpeg',
         name: file.name,
+        file: fileToUpload,
       });
 
       // Create audio file record

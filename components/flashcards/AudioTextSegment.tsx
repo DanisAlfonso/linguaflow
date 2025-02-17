@@ -88,20 +88,9 @@ export function AudioTextSegment({
           interruptionModeAndroid: 2, // INTERRUPTION_MODE_ANDROID_DUCK_OTHERS
         });
 
-        // For mobile platforms, ensure we have the correct file extension and remove query params
-        let audioUri = fullAudioUrl;
-        if (Platform.OS !== 'web') {
-          // Remove query parameters as they can cause issues with some audio formats
-          audioUri = audioUri.split('?')[0];
-          // Ensure .mp3 extension
-          if (!audioUri.toLowerCase().endsWith('.mp3')) {
-            audioUri = `${audioUri}.mp3`;
-          }
-        }
-        
         // Create and load the sound with optimized configuration
         const { sound: audioSound } = await Audio.Sound.createAsync(
-          { uri: audioUri },
+          { uri: fullAudioUrl },
           { 
             shouldPlay: false,
             volume: 1.0,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, ScrollView } from 'react-native';
 import { Text, Input, Button, Switch, useTheme } from '@rneui/themed';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -112,121 +112,133 @@ export default function CreateDeckScreen() {
           </Text>
         </View>
 
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-              Deck Name
-            </Text>
-            <Input
-              placeholder="Enter deck name"
-              value={name}
-              onChangeText={setName}
-              containerStyle={styles.input}
-              inputContainerStyle={[
-                styles.inputField,
-                {
-                  borderColor: theme.colors.grey2,
-                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                },
-              ]}
-              inputStyle={[
-                styles.inputText,
-                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-              ]}
-              placeholderTextColor={theme.colors.grey3}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-              Description
-            </Text>
-            <Input
-              placeholder="Enter deck description"
-              value={description}
-              onChangeText={setDescription}
-              multiline
-              numberOfLines={3}
-              containerStyle={styles.input}
-              inputContainerStyle={[
-                styles.inputField,
-                styles.textArea,
-                {
-                  borderColor: theme.colors.grey2,
-                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                },
-              ]}
-              inputStyle={[
-                styles.inputText,
-                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-              ]}
-              placeholderTextColor={theme.colors.grey3}
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-              Language
-            </Text>
-            <View style={styles.languageToggle}>
-              <Text style={[styles.toggleLabel, { color: theme.colors.grey4 }]}>
-                Mandarin Mode
+        <ScrollView 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <View style={styles.form}>
+            <View style={styles.inputContainer}>
+              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                Deck Name
               </Text>
-              <Switch
-                value={isMandarin}
-                onValueChange={setIsMandarin}
-                color={theme.colors.primary}
+              <Input
+                placeholder="Enter deck name"
+                value={name}
+                onChangeText={setName}
+                containerStyle={styles.input}
+                inputContainerStyle={[
+                  styles.inputField,
+                  {
+                    borderColor: theme.colors.grey2,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                  },
+                ]}
+                inputStyle={[
+                  styles.inputText,
+                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                ]}
+                placeholderTextColor={theme.colors.grey3}
               />
             </View>
-            {isMandarin && (
-              <Text style={[styles.helperText, { color: theme.colors.grey3 }]}>
-                Enables pinyin input and character size control
-              </Text>
-            )}
-          </View>
 
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: theme.colors.grey4 }]}>
-              Tags (Optional)
-            </Text>
-            <Input
-              placeholder="Enter tags (comma separated)"
-              value={tags}
-              onChangeText={setTags}
-              containerStyle={styles.input}
-              inputContainerStyle={[
-                styles.inputField,
+            <View style={styles.inputContainer}>
+              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                Description
+              </Text>
+              <Input
+                placeholder="Enter deck description"
+                value={description}
+                onChangeText={setDescription}
+                multiline
+                numberOfLines={3}
+                containerStyle={styles.input}
+                inputContainerStyle={[
+                  styles.inputField,
+                  styles.textArea,
+                  {
+                    borderColor: theme.colors.grey2,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                  },
+                ]}
+                inputStyle={[
+                  styles.inputText,
+                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                ]}
+                placeholderTextColor={theme.colors.grey3}
+              />
+            </View>
+
+            <View style={[styles.inputContainer, { marginTop: 16 }]}>
+              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                Language
+              </Text>
+              <View style={[
+                styles.languageToggle,
                 {
-                  borderColor: theme.colors.grey2,
-                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                },
-              ]}
-              inputStyle={[
-                styles.inputText,
-                { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-              ]}
-              placeholderTextColor={theme.colors.grey3}
+                  backgroundColor: theme.mode === 'dark' ? 'rgba(79, 70, 229, 0.1)' : 'rgba(243, 244, 246, 1)',
+                  borderRadius: 12,
+                  padding: 16,
+                }
+              ]}>
+                <Text style={[styles.toggleLabel, { color: theme.colors.grey4 }]}>
+                  Mandarin Mode
+                </Text>
+                <Switch
+                  value={isMandarin}
+                  onValueChange={setIsMandarin}
+                  color={theme.colors.primary}
+                />
+              </View>
+              {isMandarin && (
+                <Text style={[styles.helperText, { color: theme.colors.grey3 }]}>
+                  Enables pinyin input and character size control
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={[styles.label, { color: theme.colors.grey4 }]}>
+                Tags (Optional)
+              </Text>
+              <Input
+                placeholder="Enter tags (comma separated)"
+                value={tags}
+                onChangeText={setTags}
+                containerStyle={styles.input}
+                inputContainerStyle={[
+                  styles.inputField,
+                  {
+                    borderColor: theme.colors.grey2,
+                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                  },
+                ]}
+                inputStyle={[
+                  styles.inputText,
+                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                ]}
+                placeholderTextColor={theme.colors.grey3}
+              />
+            </View>
+
+            <Button
+              title="Create Deck"
+              loading={loading}
+              icon={
+                <MaterialIcons
+                  name="add"
+                  size={20}
+                  color="white"
+                  style={styles.buttonIcon}
+                />
+              }
+              type="clear"
+              buttonStyle={styles.button}
+              containerStyle={[styles.buttonContainer, { backgroundColor: '#4F46E5' }]}
+              titleStyle={styles.buttonText}
+              onPress={handleCreateDeck}
             />
           </View>
-
-          <Button
-            title="Create Deck"
-            loading={loading}
-            icon={
-              <MaterialIcons
-                name="add"
-                size={20}
-                color="white"
-                style={styles.buttonIcon}
-              />
-            }
-            type="clear"
-            buttonStyle={styles.button}
-            containerStyle={[styles.buttonContainer, { backgroundColor: '#4F46E5' }]}
-            titleStyle={styles.buttonText}
-            onPress={handleCreateDeck}
-          />
-        </View>
+        </ScrollView>
       </Container>
     </SafeAreaView>
   );
@@ -247,6 +259,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 32,
     fontWeight: 'bold',
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: Platform.OS === 'web' ? 48 : 180,
   },
   form: {
     gap: 24,

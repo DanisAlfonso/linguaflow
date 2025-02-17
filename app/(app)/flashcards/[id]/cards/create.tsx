@@ -34,6 +34,7 @@ export default function CreateCardScreen() {
   const [createButtonScale] = useState(new Animated.Value(1));
   const [cardsCreated, setCardsCreated] = useState(0);
   const [sessionStartTime] = useState(new Date());
+  const [showFinishButton, setShowFinishButton] = useState(false);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -75,6 +76,7 @@ export default function CreateCardScreen() {
   }, []);
 
   const handleCreateCard = async (andContinue = false) => {
+    console.log('handleCreateCard called:', { andContinue, currentCreatedCard: createdCard });
     if (!front.trim() || !back.trim()) {
       Toast.show({
         type: 'error',
@@ -86,22 +88,15 @@ export default function CreateCardScreen() {
 
     setLoading(true);
     try {
-      const card = await createCard({
-        deck_id: id as string,
-        front: front.trim(),
-        back: back.trim(),
-        notes: notes.trim() || undefined,
-        tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-        language_specific_data: isMandarin ? {
-          mandarin: {
-            front: frontMandarinData,
-            back: backMandarinData,
-          },
-        } : undefined,
-      });
+      let cardId = createdCard;
       
-      setCardsCreated(prev => prev + 1);
-      setCreatedCard(card.id);
+      // Only create a new card if one doesn't exist
+      if (!cardId) {
+        cardId = await audioButtonProps.onCreateCard();
+        if (!cardId) {
+          return;
+        }
+      }
       
       Toast.show({
         type: 'success',
@@ -110,6 +105,7 @@ export default function CreateCardScreen() {
       });
 
       if (andContinue) {
+        console.log('Clearing form after card creation');
         clearForm();
       }
     } catch (error) {
@@ -135,56 +131,21 @@ export default function CreateCardScreen() {
   };
 
   const handleAudioAttached = async () => {
-    // If card doesn't exist yet, create it first
-    if (!createdCard) {
-      if (!front.trim() || !back.trim()) {
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Front and back of the card are required before adding audio',
-        });
-        return;
-      }
-
-      setLoading(true);
-      try {
-        console.log('Creating card before audio attachment...');
-        const card = await createCard({
-          deck_id: id as string,
-          front: front.trim(),
-          back: back.trim(),
-          notes: notes.trim() || undefined,
-          tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-          language_specific_data: isMandarin ? {
-            mandarin: {
-              front: frontMandarinData,
-              back: backMandarinData,
-            },
-          } : undefined,
-        });
-        console.log('Card created for audio:', card);
-        setCreatedCard(card.id);
-      } catch (error) {
-        console.error('Error creating card:', error);
-        Toast.show({
-          type: 'error',
-          text1: 'Error',
-          text2: 'Failed to create card. Please try again.',
-        });
-        return;
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    // Now that we have a card ID, reload the audio segments
+    console.log('handleAudioAttached called:', { currentCreatedCard: createdCard });
+    
     try {
-      console.log('Loading audio segments for card:', createdCard);
+      // Load audio segments for the card
       const segments = await getCardAudioSegments(createdCard!);
       setFrontAudioSegments(segments.filter(s => s.side === 'front'));
       setBackAudioSegments(segments.filter(s => s.side === 'back'));
+      setShowFinishButton(true);
     } catch (error) {
-      console.error('Error loading audio segments:', error);
+      console.error('Error attaching audio:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to attach audio',
+      });
     }
   };
 
@@ -205,6 +166,61 @@ export default function CreateCardScreen() {
         useNativeDriver: true,
       }),
     ]).start();
+  };
+
+  const audioButtonProps = {
+    cardId: createdCard || '',
+    onAudioAttached: handleAudioAttached,
+    onCreateCard: async () => {
+      console.log('audioButtonProps.onCreateCard called:', { currentCreatedCard: createdCard });
+      // Only create a new card if one doesn't exist
+      if (createdCard) {
+        console.log('Card already exists, returning existing cardId:', createdCard);
+        return createdCard;
+      }
+
+      if (!front.trim() || !back.trim()) {
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Front and back of the card are required',
+        });
+        return '';
+      }
+      
+      try {
+        console.log('Creating card in audioButtonProps.onCreateCard...');
+        const card = await createCard({
+          deck_id: id as string,
+          front: front.trim(),
+          back: back.trim(),
+          notes: notes.trim() || undefined,
+          tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+          language_specific_data: isMandarin ? {
+            mandarin: {
+              front: frontMandarinData,
+              back: backMandarinData,
+            },
+          } : undefined,
+        });
+        console.log('Card created in audioButtonProps.onCreateCard:', { cardId: card.id });
+        setCreatedCard(card.id);
+        setCardsCreated(prev => {
+          console.log('Updating cardsCreated in audioButtonProps:', { current: prev, new: prev + 1 });
+          return prev + 1;
+        });
+        return card.id;
+      } catch (error) {
+        console.error('Error creating card:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to create card',
+        });
+        return '';
+      }
+    },
+    disabled: !front.trim() || !back.trim()
   };
 
   return (
@@ -258,59 +274,37 @@ export default function CreateCardScreen() {
                       <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                         Front
                       </Text>
-                      <MandarinCardInput
-                        value={front}
-                        onChangeText={setFront}
-                        onMandarinDataChange={setFrontMandarinData}
-                        placeholder="Front side of the card"
-                        characterSize={characterSize}
-                        audioButton={
-                          <View style={styles.audioButton}>
+                      <View style={styles.inputWrapper}>
+                        <Input
+                          placeholder="Front side of the card"
+                          value={front}
+                          onChangeText={setFront}
+                          multiline
+                          numberOfLines={3}
+                          containerStyle={styles.input}
+                          inputContainerStyle={[
+                            styles.inputField,
+                            styles.textArea,
+                            {
+                              borderColor: theme.colors.grey2,
+                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                            },
+                          ]}
+                          inputStyle={[
+                            styles.inputText,
+                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                          ]}
+                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                        />
+                        <View style={styles.actionRow}>
+                          <View style={styles.audioButtonWrapper}>
                             <AudioAttachButton
-                              cardId={createdCard || ''}
+                              {...audioButtonProps}
                               side="front"
-                              onAudioAttached={handleAudioAttached}
-                              onCreateCard={async () => {
-                                if (!front.trim() || !back.trim()) {
-                                  Toast.show({
-                                    type: 'error',
-                                    text1: 'Error',
-                                    text2: 'Front and back of the card are required',
-                                  });
-                                  return '';
-                                }
-                                
-                                try {
-                                  const card = await createCard({
-                                    deck_id: id as string,
-                                    front: front.trim(),
-                                    back: back.trim(),
-                                    notes: notes.trim() || undefined,
-                                    tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-                                    language_specific_data: isMandarin ? {
-                                      mandarin: {
-                                        front: frontMandarinData,
-                                        back: backMandarinData,
-                                      },
-                                    } : undefined,
-                                  });
-                                  setCreatedCard(card.id);
-                                  return card.id;
-                                } catch (error) {
-                                  console.error('Error creating card:', error);
-                                  Toast.show({
-                                    type: 'error',
-                                    text1: 'Error',
-                                    text2: 'Failed to create card',
-                                  });
-                                  return '';
-                                }
-                              }}
-                              disabled={!front.trim() || !back.trim()}
                             />
                           </View>
-                        }
-                      />
+                        </View>
+                      </View>
                       {frontAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
                           backgroundColor: Platform.select({
@@ -332,59 +326,37 @@ export default function CreateCardScreen() {
                       <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
                         Back
                       </Text>
-                      <MandarinCardInput
-                        value={back}
-                        onChangeText={setBack}
-                        onMandarinDataChange={setBackMandarinData}
-                        placeholder="Back side of the card"
-                        characterSize={characterSize}
-                        audioButton={
-                          <View style={styles.audioButton}>
+                      <View style={styles.inputWrapper}>
+                        <Input
+                          placeholder="Back side of the card"
+                          value={back}
+                          onChangeText={setBack}
+                          multiline
+                          numberOfLines={3}
+                          containerStyle={[styles.input, { flex: 1 }]}
+                          inputContainerStyle={[
+                            styles.inputField,
+                            styles.textArea,
+                            {
+                              borderColor: theme.colors.grey2,
+                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
+                            },
+                          ]}
+                          inputStyle={[
+                            styles.inputText,
+                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
+                          ]}
+                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                        />
+                        <View style={styles.actionRow}>
+                          <View style={styles.audioButtonWrapper}>
                             <AudioAttachButton
-                              cardId={createdCard || ''}
+                              {...audioButtonProps}
                               side="back"
-                              onAudioAttached={handleAudioAttached}
-                              onCreateCard={async () => {
-                                if (!front.trim() || !back.trim()) {
-                                  Toast.show({
-                                    type: 'error',
-                                    text1: 'Error',
-                                    text2: 'Front and back of the card are required',
-                                  });
-                                  return '';
-                                }
-                                
-                                try {
-                                  const card = await createCard({
-                                    deck_id: id as string,
-                                    front: front.trim(),
-                                    back: back.trim(),
-                                    notes: notes.trim() || undefined,
-                                    tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-                                    language_specific_data: isMandarin ? {
-                                      mandarin: {
-                                        front: frontMandarinData,
-                                        back: backMandarinData,
-                                      },
-                                    } : undefined,
-                                  });
-                                  setCreatedCard(card.id);
-                                  return card.id;
-                                } catch (error) {
-                                  console.error('Error creating card:', error);
-                                  Toast.show({
-                                    type: 'error',
-                                    text1: 'Error',
-                                    text2: 'Failed to create card',
-                                  });
-                                  return '';
-                                }
-                              }}
-                              disabled={!front.trim() || !back.trim()}
                             />
                           </View>
-                        }
-                      />
+                        </View>
+                      </View>
                       {backAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
                           backgroundColor: Platform.select({
@@ -429,53 +401,15 @@ export default function CreateCardScreen() {
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
                           placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
-                          rightIcon={
-                            <View style={styles.audioButton}>
-                              <AudioAttachButton
-                                cardId={createdCard || ''}
-                                side="front"
-                                onAudioAttached={handleAudioAttached}
-                                onCreateCard={async () => {
-                                  if (!front.trim() || !back.trim()) {
-                                    Toast.show({
-                                      type: 'error',
-                                      text1: 'Error',
-                                      text2: 'Front and back of the card are required',
-                                    });
-                                    return '';
-                                  }
-                                  
-                                  try {
-                                    const card = await createCard({
-                                      deck_id: id as string,
-                                      front: front.trim(),
-                                      back: back.trim(),
-                                      notes: notes.trim() || undefined,
-                                      tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-                                      language_specific_data: isMandarin ? {
-                                        mandarin: {
-                                          front: frontMandarinData,
-                                          back: backMandarinData,
-                                        },
-                                      } : undefined,
-                                    });
-                                    setCreatedCard(card.id);
-                                    return card.id;
-                                  } catch (error) {
-                                    console.error('Error creating card:', error);
-                                    Toast.show({
-                                      type: 'error',
-                                      text1: 'Error',
-                                      text2: 'Failed to create card',
-                                    });
-                                    return '';
-                                  }
-                                }}
-                                disabled={!front.trim() || !back.trim()}
-                              />
-                            </View>
-                          }
                         />
+                        <View style={styles.actionRow}>
+                          <View style={styles.audioButtonWrapper}>
+                            <AudioAttachButton
+                              {...audioButtonProps}
+                              side="front"
+                            />
+                          </View>
+                        </View>
                       </View>
                       {frontAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
@@ -505,7 +439,7 @@ export default function CreateCardScreen() {
                           onChangeText={setBack}
                           multiline
                           numberOfLines={3}
-                          containerStyle={styles.input}
+                          containerStyle={[styles.input, { flex: 1 }]}
                           inputContainerStyle={[
                             styles.inputField,
                             styles.textArea,
@@ -519,53 +453,15 @@ export default function CreateCardScreen() {
                             { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
                           ]}
                           placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
-                          rightIcon={
-                            <View style={styles.audioButton}>
-                              <AudioAttachButton
-                                cardId={createdCard || ''}
-                                side="back"
-                                onAudioAttached={handleAudioAttached}
-                                onCreateCard={async () => {
-                                  if (!front.trim() || !back.trim()) {
-                                    Toast.show({
-                                      type: 'error',
-                                      text1: 'Error',
-                                      text2: 'Front and back of the card are required',
-                                    });
-                                    return '';
-                                  }
-                                  
-                                  try {
-                                    const card = await createCard({
-                                      deck_id: id as string,
-                                      front: front.trim(),
-                                      back: back.trim(),
-                                      notes: notes.trim() || undefined,
-                                      tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
-                                      language_specific_data: isMandarin ? {
-                                        mandarin: {
-                                          front: frontMandarinData,
-                                          back: backMandarinData,
-                                        },
-                                      } : undefined,
-                                    });
-                                    setCreatedCard(card.id);
-                                    return card.id;
-                                  } catch (error) {
-                                    console.error('Error creating card:', error);
-                                    Toast.show({
-                                      type: 'error',
-                                      text1: 'Error',
-                                      text2: 'Failed to create card',
-                                    });
-                                    return '';
-                                  }
-                                }}
-                                disabled={!front.trim() || !back.trim()}
-                              />
-                            </View>
-                          }
                         />
+                        <View style={styles.actionRow}>
+                          <View style={styles.audioButtonWrapper}>
+                            <AudioAttachButton
+                              {...audioButtonProps}
+                              side="back"
+                            />
+                          </View>
+                        </View>
                       </View>
                       {backAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
@@ -771,7 +667,7 @@ export default function CreateCardScreen() {
                 </Animated.View>
               </View>
 
-              {cardsCreated > 0 && (
+              {showFinishButton && (
                 <Animated.View
                   style={[
                     styles.buttonContainer,
@@ -858,46 +754,30 @@ const styles = StyleSheet.create({
   },
   input: {
     paddingHorizontal: 0,
+    width: '100%',
   },
   inputField: {
     borderWidth: 1,
-    borderRadius: 16,
+    borderRadius: 12,
     paddingHorizontal: 16,
-    height: 56,
+    minHeight: 48,
     marginBottom: -8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    ...Platform.select({
-      web: {
-        transition: 'all 0.2s ease',
-        ':focus-within': {
-          borderColor: '#4F46E5',
-          shadowOffset: {
-            width: 0,
-            height: 2,
-          },
-          shadowOpacity: 0.15,
-          shadowRadius: 3,
-          transform: [{translateY: -1}],
-        },
-      },
-      default: {},
+    backgroundColor: Platform.select({
+      ios: 'rgba(0, 0, 0, 0.02)',
+      android: 'rgba(0, 0, 0, 0.04)',
+      default: 'rgba(0, 0, 0, 0.02)',
     }),
   },
   inputText: {
-    fontSize: 17,
+    fontSize: 16,
     lineHeight: 24,
+    paddingTop: 8,
+    paddingBottom: 32,
   },
   textArea: {
     minHeight: 120,
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingTop: 12,
+    paddingBottom: 12,
   },
   preview: {
     marginTop: 8,
@@ -1005,26 +885,42 @@ const styles = StyleSheet.create({
   },
   inputWrapper: {
     position: 'relative',
+    width: '100%',
   },
-  audioButton: {
-    padding: 8,
-    marginRight: 8,
-    marginTop: Platform.OS === 'web' ? 8 : 0,
-    backgroundColor: Platform.OS === 'web' ? 'transparent' : '#FFFFFF',
-    borderRadius: 12,
+  actionRow: {
+    position: 'absolute',
+    bottom: 8,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: {
-          width: 0,
-          height: 1,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
+        bottom: 12,
       },
       android: {
-        elevation: 2,
+        bottom: 12,
       },
+    }),
+  },
+  audioButtonWrapper: {
+    height: 32,
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    zIndex: 1,
+    ...Platform.select({
+      web: {
+        cursor: 'pointer',
+        ':hover': {
+          opacity: 0.8,
+        },
+      },
+      default: {
+        bottom: 4,
+      }
     }),
   },
   audioSegments: {
