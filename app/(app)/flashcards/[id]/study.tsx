@@ -17,6 +17,7 @@ import { StudyCardFront } from '../../../../components/flashcards/study/StudyCar
 import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
 import { StudyHeader } from '../../../../components/flashcards/study/StudyHeader';
 import { StudyControls } from '../../../../components/flashcards/study/StudyControls';
+import { StudyCharacterControl } from '../../../../components/flashcards/study/StudyCharacterControl';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
@@ -653,13 +654,10 @@ export default function StudyScreen() {
         />
 
         {isMandarin && (
-          <View style={styles.characterSizeControl}>
-            <CharacterSizeControl
-              size={characterSize}
-              onSizeChange={setCharacterSize}
-              color={theme.colors.grey4}
-            />
-          </View>
+          <StudyCharacterControl
+            size={characterSize}
+            onSizeChange={setCharacterSize}
+          />
         )}
 
         <View style={styles.cardContainer}>
