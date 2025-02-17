@@ -726,7 +726,9 @@ export default function StudyScreen() {
                     />
                     {frontAudioSegments.length > 0 && (
                       <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        Click text or press Ctrl+Space to play audio
+                        {Platform.OS === 'web' 
+                          ? "Click text or press Ctrl+Space to play audio"
+                          : "Tap text to play audio"}
                       </Text>
                     )}
                   </View>
@@ -741,7 +743,9 @@ export default function StudyScreen() {
                     />
                     {frontAudioSegments.length > 0 && (
                       <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        Click text or press Ctrl+Space to play audio
+                        {Platform.OS === 'web' 
+                          ? "Click text or press Ctrl+Space to play audio"
+                          : "Tap text to play audio"}
                       </Text>
                     )}
                   </View>
@@ -775,7 +779,9 @@ export default function StudyScreen() {
                     />
                     {backAudioSegments.length > 0 && (
                       <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        Click text or press Ctrl+Space to play audio
+                        {Platform.OS === 'web' 
+                          ? "Click text or press Ctrl+Space to play audio"
+                          : "Tap text to play audio"}
                       </Text>
                     )}
                   </View>
@@ -790,7 +796,9 @@ export default function StudyScreen() {
                     />
                     {backAudioSegments.length > 0 && (
                       <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        Click text or press Ctrl+Space to play audio
+                        {Platform.OS === 'web' 
+                          ? "Click text or press Ctrl+Space to play audio"
+                          : "Tap text to play audio"}
                       </Text>
                     )}
                   </View>
