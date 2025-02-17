@@ -27,16 +27,7 @@ import { ensureRecordingsDirectory } from '../../../../lib/fs/recordings';
 import { useStudySettings } from '../../../../contexts/StudySettingsContext';
 import { useTabBar } from '../../../../contexts/TabBarContext';
 import { AnimatedCard } from '../../../../components/flashcards/AnimatedCard';
-
-// Keyboard shortcuts for web
-const KEYBOARD_SHORTCUTS = {
-  '1': Rating.Again,
-  '2': Rating.Hard,
-  '3': Rating.Good,
-  '4': Rating.Easy,
-  ' ': 'flip', // Space bar to flip card
-  'Control+ ': 'playAudio', // Ctrl+Space to play audio
-} as const;
+import { useKeyboardShortcuts } from '../../../../lib/hooks/study/useKeyboardShortcuts';
 
 async function configureAudioSession() {
   try {
@@ -112,48 +103,6 @@ export default function StudyScreen() {
       restoreTabBar();
     };
   }, [hideNavigationBar]);
-
-  // Handle keyboard shortcuts on web
-  useEffect(() => {
-    if (!isWeb) return;
-
-    const handleKeyPress = (event: KeyboardEvent) => {
-      const key = event.key;
-      const ctrlKey = event.ctrlKey;
-      
-      if (ctrlKey && key === ' ') {
-        event.preventDefault();
-        // Play audio of current side
-        const currentSegments = isFlipped ? backAudioSegments : frontAudioSegments;
-        if (currentSegments.length > 0) {
-          console.log('Playing audio:', currentSegments[0].audio_file_path);
-          const audioElement = document.getElementById(`audio-${currentSegments[0].audio_file_path}`);
-          if (audioElement instanceof HTMLAudioElement) {
-            audioElement.currentTime = 0; // Reset to start
-            audioElement.play().catch(error => {
-              console.error('Error playing audio:', error);
-            });
-          } else {
-            console.warn('Audio element not found:', `audio-${currentSegments[0].audio_file_path}`);
-          }
-        }
-        return;
-      }
-
-      if (key in KEYBOARD_SHORTCUTS) {
-        event.preventDefault();
-        const action = KEYBOARD_SHORTCUTS[key as keyof typeof KEYBOARD_SHORTCUTS];
-        if (action === 'flip') {
-          flipCard();
-        } else if (isFlipped && !reviewing) {
-          handleResponse(action as Rating);
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isWeb, isFlipped, reviewing, frontAudioSegments, backAudioSegments]);
 
   const loadData = useCallback(async () => {
     try {
@@ -608,6 +557,29 @@ export default function StudyScreen() {
       restoreTabBar();
     };
   }, []);
+
+  const handlePlayAudio = (audioPath: string) => {
+    const audioElement = document.getElementById(`audio-${audioPath}`);
+    if (audioElement instanceof HTMLAudioElement) {
+      audioElement.currentTime = 0; // Reset to start
+      audioElement.play().catch(error => {
+        console.error('Error playing audio:', error);
+      });
+    } else {
+      console.warn('Audio element not found:', `audio-${audioPath}`);
+    }
+  };
+
+  // Use the keyboard shortcuts hook
+  useKeyboardShortcuts({
+    isFlipped,
+    reviewing,
+    frontAudioSegments,
+    backAudioSegments,
+    onFlip: flipCard,
+    onResponse: handleResponse,
+    onPlayAudio: handlePlayAudio,
+  });
 
   if (loading || !currentCard) {
     return (
