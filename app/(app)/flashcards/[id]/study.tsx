@@ -16,6 +16,7 @@ import { RecordingInterface } from '../../../../components/flashcards/RecordingI
 import { StudyCardFront } from '../../../../components/flashcards/study/StudyCardFront';
 import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
 import { StudyHeader } from '../../../../components/flashcards/study/StudyHeader';
+import { StudyControls } from '../../../../components/flashcards/study/StudyControls';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
@@ -692,76 +693,10 @@ export default function StudyScreen() {
             }}
           />
 
-          <View style={styles.controls}>
-            <Button
-              title={isWeb ? "Again (1)" : "Again"}
-              icon={
-                <MaterialIcons
-                  name="refresh"
-                  size={20}
-                  color="#DC2626"
-                  style={styles.buttonIcon}
-                />
-              }
-              type="clear"
-              loading={reviewing}
-              buttonStyle={[styles.responseButton]}
-              containerStyle={[styles.responseButtonContainer, { backgroundColor: '#DC262615' }]}
-              titleStyle={{ color: '#DC2626', fontWeight: '600' }}
-              onPress={() => handleResponse(Rating.Again)}
-            />
-            <Button
-              title={isWeb ? "Hard (2)" : "Hard"}
-              icon={
-                <MaterialIcons
-                  name="trending-down"
-                  size={20}
-                  color="#D97706"
-                  style={styles.buttonIcon}
-                />
-              }
-              type="clear"
-              loading={reviewing}
-              buttonStyle={[styles.responseButton]}
-              containerStyle={[styles.responseButtonContainer, { backgroundColor: '#D9770615' }]}
-              titleStyle={{ color: '#D97706', fontWeight: '600' }}
-              onPress={() => handleResponse(Rating.Hard)}
-            />
-            <Button
-              title={isWeb ? "Good (3)" : "Good"}
-              icon={
-                <MaterialIcons
-                  name="check"
-                  size={20}
-                  color="#059669"
-                  style={styles.buttonIcon}
-                />
-              }
-              type="clear"
-              loading={reviewing}
-              buttonStyle={[styles.responseButton]}
-              containerStyle={[styles.responseButtonContainer, { backgroundColor: '#05966915' }]}
-              titleStyle={{ color: '#059669', fontWeight: '600' }}
-              onPress={() => handleResponse(Rating.Good)}
-            />
-            <Button
-              title={isWeb ? "Easy (4)" : "Easy"}
-              icon={
-                <MaterialIcons
-                  name="trending-up"
-                  size={20}
-                  color="#4F46E5"
-                  style={styles.buttonIcon}
-                />
-              }
-              type="clear"
-              loading={reviewing}
-              buttonStyle={[styles.responseButton]}
-              containerStyle={[styles.responseButtonContainer, { backgroundColor: '#4F46E515' }]}
-              titleStyle={{ color: '#4F46E5', fontWeight: '600' }}
-              onPress={() => handleResponse(Rating.Easy)}
-            />
-          </View>
+          <StudyControls
+            onResponse={handleResponse}
+            reviewing={reviewing}
+          />
         </View>
 
         {isWeb && (
