@@ -13,6 +13,8 @@ import { AudioEnabledText } from '../../../../components/flashcards/AudioEnabled
 import { getCardAudioSegments } from '../../../../lib/api/audio';
 import { Audio } from 'expo-av';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
+import { StudyCardFront } from '../../../../components/flashcards/study/StudyCardFront';
+import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
@@ -714,101 +716,20 @@ export default function StudyScreen() {
         <View style={styles.cardContainer}>
           <AnimatedCard
             front={
-              <View style={styles.cardContent}>
-                {isMandarin && currentCard.language_specific_data?.mandarin ? (
-                  <View style={styles.mandarinContainer}>
-                    <MandarinText
-                      data={currentCard.language_specific_data.mandarin.front}
-                      characterSize={characterSize}
-                      color={theme.colors.grey5}
-                      audioUrl={frontAudioSegments.length > 0 ? frontAudioSegments[0].audio_file_path : undefined}
-                      isStudyMode={true}
-                    />
-                    {frontAudioSegments.length > 0 && (
-                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        {Platform.OS === 'web' 
-                          ? "Click text or press Ctrl+Space to play audio"
-                          : "Tap text to play audio"}
-                      </Text>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.textContainer}>
-                    <AudioEnabledText
-                      text={currentCard.front}
-                      audioSegments={frontAudioSegments}
-                      isStudyMode={true}
-                      color={theme.colors.primary}
-                      style={styles.audioEnabledText}
-                    />
-                    {frontAudioSegments.length > 0 && (
-                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        {Platform.OS === 'web' 
-                          ? "Click text or press Ctrl+Space to play audio"
-                          : "Tap text to play audio"}
-                      </Text>
-                    )}
-                  </View>
-                )}
-                {currentCard.tags && currentCard.tags.length > 0 && (
-                  <View style={styles.cardTags}>
-                    {currentCard.tags.map((tag, index) => (
-                      <View
-                        key={index}
-                        style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
-                      >
-                        <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
-                          {tag}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
+              <StudyCardFront
+                card={currentCard}
+                isMandarin={isMandarin}
+                characterSize={characterSize}
+                frontAudioSegments={frontAudioSegments}
+              />
             }
             back={
-              <View style={styles.cardContent}>
-                {isMandarin && currentCard.language_specific_data?.mandarin ? (
-                  <View style={styles.mandarinContainer}>
-                    <MandarinText
-                      data={currentCard.language_specific_data.mandarin.back}
-                      characterSize={characterSize}
-                      color={theme.colors.grey5}
-                      audioUrl={backAudioSegments.length > 0 ? backAudioSegments[0].audio_file_path : undefined}
-                      isStudyMode={true}
-                    />
-                    {backAudioSegments.length > 0 && (
-                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        {Platform.OS === 'web' 
-                          ? "Click text or press Ctrl+Space to play audio"
-                          : "Tap text to play audio"}
-                      </Text>
-                    )}
-                  </View>
-                ) : (
-                  <View style={styles.textContainer}>
-                    <AudioEnabledText
-                      text={currentCard.back}
-                      audioSegments={backAudioSegments}
-                      isStudyMode={true}
-                      color={theme.colors.primary}
-                      style={styles.audioEnabledText}
-                    />
-                    {backAudioSegments.length > 0 && (
-                      <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-                        {Platform.OS === 'web' 
-                          ? "Click text or press Ctrl+Space to play audio"
-                          : "Tap text to play audio"}
-                      </Text>
-                    )}
-                  </View>
-                )}
-                {currentCard.notes && (
-                  <Text style={[styles.notes, { color: theme.colors.grey3 }]}>
-                    {currentCard.notes}
-                  </Text>
-                )}
-              </View>
+              <StudyCardBack
+                card={currentCard}
+                isMandarin={isMandarin}
+                characterSize={characterSize}
+                backAudioSegments={backAudioSegments}
+              />
             }
             isFlipped={isFlipped}
             onPress={flipCard}
