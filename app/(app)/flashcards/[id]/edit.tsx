@@ -412,12 +412,10 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   form: {
-    gap: 24,
-    position: 'relative',
-    zIndex: 1,
+    gap: 40,
   },
   inputContainer: {
-    gap: 8,
+    gap: 12,
   },
   label: {
     fontSize: 14,

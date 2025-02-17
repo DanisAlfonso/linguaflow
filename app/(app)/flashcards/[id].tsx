@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Platform, Pressable, Animated } from 'react-native';
-import { Text, Button, Input, useTheme } from '@rneui/themed';
+import { Text, Button, Input, useTheme, Overlay } from '@rneui/themed';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { Container } from '../../../components/layout/Container';
-import { getDeck, getCards } from '../../../lib/api/flashcards';
+import { getDeck, getCards, deleteCard } from '../../../lib/api/flashcards';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 
@@ -18,6 +19,8 @@ export default function DeckScreen() {
   const [isEditDeckHovered, setIsEditDeckHovered] = useState(false);
   const [tooltipOpacity] = useState(new Animated.Value(0));
   const [editTooltipOpacity] = useState(new Animated.Value(0));
+  const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -140,6 +143,45 @@ export default function DeckScreen() {
 
   const handleCardPress = (cardId: string) => {
     router.push(`/flashcards/${id}/cards/${cardId}`);
+  };
+
+  const handleLongPressCard = (cardId: string, event: any) => {
+    // Get the position of the pressed element for menu placement
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
+    setEditingCardId(cardId);
+  };
+
+  const handleDeleteCard = async (cardId: string) => {
+    try {
+      await deleteCard(cardId);
+      
+      // Update local state
+      setCards(prevCards => prevCards.filter(c => c.id !== cardId));
+
+      Toast.show({
+        type: 'success',
+        text1: 'Card deleted successfully',
+      });
+    } catch (error) {
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to delete card',
+      });
+    } finally {
+      setEditingCardId(null);
+    }
+  };
+
+  const handleCloseCardMenu = () => {
+    setEditingCardId(null);
   };
 
   // Animate tooltip opacity for Edit Deck
@@ -434,52 +476,128 @@ export default function DeckScreen() {
 
                 <View style={styles.cardList}>
                   {filteredCards.map((card) => (
-                    <Pressable
-                      key={card.id}
-                      style={({ pressed }) => [
-                        styles.cardItem,
-                        {
-                          backgroundColor: theme.colors.grey0,
-                          borderColor: theme.colors.grey2,
-                          transform: [
-                            { scale: pressed ? 0.98 : 1 },
-                            { translateY: pressed ? 0 : isWeb ? -2 : 0 },
-                          ],
-                        },
-                      ]}
-                      onPress={() => handleCardPress(card.id)}
-                    >
-                      <View style={styles.cardContent}>
-                        <View style={styles.cardTexts}>
-                          <Text style={[styles.cardFront, { color: theme.colors.grey5 }]}>
-                            {card.front}
-                          </Text>
-                          <Text style={[styles.cardBack, { color: theme.colors.grey3 }]}>
-                            {card.back}
-                          </Text>
+                    <React.Fragment key={card.id}>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.cardItem,
+                          {
+                            backgroundColor: theme.colors.grey0,
+                            borderColor: theme.colors.grey2,
+                            transform: [
+                              { scale: pressed ? 0.98 : 1 },
+                              { translateY: pressed ? 0 : isWeb ? -2 : 0 },
+                            ],
+                          },
+                        ]}
+                        onPress={() => handleCardPress(card.id)}
+                        onLongPress={(event) => handleLongPressCard(card.id, event)}
+                      >
+                        <View style={styles.cardContent}>
+                          <View style={styles.cardTexts}>
+                            <Text style={[styles.cardFront, { color: theme.colors.grey5 }]}>
+                              {card.front}
+                            </Text>
+                            <Text style={[styles.cardBack, { color: theme.colors.grey3 }]}>
+                              {card.back}
+                            </Text>
+                          </View>
+                          <MaterialIcons
+                            name="chevron-right"
+                            size={24}
+                            color={theme.colors.grey3}
+                          />
                         </View>
-                        <MaterialIcons
-                          name="chevron-right"
-                          size={24}
-                          color={theme.colors.grey3}
-                        />
-                      </View>
 
-                      {card.tags && card.tags.length > 0 && (
-                        <View style={styles.cardTags}>
-                          {card.tags.map((tag, index) => (
-                            <View
-                              key={index}
-                              style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
-                            >
-                              <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
-                                {tag}
-                              </Text>
+                        {card.tags && card.tags.length > 0 && (
+                          <View style={styles.cardTags}>
+                            {card.tags.map((tag, index) => (
+                              <View
+                                key={index}
+                                style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
+                              >
+                                <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
+                                  {tag}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                      </Pressable>
+
+                      {editingCardId === card.id && (
+                        <Overlay
+                          isVisible={true}
+                          onBackdropPress={handleCloseCardMenu}
+                          overlayStyle={styles.overlayContainer}
+                          backdropStyle={styles.backdrop}
+                          animationType="fade"
+                        >
+                          <Pressable 
+                            style={StyleSheet.absoluteFill}
+                            onPress={handleCloseCardMenu}
+                          >
+                            <View style={StyleSheet.absoluteFill}>
+                              <BlurView 
+                                intensity={30} 
+                                style={StyleSheet.absoluteFill}
+                                tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                              />
                             </View>
-                          ))}
-                        </View>
+                          </Pressable>
+
+                          <View
+                            style={[
+                              styles.menuContainer,
+                              {
+                                position: 'absolute',
+                                left: menuPosition.x,
+                                top: menuPosition.y,
+                                width: menuPosition.width,
+                                backgroundColor: Platform.OS === 'ios' 
+                                  ? 'rgba(250, 250, 250, 0.8)' 
+                                  : theme.mode === 'dark' 
+                                    ? 'rgba(30, 30, 30, 0.95)'
+                                    : 'rgba(255, 255, 255, 0.95)',
+                                ...Platform.select({
+                                  ios: {
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 4 },
+                                    shadowOpacity: 0.2,
+                                    shadowRadius: 8,
+                                  },
+                                  android: {
+                                    elevation: 8,
+                                  },
+                                  web: {
+                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                                  },
+                                }),
+                              },
+                            ]}
+                          >
+                            <Pressable
+                              style={({ pressed }) => [
+                                styles.menuOption,
+                                pressed && styles.menuOptionPressed,
+                              ]}
+                              onPress={() => handleDeleteCard(card.id)}
+                            >
+                              <MaterialIcons 
+                                name="delete-outline" 
+                                size={20} 
+                                color={theme.mode === 'dark' ? '#EF4444' : '#DC2626'} 
+                              />
+                              <Text style={[
+                                styles.menuOptionText, 
+                                { color: theme.mode === 'dark' ? '#EF4444' : '#DC2626' }
+                              ]}>
+                                Delete Card
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </Overlay>
                       )}
-                    </Pressable>
+                    </React.Fragment>
                   ))}
                 </View>
               </>
@@ -737,5 +855,32 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderBottomColor: 'transparent',
     borderLeftColor: 'transparent',
+  },
+  overlayContainer: {
+    position: 'absolute',
+    width: '100%',
+    height: '100%',
+    backgroundColor: 'transparent',
+    padding: 0,
+  },
+  backdrop: {
+    backgroundColor: Platform.OS === 'ios' ? 'rgba(0, 0, 0, 0.2)' : 'rgba(0, 0, 0, 0.5)',
+  },
+  menuContainer: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  menuOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    gap: 12,
+  },
+  menuOptionPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+  },
+  menuOptionText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 
