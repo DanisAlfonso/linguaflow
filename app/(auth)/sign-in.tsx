@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Platform, Pressable } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -13,6 +13,7 @@ export default function SignIn() {
   const [error, setError] = useState('');
   const { signIn } = useAuth();
   const { theme } = useTheme();
+  const router = useRouter();
   const isWeb = Platform.OS === 'web';
 
   useEffect(() => {
@@ -46,7 +47,9 @@ export default function SignIn() {
   }, [isWeb, theme.mode]);
 
   const handleSignIn = async () => {
+    console.log('Sign in attempt started');
     if (!email || !password) {
+      console.log('Validation failed: Missing email or password');
       setError('Please fill in all fields');
       return;
     }
@@ -55,8 +58,19 @@ export default function SignIn() {
     setError('');
 
     try {
-      await signIn(email, password);
+      console.log('Calling signIn function...');
+      const result = await signIn(email, password);
+      console.log('Sign in successful:', result);
+      
+      // Try to navigate after successful sign in
+      try {
+        console.log('Attempting to navigate to home...');
+        router.replace('/');
+      } catch (navError) {
+        console.error('Navigation error:', navError);
+      }
     } catch (err) {
+      console.error('Sign in error:', err);
       setError('Invalid email or password');
     } finally {
       setLoading(false);
