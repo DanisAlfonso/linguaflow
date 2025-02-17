@@ -302,7 +302,7 @@ export default function EditDeckScreen() {
             </View>
 
             <View style={styles.actions}>
-              <View style={[styles.deleteButtonContainer, { backgroundColor: '#DC2626' }]}>
+              <View style={[styles.deleteButtonContainer, { backgroundColor: '#DC262615' }]}>
                 <Pressable
                   onHoverIn={() => isWeb && setIsDeleteHovered(true)}
                   onHoverOut={() => isWeb && setIsDeleteHovered(false)}
@@ -313,10 +313,10 @@ export default function EditDeckScreen() {
                   <MaterialIcons
                     name="delete"
                     size={20}
-                    color="white"
+                    color="#DC2626"
                     style={styles.buttonIcon}
                   />
-                  <Text style={[styles.buttonText, { color: 'white' }]}>
+                  <Text style={[styles.buttonText, { color: '#DC2626' }]}>
                     Delete Deck
                   </Text>
                   {isWeb && (
@@ -444,31 +444,27 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 12,
     marginTop: 8,
-    position: 'relative',
-    zIndex: 2,
   },
   buttonIcon: {
     marginRight: 8,
   },
   deleteButton: {
-    height: 48,
+    height: 56,
     borderWidth: 0,
   },
   deleteButtonContainer: {
     flex: 1,
     borderRadius: 12,
-    overflow: 'visible',
-    position: 'relative',
+    overflow: 'hidden',
   },
   saveButton: {
-    height: 48,
+    height: 56,
     borderWidth: 0,
   },
   saveButtonContainer: {
     flex: 1,
     borderRadius: 12,
-    overflow: 'visible',
-    position: 'relative',
+    overflow: 'hidden',
   },
   buttonText: {
     fontSize: 16,
