@@ -104,6 +104,10 @@ export default function CreateCardScreen() {
         text2: `Card created successfully${andContinue ? ' - Add another card' : ''}`,
       });
 
+      // Show finish button after creating a card
+      setShowFinishButton(true);
+      setCardsCreated(prev => prev + 1);
+
       if (andContinue) {
         console.log('Clearing form after card creation');
         clearForm();
@@ -138,7 +142,6 @@ export default function CreateCardScreen() {
       const segments = await getCardAudioSegments(createdCard!);
       setFrontAudioSegments(segments.filter(s => s.side === 'front'));
       setBackAudioSegments(segments.filter(s => s.side === 'back'));
-      setShowFinishButton(true);
     } catch (error) {
       console.error('Error attaching audio:', error);
       Toast.show({
@@ -205,10 +208,6 @@ export default function CreateCardScreen() {
         });
         console.log('Card created in audioButtonProps.onCreateCard:', { cardId: card.id });
         setCreatedCard(card.id);
-        setCardsCreated(prev => {
-          console.log('Updating cardsCreated in audioButtonProps:', { current: prev, new: prev + 1 });
-          return prev + 1;
-        });
         return card.id;
       } catch (error) {
         console.error('Error creating card:', error);
@@ -275,35 +274,17 @@ export default function CreateCardScreen() {
                         Front
                       </Text>
                       <View style={styles.inputWrapper}>
-                        <Input
-                          placeholder="Front side of the card"
+                        <MandarinCardInput
+                          label="Front"
+                          placeholder="Enter the front of the card"
                           value={front}
                           onChangeText={setFront}
-                          multiline
-                          numberOfLines={3}
-                          containerStyle={styles.input}
-                          inputContainerStyle={[
-                            styles.inputField,
-                            styles.textArea,
-                            {
-                              borderColor: theme.colors.grey2,
-                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                            },
-                          ]}
-                          inputStyle={[
-                            styles.inputText,
-                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                          ]}
-                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                          onMandarinDataChange={setFrontMandarinData}
+                          characterSize={characterSize}
+                          showPreview={isPreview}
+                          audioButton={<AudioAttachButton {...audioButtonProps} side="front" />}
+                          isMandarin={isMandarin}
                         />
-                        <View style={styles.actionRow}>
-                          <View style={styles.audioButtonWrapper}>
-                            <AudioAttachButton
-                              {...audioButtonProps}
-                              side="front"
-                            />
-                          </View>
-                        </View>
                       </View>
                       {frontAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {
@@ -327,35 +308,17 @@ export default function CreateCardScreen() {
                         Back
                       </Text>
                       <View style={styles.inputWrapper}>
-                        <Input
-                          placeholder="Back side of the card"
+                        <MandarinCardInput
+                          label="Back"
+                          placeholder="Enter the back of the card"
                           value={back}
                           onChangeText={setBack}
-                          multiline
-                          numberOfLines={3}
-                          containerStyle={[styles.input, { flex: 1 }]}
-                          inputContainerStyle={[
-                            styles.inputField,
-                            styles.textArea,
-                            {
-                              borderColor: theme.colors.grey2,
-                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                            },
-                          ]}
-                          inputStyle={[
-                            styles.inputText,
-                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                          ]}
-                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                          onMandarinDataChange={setBackMandarinData}
+                          characterSize={characterSize}
+                          showPreview={isPreview}
+                          audioButton={<AudioAttachButton {...audioButtonProps} side="back" />}
+                          isMandarin={isMandarin}
                         />
-                        <View style={styles.actionRow}>
-                          <View style={styles.audioButtonWrapper}>
-                            <AudioAttachButton
-                              {...audioButtonProps}
-                              side="back"
-                            />
-                          </View>
-                        </View>
                       </View>
                       {backAudioSegments.length > 0 && (
                         <View style={[styles.audioSegments, {

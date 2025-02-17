@@ -14,11 +14,13 @@ interface MandarinCardInputProps {
   characterSize?: number;
   showPreview?: boolean;
   audioButton?: IconNode;
+  isMandarin?: boolean;
 }
 
 // Function to detect if a string contains Chinese characters
 function containsChineseCharacters(text: string): boolean {
-  return /[\u4e00-\u9fff]/.test(text);
+  // Updated regex to include more Chinese character ranges
+  return /[\u3400-\u4DBF\u4E00-\u9FFF\u{20000}-\u{2A6DF}\u{2A700}-\u{2B73F}\u{2B740}-\u{2B81F}\u{2B820}-\u{2CEAF}]/u.test(text);
 }
 
 export function MandarinCardInput({
@@ -30,6 +32,7 @@ export function MandarinCardInput({
   characterSize = 24,
   showPreview = true,
   audioButton,
+  isMandarin = false,
 }: MandarinCardInputProps) {
   const [pinyin, setPinyin] = useState('');
   const { theme } = useTheme();
@@ -38,7 +41,8 @@ export function MandarinCardInput({
   useEffect(() => {
     // Update the Mandarin data whenever either characters or pinyin changes
     const characters = value.trim() ? value.split('') : [];
-    const pinyinArray = hasChineseCharacters ? pinyin.split(' ').filter(p => p.length > 0) : [];
+    // Keep all pinyin values, even empty ones, to maintain alignment
+    const pinyinArray = hasChineseCharacters ? pinyin.split(' ') : [];
     
     // Make sure we have the same number of pinyin as characters
     while (pinyinArray.length < characters.length) {
@@ -52,7 +56,16 @@ export function MandarinCardInput({
       characters,
       pinyin: pinyinArray,
     });
-  }, [value, pinyin, hasChineseCharacters, onMandarinDataChange]);
+
+    // Log the data for debugging
+    console.log('MandarinCardInput data:', {
+      value,
+      hasChineseCharacters,
+      isMandarin,
+      characters,
+      pinyin: pinyinArray,
+    });
+  }, [value, pinyin, hasChineseCharacters, isMandarin, onMandarinDataChange]);
 
   return (
     <View style={styles.container}>

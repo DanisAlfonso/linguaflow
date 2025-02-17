@@ -19,7 +19,7 @@ export function CharacterSizeControl({ size, onSizeChange, color = '#000' }: Cha
         minimumValue={24}
         maximumValue={72}
         step={4}
-        allowTouchTrack={true}
+        allowTouchTrack
         trackStyle={styles.track}
         thumbStyle={[styles.thumb, { backgroundColor: '#4F46E5' }]}
         style={styles.slider}

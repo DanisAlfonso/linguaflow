@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View } from 'react-native';
+import { View, LogBox } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
 import { ThemeProvider as RNEThemeProvider, useTheme } from '@rneui/themed';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -9,6 +9,11 @@ import { ThemeProvider, useAppTheme } from '../contexts/ThemeContext';
 import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { StudySettingsProvider } from '../contexts/StudySettingsContext';
 import { TabBarProvider } from '../contexts/TabBarContext';
+
+// Suppress specific warnings
+LogBox.ignoreLogs([
+  'Slider: Support for defaultProps will be removed from function components in a future major release. Use JavaScript default parameters instead.',
+]);
 
 function AppContent() {
   const { theme } = useTheme();
