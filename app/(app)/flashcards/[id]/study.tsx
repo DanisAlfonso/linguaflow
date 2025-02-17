@@ -19,28 +19,15 @@ import { StudyHeader } from '../../../../components/flashcards/study/StudyHeader
 import { StudyControls } from '../../../../components/flashcards/study/StudyControls';
 import { StudyCharacterControl } from '../../../../components/flashcards/study/StudyCharacterControl';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
-import type { CardAudioSegment, Recording } from '../../../../types/audio';
+import type { CardAudioSegment } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
-import { uploadRecording } from '../../../../lib/api/audio';
 import { initDatabase } from '../../../../lib/db';
 import { ensureRecordingsDirectory } from '../../../../lib/fs/recordings';
 import { useStudySettings } from '../../../../contexts/StudySettingsContext';
 import { useTabBar } from '../../../../contexts/TabBarContext';
 import { AnimatedCard } from '../../../../components/flashcards/AnimatedCard';
 import { useKeyboardShortcuts } from '../../../../lib/hooks/study/useKeyboardShortcuts';
-
-async function configureAudioSession() {
-  try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-    });
-  } catch (error) {
-    console.error('Error configuring audio session:', error);
-  }
-}
+import { useAudioManager } from '../../../../lib/hooks/study/useAudioManager';
 
 export default function StudyScreen() {
   const [cards, setCards] = useState<Card[]>([]);
@@ -58,26 +45,7 @@ export default function StudyScreen() {
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
   const [studySession, setStudySession] = useState<StudySession | null>(null);
   const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
-
-  // Recording states
   const [isRecordingEnabled, setIsRecordingEnabled] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
-  const [recordingDuration, setRecordingDuration] = useState(0);
-  const [meterLevel, setMeterLevel] = useState(0);
-  const [permissionResponse, requestPermission] = Audio.usePermissions();
-  const recordingTimer = useRef<NodeJS.Timeout>();
-
-  // Playback states
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [playbackProgress, setPlaybackProgress] = useState(0);
-  const sound = useRef<Audio.Sound>();
-  const playbackTimer = useRef<NodeJS.Timeout>();
-
-  const [hasRecording, setHasRecording] = useState(false);
-
-  // Add a new state for the uploaded recording
-  const [uploadedRecording, setUploadedRecording] = useState<Recording | null>(null);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -89,6 +57,30 @@ export default function StudyScreen() {
 
   const { hideNavigationBar, cardAnimationType } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
+
+  // Use the audio manager hook
+  const {
+    isRecording,
+    recordingDuration,
+    meterLevel,
+    hasRecording,
+    uploadedRecording,
+    isPlaying,
+    playbackProgress,
+    startRecording,
+    stopRecording,
+    deleteRecording,
+    startPlayback,
+    stopPlayback,
+    handleSeek,
+    setIsPlaying,
+    setPlaybackProgress,
+    setHasRecording,
+    setUploadedRecording,
+  } = useAudioManager({
+    cardId: currentCard?.id ?? '',
+    onClose: () => setIsRecordingEnabled(false),
+  });
 
   // Effect to handle tab bar visibility
   useEffect(() => {
@@ -146,16 +138,6 @@ export default function StudyScreen() {
       setLoading(false);
     }
   }, [id, router]);
-
-  const loadAudioSegments = async (cardId: string) => {
-    try {
-      const segments = await getCardAudioSegments(cardId);
-      setFrontAudioSegments(segments.filter(s => s.side === 'front'));
-      setBackAudioSegments(segments.filter(s => s.side === 'back'));
-    } catch (error) {
-      console.error('Error loading audio segments:', error);
-    }
-  };
 
   useEffect(() => {
     loadData();
@@ -281,251 +263,14 @@ export default function StudyScreen() {
     transform: [{ rotateY: backInterpolate }],
   };
 
-  // Handle recording permissions
+  // Add effect to handle tab bar visibility when recording interface is shown
   useEffect(() => {
-    const checkPermissions = async () => {
-      if (!permissionResponse) return;
-      
-      if (isRecordingEnabled && permissionResponse.status !== 'granted') {
-        console.log('Requesting recording permission..');
-        const permission = await requestPermission();
-        if (!permission.granted) {
-          Toast.show({
-            type: 'error',
-            text1: 'Permission Required',
-            text2: 'Microphone access is needed for recording',
-          });
-          setIsRecordingEnabled(false);
-        }
-      }
-    };
-
-    checkPermissions();
-  }, [isRecordingEnabled, permissionResponse, requestPermission]);
-
-  // Clean up recording timer
-  useEffect(() => {
-    return () => {
-      if (recordingTimer.current) {
-        clearInterval(recordingTimer.current);
-      }
-      if (playbackTimer.current) {
-        clearInterval(playbackTimer.current);
-      }
-      if (sound.current) {
-        sound.current.unloadAsync();
-      }
-    };
-  }, []);
-
-  const startRecording = async () => {
-    try {
-      if (!permissionResponse || permissionResponse.status !== 'granted') {
-        Toast.show({
-          type: 'error',
-          text1: 'Permission Required',
-          text2: 'Microphone access is needed for recording',
-        });
-        return;
-      }
-
-      // Configure audio mode for recording
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-      });
-
-      console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        (status) => {
-          // Update meter level from recording status
-          if (status.isRecording && status.metering !== undefined) {
-            // Convert dB meter level to a value between 0 and 1
-            // Typical values are between -160 and 0 dB
-            const db = status.metering;
-            const normalized = (db + 160) / 160; // Convert to 0-1 range
-            const clamped = Math.max(0, Math.min(1, normalized)); // Ensure between 0 and 1
-            setMeterLevel(clamped);
-          }
-        },
-        1000 // Update metering every 1000ms
-      );
-
-      setRecording(recording);
-      setIsRecording(true);
-      setRecordingDuration(0);
-      setMeterLevel(0);
-
-      // Start duration timer
-      recordingTimer.current = setInterval(() => {
-        setRecordingDuration(prev => prev + 1000);
-      }, 1000);
-
-      console.log('Recording started');
-    } catch (err) {
-      console.error('Failed to start recording', err);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to start recording',
-      });
+    if (isRecordingEnabled) {
+      temporarilyHideTabBar();
+    } else {
+      restoreTabBar();
     }
-  };
-
-  const stopRecording = async () => {
-    try {
-      if (!recording) return;
-
-      console.log('Stopping recording..');
-      await recording.stopAndUnloadAsync();
-      
-      // Stop and clear duration timer
-      if (recordingTimer.current) {
-        clearInterval(recordingTimer.current);
-      }
-
-      // Reset audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
-
-      const uri = recording.getURI();
-      if (!uri) {
-        throw new Error('No recording URI available');
-      }
-
-      console.log('Recording stopped and stored at', uri);
-
-      // Upload the recording
-      const uploaded = await uploadRecording(currentCard.id, {
-        uri,
-        duration: recordingDuration,
-      });
-
-      // Store the uploaded recording
-      setUploadedRecording(uploaded);
-
-      // Reset states but keep duration for display
-      setRecording(null);
-      setIsRecording(false);
-      setMeterLevel(0);
-      setHasRecording(true);
-
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: 'Recording saved',
-      });
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to save recording',
-      });
-    }
-  };
-
-  const deleteRecording = () => {
-    if (sound.current) {
-      sound.current.unloadAsync();
-      sound.current = undefined;
-    }
-    setUploadedRecording(null);
-    setHasRecording(false);
-    setRecordingDuration(0);
-    setPlaybackProgress(0);
-    setIsPlaying(false);
-  };
-
-  const startPlayback = async () => {
-    try {
-      if (!uploadedRecording) {
-        console.error('No uploaded recording available');
-        return;
-      }
-
-      // Configure audio session
-      await configureAudioSession();
-
-      if (!sound.current) {
-        console.log('Creating new sound from URL:', uploadedRecording.audio_url);
-        const { sound: newSound, status } = await Audio.Sound.createAsync(
-          { uri: uploadedRecording.audio_url },
-          { 
-            progressUpdateIntervalMillis: 100,
-            shouldPlay: true,
-            volume: 1.0,
-          },
-          (status) => {
-            if (status.isLoaded) {
-              const durationMillis = status.durationMillis ?? 1; // Fallback to 1 to avoid division by zero
-              setPlaybackProgress(status.positionMillis / durationMillis);
-              
-              if (status.didJustFinish) {
-                setIsPlaying(false);
-                setPlaybackProgress(0);
-                if (playbackTimer.current) {
-                  clearInterval(playbackTimer.current);
-                }
-              }
-            }
-          }
-        );
-
-        console.log('Sound created with status:', status);
-        sound.current = newSound;
-      } else {
-        await sound.current.playAsync();
-      }
-      
-      setIsPlaying(true);
-    } catch (error) {
-      console.error('Error playing recording:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to play recording',
-      });
-    }
-  };
-
-  const stopPlayback = async () => {
-    try {
-      if (!sound.current) return;
-
-      await sound.current.stopAsync();
-      await sound.current.setPositionAsync(0);
-      setIsPlaying(false);
-      setPlaybackProgress(0);
-
-      if (playbackTimer.current) {
-        clearInterval(playbackTimer.current);
-      }
-    } catch (error) {
-      console.error('Error stopping playback:', error);
-    }
-  };
-
-  const handleSeek = async (progress: number) => {
-    try {
-      if (!sound.current) return;
-
-      const status = await sound.current.getStatusAsync();
-      if (!status.isLoaded) return;
-
-      const durationMillis = status.durationMillis ?? 0;
-      if (durationMillis === 0) return;
-
-      const position = progress * durationMillis;
-      await sound.current.setPositionAsync(position);
-      setPlaybackProgress(progress);
-    } catch (error) {
-      console.error('Error seeking:', error);
-    }
-  };
+  }, [isRecordingEnabled]);
 
   // Initialize database and file system
   useEffect(() => {
@@ -540,22 +285,6 @@ export default function StudyScreen() {
       }
     };
     init();
-  }, []);
-
-  // Add effect to handle tab bar visibility when recording interface is shown
-  useEffect(() => {
-    if (isRecordingEnabled) {
-      temporarilyHideTabBar();
-    } else {
-      restoreTabBar();
-    }
-  }, [isRecordingEnabled]);
-
-  // Handle cleanup when component unmounts
-  useEffect(() => {
-    return () => {
-      restoreTabBar();
-    };
   }, []);
 
   const handlePlayAudio = (audioPath: string) => {
