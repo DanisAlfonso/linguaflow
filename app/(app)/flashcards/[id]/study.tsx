@@ -15,6 +15,7 @@ import { Audio } from 'expo-av';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
 import { StudyCardFront } from '../../../../components/flashcards/study/StudyCardFront';
 import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
+import { StudyHeader } from '../../../../components/flashcards/study/StudyHeader';
 import type { Card, Deck, StudySession } from '../../../../types/flashcards';
 import type { CardAudioSegment, Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
@@ -642,66 +643,13 @@ export default function StudyScreen() {
       }
     ]}>
       <Container>
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Button
-              type="clear"
-              icon={
-                <MaterialIcons
-                  name="close"
-                  size={24}
-                  color={theme.colors.grey5}
-                />
-              }
-              onPress={() => router.back()}
-            />
-          </View>
-          <View style={styles.progress}>
-            <View 
-              style={[
-                styles.progressBar, 
-                { backgroundColor: theme.colors.grey2 }
-              ]}
-            >
-              <View 
-                style={[
-                  styles.progressFill,
-                  { 
-                    backgroundColor: '#4F46E5',
-                    width: `${progress}%`,
-                  },
-                ]} 
-              />
-            </View>
-            <Text style={[styles.progressText, { color: theme.colors.grey4 }]}>
-              {currentCardIndex + 1} / {cards.length}
-            </Text>
-          </View>
-          <View style={styles.headerRight}>
-            <Button
-              type="clear"
-              icon={
-                <MaterialIcons
-                  name="headset"
-                  size={24}
-                  color={theme.colors.grey5}
-                />
-              }
-              onPress={() => router.push(`/flashcards/${currentCard.id}/recordings`)}
-            />
-            <Button
-              type="clear"
-              icon={
-                <MaterialIcons
-                  name={isRecordingEnabled ? "mic" : "mic-none"}
-                  size={24}
-                  color={isRecordingEnabled ? theme.colors.primary : theme.colors.grey5}
-                />
-              }
-              onPress={() => setIsRecordingEnabled(!isRecordingEnabled)}
-            />
-          </View>
-        </View>
+        <StudyHeader
+          currentIndex={currentCardIndex}
+          totalCards={cards.length}
+          isRecordingEnabled={isRecordingEnabled}
+          onRecordingToggle={() => setIsRecordingEnabled(!isRecordingEnabled)}
+          currentCardId={currentCard.id}
+        />
 
         {isMandarin && (
           <View style={styles.characterSizeControl}>
