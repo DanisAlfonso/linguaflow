@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, Platform, Pressable, Animated, ViewStyle } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { Text, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,11 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
 import { getDueCards, reviewCard, getDeck, createStudySession, updateStudySession } from '../../../../lib/api/flashcards';
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
-import { MandarinText } from '../../../../components/flashcards/MandarinText';
-import { CharacterSizeControl } from '../../../../components/flashcards/CharacterSizeControl';
-import { AudioEnabledText } from '../../../../components/flashcards/AudioEnabledText';
 import { getCardAudioSegments } from '../../../../lib/api/audio';
-import { Audio } from 'expo-av';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
 import { StudyCardFront } from '../../../../components/flashcards/study/StudyCardFront';
 import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
@@ -28,13 +24,12 @@ import { useTabBar } from '../../../../contexts/TabBarContext';
 import { AnimatedCard } from '../../../../components/flashcards/AnimatedCard';
 import { useKeyboardShortcuts } from '../../../../lib/hooks/study/useKeyboardShortcuts';
 import { useAudioManager } from '../../../../lib/hooks/study/useAudioManager';
+import { useCardAnimation } from '../../../../lib/hooks/study/useCardAnimation';
 
 export default function StudyScreen() {
   const [cards, setCards] = useState<Card[]>([]);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
-  const [flipAnim] = useState(new Animated.Value(0));
   const [cardsStudied, setCardsStudied] = useState(0);
   const [correctResponses, setCorrectResponses] = useState(0);
   const [startTime] = useState(new Date());
@@ -57,6 +52,17 @@ export default function StudyScreen() {
 
   const { hideNavigationBar, cardAnimationType } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
+
+  // Use the card animation hook
+  const {
+    isFlipped,
+    flipCard,
+    resetCard,
+    frontAnimatedStyle,
+    backAnimatedStyle,
+  } = useCardAnimation({
+    onFlip: () => setCardFlipTime(new Date()),
+  });
 
   // Use the audio manager hook
   const {
@@ -161,17 +167,6 @@ export default function StudyScreen() {
     }
   }, [currentCard]);
 
-  const flipCard = () => {
-    setIsFlipped(!isFlipped);
-    setCardFlipTime(new Date());
-    Animated.spring(flipAnim, {
-      toValue: isFlipped ? 0 : 1,
-      friction: 8,
-      tension: 10,
-      useNativeDriver: false,
-    }).start();
-  };
-
   const handleResponse = async (rating: Rating) => {
     if (reviewing) return;
     setReviewing(true);
@@ -201,14 +196,12 @@ export default function StudyScreen() {
           return [...newCards, currentCard];
         });
         // Stay on the same index (which will now show the next card)
-        setIsFlipped(false);
-        flipAnim.setValue(0);
+        resetCard();
       } else {
         // For other ratings, move to next card
         if (currentCardIndex < cards.length - 1) {
           setCurrentCardIndex(prev => prev + 1);
-          setIsFlipped(false);
-          flipAnim.setValue(0);
+          resetCard();
         } else {
           // End of deck
           const endTime = new Date();
@@ -243,24 +236,6 @@ export default function StudyScreen() {
     } finally {
       setReviewing(false);
     }
-  };
-
-  const frontInterpolate = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '180deg'],
-  });
-
-  const backInterpolate = flipAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['180deg', '360deg'],
-  });
-
-  const frontAnimatedStyle = {
-    transform: [{ rotateY: frontInterpolate }],
-  };
-
-  const backAnimatedStyle = {
-    transform: [{ rotateY: backInterpolate }],
   };
 
   // Add effect to handle tab bar visibility when recording interface is shown
