@@ -515,20 +515,23 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
+    paddingBottom: Platform.OS === 'ios' ? 120 : 90,
   },
   form: {
-    gap: 24,
+    gap: 32,
   },
   characterSizeControl: {
-    marginBottom: 8,
+    marginBottom: 16,
   },
   inputContainer: {
-    gap: 8,
+    gap: 12,
+    marginBottom: 8,
   },
   label: {
     fontSize: 14,
     fontWeight: '500',
     marginLeft: 4,
+    marginBottom: 4,
   },
   content: {
     fontSize: 16,
@@ -540,16 +543,17 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     alignItems: 'center',
+    marginBottom: 16,
   },
   input: {
     paddingHorizontal: 0,
+    marginBottom: 8,
   },
   inputField: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    height: 48,
-    marginBottom: -8,
+    minHeight: 48,
   },
   inputText: {
     fontSize: 16,
