@@ -152,17 +152,17 @@ export function MandarinCardInput({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 16,
+    gap: 40,
   },
   label: {
     fontSize: 17,
     fontWeight: '600',
     marginLeft: 4,
-    marginBottom: 4,
+    marginBottom: 8,
     letterSpacing: -0.4,
   },
   inputContainer: {
-    marginBottom: 16,
+    marginBottom: 48,
   },
   input: {
     paddingHorizontal: 0,
@@ -172,7 +172,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 20,
     height: 56,
-    marginBottom: -8,
+    marginBottom: 0,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -194,17 +194,18 @@ const styles = StyleSheet.create({
   },
   pinyinContainer: {
     gap: 8,
-    marginTop: 8,
+    marginTop: 24,
   },
   pinyinLabel: {
     fontSize: 17,
     fontWeight: '600',
     marginLeft: 4,
+    marginBottom: 8,
     letterSpacing: -0.4,
   },
   preview: {
-    marginTop: 16,
-    gap: 8,
+    marginTop: 32,
+    gap: 12,
   },
   previewLabel: {
     fontSize: 17,
@@ -213,8 +214,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   previewContent: {
-    padding: 20,
+    padding: 24,
     borderRadius: 16,
+    borderWidth: 1,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
