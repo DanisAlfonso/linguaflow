@@ -242,6 +242,7 @@ export default function HomeScreen() {
               { 
                 backgroundColor: theme.colors.grey0,
                 borderColor: theme.colors.grey1,
+                borderWidth: 1,
               }
             ]}
           >
@@ -312,7 +313,16 @@ export default function HomeScreen() {
           </View>
 
           {/* Quick Actions */}
-          <View style={[styles.section, { backgroundColor: theme.colors.grey0 }]}>
+          <View 
+            style={[
+              styles.section, 
+              { 
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey1,
+                borderWidth: 1,
+              }
+            ]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
               Quick Actions
             </Text>
@@ -355,7 +365,16 @@ export default function HomeScreen() {
           </View>
 
           {/* Recent Activity */}
-          <View style={[styles.section, { backgroundColor: theme.colors.grey0 }]}>
+          <View 
+            style={[
+              styles.section, 
+              { 
+                backgroundColor: theme.colors.grey0,
+                borderColor: theme.colors.grey1,
+                borderWidth: 1,
+              }
+            ]}
+          >
             <Text style={[styles.sectionTitle, { color: theme.colors.grey5 }]}>
               Recent Activity
             </Text>
@@ -534,19 +553,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   section: {
-    borderRadius: 20,
+    borderRadius: 16,
     padding: 24,
     gap: 20,
     ...Platform.select({
-      web: {
-        transition: 'all 0.2s ease',
-      },
-      default: {
-        elevation: 2,
+      ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
+        shadowOpacity: 0.05,
         shadowRadius: 4,
+      },
+      android: {
+        elevation: 2,
+      },
+      web: {
+        boxShadow: '0 2px 8px rgba(0, 0, 0, 0.05)',
       },
     }),
   },
