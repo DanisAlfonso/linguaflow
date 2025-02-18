@@ -26,6 +26,7 @@ import { useKeyboardShortcuts } from '../../../../lib/hooks/study/useKeyboardSho
 import { useAudioManager } from '../../../../lib/hooks/study/useAudioManager';
 import { useCardAnimation } from '../../../../lib/hooks/study/useCardAnimation';
 import { useStudySession } from '../../../../lib/hooks/study/useStudySession';
+import { Audio } from 'expo-av';
 
 export default function StudyScreen() {
   const [deck, setDeck] = useState<Deck | null>(null);
@@ -35,6 +36,9 @@ export default function StudyScreen() {
   const [loading, setLoading] = useState(true);
   const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
   const [isRecordingEnabled, setIsRecordingEnabled] = useState(false);
+  const { autoPlay } = useStudySettings();
+  const [frontSound, setFrontSound] = useState<Audio.Sound | null>(null);
+  const [backSound, setBackSound] = useState<Audio.Sound | null>(null);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
@@ -187,6 +191,74 @@ export default function StudyScreen() {
       loadAudioSegments();
     }
   }, [currentCard]);
+
+  // Function to play audio from URL
+  const playAudio = async (audioUrl: string) => {
+    try {
+      const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
+      await sound.playAsync();
+      // Clean up when done playing
+      sound.setOnPlaybackStatusUpdate(async (status) => {
+        if ('isLoaded' in status && status.isLoaded && status.didJustFinish) {
+          await sound.unloadAsync();
+        }
+      });
+      return sound;
+    } catch (error) {
+      console.error('Error playing audio:', error);
+      return null;
+    }
+  };
+
+  // Clean up sounds when component unmounts
+  useEffect(() => {
+    return () => {
+      if (frontSound) {
+        frontSound.unloadAsync();
+      }
+      if (backSound) {
+        backSound.unloadAsync();
+      }
+    };
+  }, []);
+
+  // Handle auto-play when card changes
+  useEffect(() => {
+    if (autoPlay && currentCard && frontAudioSegments.length > 0) {
+      const audioUrl = frontAudioSegments[0].audio_file.url;
+      if (audioUrl) {
+        // Clean up previous sound if exists
+        if (frontSound) {
+          frontSound.unloadAsync();
+        }
+        // Play new audio
+        playAudio(audioUrl).then(sound => {
+          if (sound) {
+            setFrontSound(sound);
+          }
+        });
+      }
+    }
+  }, [currentCard, frontAudioSegments, autoPlay]);
+
+  // Handle auto-play when card is flipped
+  useEffect(() => {
+    if (autoPlay && isFlipped && currentCard && backAudioSegments.length > 0) {
+      const audioUrl = backAudioSegments[0].audio_file.url;
+      if (audioUrl) {
+        // Clean up previous sound if exists
+        if (backSound) {
+          backSound.unloadAsync();
+        }
+        // Play new audio
+        playAudio(audioUrl).then(sound => {
+          if (sound) {
+            setBackSound(sound);
+          }
+        });
+      }
+    }
+  }, [isFlipped, backAudioSegments, autoPlay]);
 
   const handleCardResponse = async (rating: Rating) => {
     const responseTimeMs = cardFlipTime 

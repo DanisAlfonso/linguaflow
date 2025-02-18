@@ -39,11 +39,12 @@ export default function SettingsScreen() {
     cardAnimationType,
     setCardAnimationType,
     moveControlsToBottom,
-    setMoveControlsToBottom
+    setMoveControlsToBottom,
+    autoPlay,
+    setAutoPlay
   } = useStudySettings();
   const router = useRouter();
   const [notifications, setNotifications] = React.useState(true);
-  const [autoPlay, setAutoPlay] = React.useState(true);
   const [showAnimationModal, setShowAnimationModal] = useState(false);
 
   // Load hide navigation bar setting on component mount
@@ -98,7 +99,7 @@ export default function SettingsScreen() {
           onChange: setNotifications,
         },
         {
-          icon: 'play-circle-outline',
+          icon: 'volume-up',
           label: 'Auto-play Audio',
           type: 'switch',
           value: autoPlay,
@@ -107,30 +108,24 @@ export default function SettingsScreen() {
       ],
     },
     {
-      title: 'Learning Settings',
+      title: 'Study Settings',
       items: [
         {
-          icon: 'remove-red-eye',
+          icon: 'visibility-off',
           label: 'Hide Navigation Bar',
           type: 'switch',
           value: hideNavigationBar,
           onChange: setHideNavigationBar,
         },
         {
-          icon: 'vertical-align-bottom',
+          icon: 'swap-vert',
           label: 'Move Controls to Bottom',
           type: 'switch',
           value: moveControlsToBottom,
-          onChange: (value) => {
-            setMoveControlsToBottom(value);
-            // If enabling Move Controls to Bottom, also hide navigation bar
-            if (value) {
-              setHideNavigationBar(true);
-            }
-          },
+          onChange: setMoveControlsToBottom,
         },
         {
-          icon: 'animation',
+          icon: 'flip',
           label: 'Card Animation',
           type: 'navigate',
           onPress: () => setShowAnimationModal(true),

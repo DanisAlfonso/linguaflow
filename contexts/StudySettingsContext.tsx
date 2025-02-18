@@ -10,6 +10,8 @@ type StudySettingsContextType = {
   setCardAnimationType: (value: CardAnimationType) => Promise<void>;
   moveControlsToBottom: boolean;
   setMoveControlsToBottom: (value: boolean) => Promise<void>;
+  autoPlay: boolean;
+  setAutoPlay: (value: boolean) => Promise<void>;
 };
 
 const StudySettingsContext = createContext<StudySettingsContextType | undefined>(undefined);
@@ -18,27 +20,31 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
   const [hideNavigationBar, setHideNavigationBarState] = useState(false);
   const [cardAnimationType, setCardAnimationTypeState] = useState<CardAnimationType>('flip');
   const [moveControlsToBottom, setMoveControlsToBottomState] = useState(false);
+  const [autoPlay, setAutoPlayState] = useState(false);
 
   useEffect(() => {
     // Load settings on mount
     const loadSettings = async () => {
       try {
         console.log('StudySettingsContext - Loading settings');
-        const [hideNavBar, animationType, moveControls] = await Promise.all([
+        const [hideNavBar, animationType, moveControls, autoPlayValue] = await Promise.all([
           AsyncStorage.getItem('hideNavigationBar'),
           AsyncStorage.getItem('cardAnimationType'),
           AsyncStorage.getItem('moveControlsToBottom'),
+          AsyncStorage.getItem('autoPlay'),
         ]);
         
         console.log('StudySettingsContext - Loaded settings:', {
           hideNavBar,
           animationType,
-          moveControls
+          moveControls,
+          autoPlayValue
         });
         
         setHideNavigationBarState(hideNavBar === 'true');
         setCardAnimationTypeState((animationType as CardAnimationType) || 'flip');
         setMoveControlsToBottomState(moveControls === 'true');
+        setAutoPlayState(autoPlayValue === 'true');
       } catch (error) {
         console.error('Error loading study settings:', error);
       }
@@ -76,6 +82,16 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
     }
   };
 
+  const setAutoPlay = async (value: boolean) => {
+    try {
+      console.log('StudySettingsContext - Setting autoPlay:', value);
+      await AsyncStorage.setItem('autoPlay', value.toString());
+      setAutoPlayState(value);
+    } catch (error) {
+      console.error('Error saving autoPlay setting:', error);
+    }
+  };
+
   return (
     <StudySettingsContext.Provider
       value={{
@@ -85,6 +101,8 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
         setCardAnimationType,
         moveControlsToBottom,
         setMoveControlsToBottom,
+        autoPlay,
+        setAutoPlay,
       }}
     >
       {children}
