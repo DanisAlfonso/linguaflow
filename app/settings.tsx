@@ -165,6 +165,7 @@ export default function SettingsScreen() {
           type: 'switch',
           value: hideNavigationBar,
           onChange: setHideNavigationBar,
+          description: 'Hide bottom bar while studying',
         },
         {
           icon: 'swap-vert',
@@ -172,6 +173,7 @@ export default function SettingsScreen() {
           type: 'switch',
           value: moveControlsToBottom,
           onChange: setMoveControlsToBottom,
+          description: 'Rating buttons at bottom',
         },
         {
           icon: 'volume-up',
@@ -179,6 +181,7 @@ export default function SettingsScreen() {
           type: 'switch',
           value: autoPlay,
           onChange: setAutoPlay,
+          description: 'Auto-play when flipped',
         },
         {
           icon: 'flip',
