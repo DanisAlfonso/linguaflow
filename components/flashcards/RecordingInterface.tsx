@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { generateRecordingPath, saveRecordingFile, getRecordingUri, deleteRecordingFile } from '../../lib/fs/recordings';
 import { saveLocalRecording, deleteLocalRecording } from '../../lib/db';
 import { syncRecordings } from '../../lib/sync/recordings';
-import { getCardRecordings } from '../../lib/api/audio';
+import { getCardRecordings, deleteRecording } from '../../lib/api/audio';
 import type { LocalRecording, Recording } from '../../types/audio';
 import Toast from 'react-native-toast-message';
 import { WaveformVisualizer } from './WaveformVisualizer';
@@ -249,12 +249,13 @@ export function RecordingInterface({
 
   const handleDeleteRecording = async () => {
     try {
-      if (currentRecording) {
-        // Delete local recording
-        await deleteRecordingFile(currentRecording.file_path);
-        await deleteLocalRecording(currentRecording.id);
-        setCurrentRecording(null);
+      if (!uploadedRecording) {
+        console.error('No recording available to delete');
+        return;
       }
+
+      // Delete the recording from Supabase and storage
+      await deleteRecording(uploadedRecording.id);
 
       // Clean up sound
       if (sound.current) {
@@ -264,6 +265,8 @@ export function RecordingInterface({
       
       setPlaybackProgress(0);
       setIsPlaying(false);
+      setHasRecording(false);
+      setUploadedRecording(null);
       onDeleteRecording();
 
       Toast.show({
@@ -279,6 +282,20 @@ export function RecordingInterface({
         text2: 'Failed to delete recording',
       });
     }
+  };
+
+  const handleNewRecording = () => {
+    // Clean up sound
+    if (sound.current) {
+      sound.current.unloadAsync();
+      sound.current = undefined;
+    }
+    
+    // Reset all states to prepare for new recording
+    setPlaybackProgress(0);
+    setIsPlaying(false);
+    setHasRecording(false);
+    // Don't reset uploadedRecording as we don't want to delete the file
   };
 
   useEffect(() => {
@@ -402,7 +419,7 @@ export function RecordingInterface({
                   />
                 }
                 buttonStyle={styles.secondaryButton}
-                onPress={handleStartRecording}
+                onPress={handleNewRecording}
               />
             </>
           ) : (
