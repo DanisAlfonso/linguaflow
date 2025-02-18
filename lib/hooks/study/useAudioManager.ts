@@ -127,7 +127,31 @@ export function useAudioManager({
 
       console.log('Starting recording..');
       const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
+        {
+          android: {
+            extension: '.m4a',
+            outputFormat: Audio.AndroidOutputFormat.MPEG_4,
+            audioEncoder: Audio.AndroidAudioEncoder.AAC,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 128000,
+          },
+          ios: {
+            extension: '.m4a',
+            outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
+            audioQuality: Audio.IOSAudioQuality.HIGH,
+            sampleRate: 44100,
+            numberOfChannels: 1,
+            bitRate: 128000,
+            linearPCMBitDepth: 16,
+            linearPCMIsBigEndian: false,
+            linearPCMIsFloat: false,
+          },
+          web: {
+            mimeType: 'audio/mp4',
+            bitsPerSecond: 128000,
+          },
+        },
         (status) => {
           // Update meter level from recording status
           if (status.isRecording && status.metering !== undefined) {
@@ -237,43 +261,61 @@ export function useAudioManager({
         return;
       }
 
-      // Configure audio session
-      await configureAudioSession();
+      // Unload any existing sound first
+      if (sound.current) {
+        await sound.current.unloadAsync();
+        sound.current = undefined;
+      }
 
-      if (!sound.current) {
-        console.log('Creating new sound from URL:', uploadedRecording.audio_url);
-        const { sound: newSound, status } = await Audio.Sound.createAsync(
-          { uri: uploadedRecording.audio_url },
-          { 
-            progressUpdateIntervalMillis: 100,
-            shouldPlay: true,
-            volume: 1.0,
-          },
-          (status) => {
-            if (status.isLoaded) {
-              const durationMillis = status.durationMillis ?? 1; // Fallback to 1 to avoid division by zero
-              setPlaybackProgress(status.positionMillis / durationMillis);
-              
-              if (status.didJustFinish) {
-                setIsPlaying(false);
-                setPlaybackProgress(0);
-                if (playbackTimer.current) {
-                  clearInterval(playbackTimer.current);
-                }
+      // Configure audio session for playback
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
+      });
+
+      // Ensure the URL is properly formatted
+      const audioUrl = uploadedRecording.audio_url.startsWith('http') 
+        ? uploadedRecording.audio_url 
+        : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/audio/${uploadedRecording.audio_url}`;
+      
+      console.log('Playing audio from URL:', audioUrl);
+
+      const { sound: newSound, status } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { 
+          progressUpdateIntervalMillis: 100,
+          shouldPlay: true,
+          volume: 1.0,
+          androidImplementation: 'MediaPlayer',
+        },
+        (status) => {
+          if (status.isLoaded) {
+            const durationMillis = status.durationMillis ?? 1;
+            setPlaybackProgress(status.positionMillis / durationMillis);
+            
+            if (status.didJustFinish) {
+              setIsPlaying(false);
+              setPlaybackProgress(0);
+              if (playbackTimer.current) {
+                clearInterval(playbackTimer.current);
               }
             }
           }
-        );
+        }
+      );
 
-        console.log('Sound created with status:', status);
-        sound.current = newSound;
-      } else {
-        await sound.current.playAsync();
-      }
-      
+      sound.current = newSound;
       setIsPlaying(true);
     } catch (error) {
       console.error('Error playing recording:', error);
+      if (sound.current) {
+        await sound.current.unloadAsync();
+        sound.current = undefined;
+      }
+      setIsPlaying(false);
       Toast.show({
         type: 'error',
         text1: 'Error',

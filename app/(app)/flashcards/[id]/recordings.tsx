@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, StyleSheet, FlatList, Modal, Pressable } from 'react-native';
-import { Text, Button, useTheme, Input } from '@rneui/themed';
+import { View, StyleSheet, FlatList, Modal, Pressable, Platform } from 'react-native';
+import { Text, Button, useTheme, Input, Overlay } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
 import { Container } from '../../../../components/layout/Container';
 import { getCardRecordings, deleteRecording } from '../../../../lib/api/audio';
 import type { Recording } from '../../../../types/audio';
@@ -20,11 +21,13 @@ export default function RecordingsScreen() {
   const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
   const [isRenameModalVisible, setIsRenameModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const sound = useRef<Audio.Sound>();
   
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
+  const isWeb = Platform.OS === 'web';
 
   // Load recordings when screen comes into focus
   useFocusEffect(
@@ -196,49 +199,87 @@ export default function RecordingsScreen() {
     }
   };
 
+  const handleLongPressRecording = (recording: Recording, event: any) => {
+    // Get the position of the pressed element for menu placement
+    if (event?.nativeEvent) {
+      const { pageX, pageY, locationX, locationY } = event.nativeEvent;
+      setMenuPosition({
+        x: pageX - locationX,
+        y: pageY - locationY,
+        width: 220, // Fixed menu width
+        height: 0,
+      });
+    }
+    setSelectedRecording(recording);
+  };
+
+  const handleDeleteRecording = async () => {
+    if (!selectedRecording) return;
+
+    try {
+      await deleteRecording(selectedRecording.id);
+      setRecordings(prev => prev.filter(r => r.id !== selectedRecording.id));
+      Toast.show({
+        type: 'success',
+        text1: 'Success',
+        text2: 'Recording deleted',
+      });
+    } catch (error) {
+      console.error('Error deleting recording:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Failed to delete recording',
+      });
+    } finally {
+      setSelectedRecording(null);
+    }
+  };
+
+  const handleCloseMenu = () => {
+    setSelectedRecording(null);
+  };
+
   const renderItem = ({ item }: { item: Recording }) => {
     const isPlaying = currentlyPlaying === item.id;
 
     return (
-      <Pressable 
-        onLongPress={() => handleLongPress(item)}
+      <Pressable
+        onPress={() => isPlaying ? stopPlayback() : playRecording(item)}
+        onLongPress={(event) => handleLongPressRecording(item, event)}
         style={[
           styles.recordingItem,
-          { backgroundColor: theme.colors.grey0 }
+          {
+            backgroundColor: theme.colors.background,
+            borderColor: theme.mode === 'dark' 
+              ? 'rgba(255, 255, 255, 0.1)'  // Subtle white border for dark mode
+              : 'rgba(0, 0, 0, 0.1)',       // Subtle black border for light mode
+          }
         ]}
       >
         <View style={styles.recordingInfo}>
-          <Text style={[styles.date, { color: theme.colors.grey3 }]}>
+          <Text 
+            style={[
+              styles.recordingName,
+              { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black }
+            ]}
+          >
             {item.name || formatDate(item.created_at)}
           </Text>
-          <Text style={[styles.duration, { color: theme.colors.grey2 }]}>
-            {formatDuration(item.duration)}
+          <Text 
+            style={[
+              styles.recordingDuration,
+              { color: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2 }
+            ]}
+          >
+            Duration: {formatDuration(item.duration)}
           </Text>
         </View>
-        <View style={styles.recordingControls}>
-          <Button
-            type="clear"
-            icon={
-              <MaterialIcons
-                name={isPlaying ? "stop" : "play-arrow"}
-                size={24}
-                color={theme.colors.primary}
-              />
-            }
-            onPress={() => isPlaying ? stopPlayback() : playRecording(item)}
-          />
-          <Button
-            type="clear"
-            icon={
-              <MaterialIcons
-                name="delete"
-                size={24}
-                color={theme.colors.error}
-              />
-            }
-            onPress={() => handleDelete(item.id)}
-          />
-        </View>
+        <MaterialIcons
+          name={isPlaying ? 'stop' : 'play-arrow'}
+          size={24}
+          color={theme.colors.primary}
+        />
       </Pressable>
     );
   };
@@ -296,57 +337,164 @@ export default function RecordingsScreen() {
           onRequestClose={() => setIsRenameModalVisible(false)}
         >
           <Pressable 
-            style={styles.modalOverlay}
+            style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}
             onPress={() => setIsRenameModalVisible(false)}
           >
-            <Pressable 
-              style={[
+            {Platform.OS === 'ios' ? (
+              <BlurView 
+                intensity={80} 
+                tint={theme.mode === 'dark' ? 'dark' : 'light'} 
+                style={[styles.modalContent, styles.blurContainer]}
+              >
+                <ModalContent />
+              </BlurView>
+            ) : (
+              <View style={[
                 styles.modalContent,
                 { backgroundColor: theme.colors.background }
-              ]}
-              onPress={e => e.stopPropagation()}
-            >
-              <Text style={[styles.modalTitle, { color: theme.colors.grey5 }]}>
-                Rename Recording
-              </Text>
-              <Input
-                value={newName}
-                onChangeText={setNewName}
-                autoFocus
-                containerStyle={styles.input}
-                inputContainerStyle={[
-                  styles.inputField,
-                  {
-                    borderColor: theme.colors.grey2,
-                    backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                  },
-                ]}
-                inputStyle={[
-                  styles.inputText,
-                  { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                ]}
-              />
-              <View style={styles.modalButtons}>
-                <Button
-                  title="Cancel"
-                  type="clear"
-                  onPress={() => setIsRenameModalVisible(false)}
-                  titleStyle={{ color: theme.colors.grey3 }}
-                />
-                <Button
-                  title="Rename"
-                  type="clear"
-                  onPress={handleRename}
-                  disabled={!newName.trim()}
-                  titleStyle={{ color: theme.colors.primary }}
-                />
+              ]}>
+                <ModalContent />
               </View>
-            </Pressable>
+            )}
           </Pressable>
         </Modal>
+
+        {/* Context Menu Overlay */}
+        <Overlay
+          isVisible={!!selectedRecording}
+          onBackdropPress={handleCloseMenu}
+          overlayStyle={[
+            styles.menuOverlay,
+            {
+              backgroundColor: isWeb 
+                ? theme.colors.background 
+                : 'transparent',
+              top: menuPosition.y,
+              left: menuPosition.x,
+              width: menuPosition.width,
+            }
+          ]}
+        >
+          {Platform.OS === 'ios' ? (
+            <BlurView 
+              intensity={80} 
+              tint={theme.mode === 'dark' ? 'dark' : 'light'} 
+              style={[
+                styles.blurContainer,
+                {
+                  backgroundColor: theme.mode === 'dark'
+                    ? 'rgba(0, 0, 0, 0.5)'
+                    : 'rgba(255, 255, 255, 0.5)',
+                }
+              ]}
+            >
+              <MenuContent />
+            </BlurView>
+          ) : (
+            <View style={[
+              styles.menuContent,
+              {
+                backgroundColor: theme.mode === 'dark'
+                  ? 'rgba(30, 30, 30, 0.95)'
+                  : 'rgba(255, 255, 255, 0.95)',
+              }
+            ]}>
+              <MenuContent />
+            </View>
+          )}
+        </Overlay>
       </Container>
     </SafeAreaView>
   );
+
+  function ModalContent() {
+    return (
+      <>
+        <Text style={[styles.modalTitle, { color: theme.colors.grey0 }]}>
+          Rename Recording
+        </Text>
+        <Input
+          value={newName}
+          onChangeText={setNewName}
+          autoFocus
+          containerStyle={styles.input}
+          inputContainerStyle={[
+            styles.inputField,
+            {
+              borderColor: theme.colors.grey4,
+              backgroundColor: theme.mode === 'dark' 
+                ? theme.colors.grey5 
+                : theme.colors.grey1,
+            },
+          ]}
+          inputStyle={[
+            styles.inputText,
+            { color: theme.colors.grey0 }
+          ]}
+          placeholderTextColor={theme.colors.grey3}
+        />
+        <View style={styles.modalButtons}>
+          <Button
+            title="Cancel"
+            type="clear"
+            onPress={() => setIsRenameModalVisible(false)}
+            titleStyle={{ color: theme.colors.grey3 }}
+          />
+          <Button
+            title="Rename"
+            type="clear"
+            onPress={handleRename}
+            disabled={!newName.trim()}
+            titleStyle={{ 
+              color: newName.trim() ? theme.colors.primary : theme.colors.grey3 
+            }}
+          />
+        </View>
+      </>
+    );
+  }
+
+  function MenuContent() {
+    return (
+      <View>
+        <Pressable
+          onPress={() => {
+            handleCloseMenu();
+            setIsRenameModalVisible(true);
+            if (selectedRecording) {
+              setNewName(selectedRecording.name || formatDate(selectedRecording.created_at));
+            }
+          }}
+          style={({ pressed }) => [
+            styles.menuItem,
+            pressed && { backgroundColor: theme.colors.grey5 }
+          ]}
+        >
+          <MaterialIcons 
+            name="edit" 
+            size={20} 
+            color={theme.mode === 'dark' ? theme.colors.white : theme.colors.black} 
+          />
+          <Text style={[
+            styles.menuText, 
+            { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black }
+          ]}>
+            Rename
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={handleDeleteRecording}
+          style={({ pressed }) => [
+            styles.menuItem,
+            pressed && { backgroundColor: theme.colors.grey5 }
+          ]}
+        >
+          <MaterialIcons name="delete" size={20} color={theme.colors.error} />
+          <Text style={[styles.menuText, { color: theme.colors.error }]}>Delete Recording</Text>
+        </Pressable>
+      </View>
+    );
+  }
 }
 
 const styles = StyleSheet.create({
@@ -386,7 +534,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   list: {
-    gap: 16,
+    padding: 16,
+    gap: 12,
   },
   recordingItem: {
     flexDirection: 'row',
@@ -394,21 +543,47 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 16,
     borderRadius: 12,
+    borderWidth: 1,
   },
   recordingInfo: {
+    flex: 1,
+    marginRight: 16,
     gap: 4,
   },
-  date: {
-    fontSize: 14,
+  recordingName: {
+    fontSize: 16,
     fontWeight: '500',
   },
-  duration: {
-    fontSize: 12,
+  recordingDuration: {
+    fontSize: 14,
   },
-  recordingControls: {
+  menuOverlay: {
+    position: 'absolute',
+    padding: 0,
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  blurContainer: {
+    overflow: 'hidden',
+    borderRadius: 14,
+  },
+  menuContent: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    padding: 16,
+    gap: 12,
+  },
+  menuText: {
+    fontSize: 16,
+    fontWeight: '500',
   },
   modalOverlay: {
     flex: 1,
