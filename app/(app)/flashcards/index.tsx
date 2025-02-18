@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
   scrollContent: {
     gap: 24,
     paddingTop: 16,
-    paddingBottom: 24,
+    paddingBottom: Platform.OS === 'web' ? 24 : 100,
   },
   emptyState: {
     alignItems: 'center',
