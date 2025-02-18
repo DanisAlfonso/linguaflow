@@ -59,6 +59,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showAnimationModal, setShowAnimationModal] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
 
   // Load hide navigation bar setting on component mount
   React.useEffect(() => {
@@ -112,10 +113,10 @@ export default function SettingsScreen() {
       items: [
         {
           icon: 'dark-mode',
-          label: 'Dark Mode',
-          type: 'switch',
-          value: themeMode === 'dark',
-          onChange: (value) => setThemeMode(value ? 'dark' : 'system'),
+          label: 'Theme',
+          type: 'navigate',
+          onPress: () => setShowThemeModal(true),
+          description: `${themeMode.charAt(0).toUpperCase() + themeMode.slice(1)} mode`,
         },
       ],
     },
@@ -192,6 +193,145 @@ export default function SettingsScreen() {
       ],
     },
   ];
+
+  const ThemeModal = () => (
+    <View
+      style={[
+        styles.modalOverlay,
+        { backgroundColor: 'rgba(0, 0, 0, 0.5)' }
+      ]}
+    >
+      <View
+        style={[
+          styles.modalContent,
+          {
+            backgroundColor: theme.colors.grey0,
+            borderColor: theme.colors.grey2,
+          }
+        ]}
+      >
+        <Text
+          style={[
+            styles.modalTitle,
+            { color: theme.colors.grey5 }
+          ]}
+        >
+          Theme
+        </Text>
+        
+        <View style={styles.themeOptions}>
+          <Pressable
+            style={[
+              styles.themeOption,
+              themeMode === 'system' && styles.selectedOption,
+              { borderColor: theme.colors.grey2 }
+            ]}
+            onPress={() => {
+              setThemeMode('system');
+              setShowThemeModal(false);
+            }}
+          >
+            <MaterialIcons
+              name="settings-brightness"
+              size={24}
+              color={themeMode === 'system' ? theme.colors.primary : theme.colors.grey4}
+            />
+            <Text
+              style={[
+                styles.optionText,
+                { color: themeMode === 'system' ? theme.colors.primary : theme.colors.grey4 }
+              ]}
+            >
+              System
+            </Text>
+            <Text
+              style={[
+                styles.optionDescription,
+                { color: theme.colors.grey3 }
+              ]}
+            >
+              Follow system
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.themeOption,
+              themeMode === 'light' && styles.selectedOption,
+              { borderColor: theme.colors.grey2 }
+            ]}
+            onPress={() => {
+              setThemeMode('light');
+              setShowThemeModal(false);
+            }}
+          >
+            <MaterialIcons
+              name="light-mode"
+              size={24}
+              color={themeMode === 'light' ? theme.colors.primary : theme.colors.grey4}
+            />
+            <Text
+              style={[
+                styles.optionText,
+                { color: themeMode === 'light' ? theme.colors.primary : theme.colors.grey4 }
+              ]}
+            >
+              Light
+            </Text>
+            <Text
+              style={[
+                styles.optionDescription,
+                { color: theme.colors.grey3 }
+              ]}
+            >
+              Always light
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.themeOption,
+              themeMode === 'dark' && styles.selectedOption,
+              { borderColor: theme.colors.grey2 }
+            ]}
+            onPress={() => {
+              setThemeMode('dark');
+              setShowThemeModal(false);
+            }}
+          >
+            <MaterialIcons
+              name="dark-mode"
+              size={24}
+              color={themeMode === 'dark' ? theme.colors.primary : theme.colors.grey4}
+            />
+            <Text
+              style={[
+                styles.optionText,
+                { color: themeMode === 'dark' ? theme.colors.primary : theme.colors.grey4 }
+              ]}
+            >
+              Dark
+            </Text>
+            <Text
+              style={[
+                styles.optionDescription,
+                { color: theme.colors.grey3 }
+              ]}
+            >
+              Always dark
+            </Text>
+          </Pressable>
+        </View>
+
+        <Button
+          title="Close"
+          type="clear"
+          onPress={() => setShowThemeModal(false)}
+          containerStyle={styles.closeButton}
+        />
+      </View>
+    </View>
+  );
 
   const AnimationModal = () => (
     <View
@@ -455,6 +595,7 @@ export default function SettingsScreen() {
         />
       )}
 
+      {showThemeModal && <ThemeModal />}
       {showAnimationModal && <AnimationModal />}
     </Container>
   );
@@ -602,5 +743,20 @@ const styles = StyleSheet.create({
   menuItemDescription: {
     fontSize: 13,
     marginTop: 2,
+  },
+  themeOptions: {
+    gap: 12,
+  },
+  themeOption: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  optionDescription: {
+    fontSize: 13,
+    marginLeft: 'auto',
   },
 }); 
