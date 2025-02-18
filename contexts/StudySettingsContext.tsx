@@ -23,11 +23,18 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
     // Load settings on mount
     const loadSettings = async () => {
       try {
+        console.log('StudySettingsContext - Loading settings');
         const [hideNavBar, animationType, moveControls] = await Promise.all([
           AsyncStorage.getItem('hideNavigationBar'),
           AsyncStorage.getItem('cardAnimationType'),
           AsyncStorage.getItem('moveControlsToBottom'),
         ]);
+        
+        console.log('StudySettingsContext - Loaded settings:', {
+          hideNavBar,
+          animationType,
+          moveControls
+        });
         
         setHideNavigationBarState(hideNavBar === 'true');
         setCardAnimationTypeState((animationType as CardAnimationType) || 'flip');
@@ -41,6 +48,7 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
 
   const setHideNavigationBar = async (value: boolean) => {
     try {
+      console.log('StudySettingsContext - Setting hideNavigationBar:', value);
       await AsyncStorage.setItem('hideNavigationBar', value.toString());
       setHideNavigationBarState(value);
     } catch (error) {
@@ -50,6 +58,7 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
 
   const setCardAnimationType = async (value: CardAnimationType) => {
     try {
+      console.log('StudySettingsContext - Setting cardAnimationType:', value);
       await AsyncStorage.setItem('cardAnimationType', value);
       setCardAnimationTypeState(value);
     } catch (error) {
@@ -59,6 +68,7 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
 
   const setMoveControlsToBottom = async (value: boolean) => {
     try {
+      console.log('StudySettingsContext - Setting moveControlsToBottom:', value);
       await AsyncStorage.setItem('moveControlsToBottom', value.toString());
       setMoveControlsToBottomState(value);
     } catch (error) {

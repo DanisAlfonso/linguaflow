@@ -96,17 +96,36 @@ export default function StudyScreen() {
 
   // Effect to handle tab bar visibility
   useEffect(() => {
-    if (hideNavigationBar || moveControlsToBottom) {
+    console.log('Study screen - Tab bar visibility effect:', {
+      hideNavigationBar,
+      moveControlsToBottom,
+      isRecordingEnabled
+    });
+
+    const shouldHideTabBar = hideNavigationBar || moveControlsToBottom || isRecordingEnabled;
+    
+    if (shouldHideTabBar) {
+      console.log('Study screen - Hiding tab bar');
       temporarilyHideTabBar();
     } else {
+      console.log('Study screen - Showing tab bar');
       restoreTabBar();
     }
 
-    // Restore tab bar when leaving the screen
+    // Always restore tab bar when unmounting the study screen
     return () => {
+      console.log('Study screen - Cleanup: always restore tab bar when leaving study screen');
       restoreTabBar();
     };
-  }, [hideNavigationBar, moveControlsToBottom]);
+  }, [hideNavigationBar, moveControlsToBottom, isRecordingEnabled]);
+
+  // Add a separate effect to handle navigation cleanup
+  useEffect(() => {
+    return () => {
+      console.log('Study screen - Navigation cleanup: restoring tab bar');
+      restoreTabBar();
+    };
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -178,30 +197,6 @@ export default function StudyScreen() {
     setCardFlipTime(null);
     resetCard();
   };
-
-  // Add effect to handle tab bar visibility when recording interface is shown
-  useEffect(() => {
-    if (isRecordingEnabled) {
-      temporarilyHideTabBar();
-    } else {
-      restoreTabBar();
-    }
-  }, [isRecordingEnabled]);
-
-  // Initialize database and file system
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await Promise.all([
-          initDatabase(),
-          ensureRecordingsDirectory(),
-        ]);
-      } catch (error) {
-        console.error('Error initializing storage:', error);
-      }
-    };
-    init();
-  }, []);
 
   const handlePlayAudio = (audioPath: string) => {
     const audioElement = document.getElementById(`audio-${audioPath}`);

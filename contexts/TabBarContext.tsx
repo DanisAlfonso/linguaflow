@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 
 type TabBarContextType = {
   isTabBarVisible: boolean;
@@ -11,13 +11,17 @@ const TabBarContext = createContext<TabBarContextType | undefined>(undefined);
 export function TabBarProvider({ children }: { children: React.ReactNode }) {
   const [isTabBarVisible, setIsTabBarVisible] = useState(true);
 
-  const temporarilyHideTabBar = () => {
+  const temporarilyHideTabBar = useCallback(() => {
+    console.log('TabBarContext - Hiding tab bar');
     setIsTabBarVisible(false);
-  };
+  }, []);
 
-  const restoreTabBar = () => {
+  const restoreTabBar = useCallback(() => {
+    console.log('TabBarContext - Restoring tab bar');
     setIsTabBarVisible(true);
-  };
+  }, []);
+
+  console.log('TabBarContext - Current visibility:', isTabBarVisible);
 
   return (
     <TabBarContext.Provider
