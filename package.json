@@ -62,7 +62,9 @@
     "react-native-web": "~0.19.13",
     "react-native-webview": "13.12.5",
     "ts-fsrs": "^4.6.1",
-    "victory-native": "^36.9.1"
+    "victory-native": "^36.9.1",
+    "expo-notifications": "~0.29.13",
+    "@react-native-community/datetimepicker": "8.2.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

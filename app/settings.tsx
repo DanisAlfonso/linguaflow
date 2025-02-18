@@ -3,9 +3,11 @@ import { View, StyleSheet, Platform, ScrollView, Pressable, Switch } from 'react
 import { Text, useTheme, Button } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Container } from '../components/layout/Container';
 import { useAppTheme } from '../contexts/ThemeContext';
-import { useStudySettings, CardAnimationType } from '../contexts/StudySettingsContext';
+import { useStudySettings } from '../contexts/StudySettingsContext';
+import { useNotifications } from '../contexts/NotificationsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type SwitchMenuItem = {
@@ -14,6 +16,8 @@ type SwitchMenuItem = {
   type: 'switch';
   value: boolean;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
+  description?: string;
 };
 
 type NavigateMenuItem = {
@@ -21,6 +25,8 @@ type NavigateMenuItem = {
   label: string;
   type: 'navigate';
   onPress: () => void;
+  disabled?: boolean;
+  description?: string;
 };
 
 type MenuItem = SwitchMenuItem | NavigateMenuItem;
@@ -43,8 +49,15 @@ export default function SettingsScreen() {
     autoPlay,
     setAutoPlay
   } = useStudySettings();
+  const {
+    enabled: notificationsEnabled,
+    setEnabled: setNotificationsEnabled,
+    settings: notificationSettings,
+    updateSettings: updateNotificationSettings,
+    updateDailyReminderTime,
+  } = useNotifications();
   const router = useRouter();
-  const [notifications, setNotifications] = React.useState(true);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showAnimationModal, setShowAnimationModal] = useState(false);
 
   // Load hide navigation bar setting on component mount
@@ -80,6 +93,19 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleTimeChange = (event: any, selectedDate?: Date) => {
+    setShowTimePicker(false);
+    if (selectedDate) {
+      updateDailyReminderTime(selectedDate.getHours(), selectedDate.getMinutes());
+    }
+  };
+
+  const formatTime = (hour: number, minute: number) => {
+    const date = new Date();
+    date.setHours(hour, minute);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   const sections: Section[] = [
     {
       title: 'App Preferences',
@@ -91,19 +117,42 @@ export default function SettingsScreen() {
           value: themeMode === 'dark',
           onChange: (value) => setThemeMode(value ? 'dark' : 'system'),
         },
+      ],
+    },
+    {
+      title: 'Notifications',
+      items: [
         {
           icon: 'notifications',
           label: 'Push Notifications',
           type: 'switch',
-          value: notifications,
-          onChange: setNotifications,
+          value: notificationsEnabled,
+          onChange: setNotificationsEnabled,
         },
         {
-          icon: 'volume-up',
-          label: 'Auto-play Audio',
+          icon: 'access-time',
+          label: 'Daily Reminder',
+          type: 'navigate',
+          onPress: () => setShowTimePicker(true),
+          description: notificationsEnabled 
+            ? `Reminder at ${formatTime(notificationSettings.dailyReminder.hour, notificationSettings.dailyReminder.minute)}`
+            : 'Turn on notifications first',
+        },
+        {
+          icon: 'insights',
+          label: 'Weekly Progress',
           type: 'switch',
-          value: autoPlay,
-          onChange: setAutoPlay,
+          value: notificationsEnabled && notificationSettings.weeklyProgress,
+          onChange: (value) => updateNotificationSettings({ weeklyProgress: value }),
+          disabled: !notificationsEnabled,
+        },
+        {
+          icon: 'local-fire-department',
+          label: 'Streak Alerts',
+          type: 'switch',
+          value: notificationsEnabled && notificationSettings.streakAlerts,
+          onChange: (value) => updateNotificationSettings({ streakAlerts: value }),
+          disabled: !notificationsEnabled,
         },
       ],
     },
@@ -125,33 +174,17 @@ export default function SettingsScreen() {
           onChange: setMoveControlsToBottom,
         },
         {
+          icon: 'volume-up',
+          label: 'Auto-play Audio',
+          type: 'switch',
+          value: autoPlay,
+          onChange: setAutoPlay,
+        },
+        {
           icon: 'flip',
           label: 'Card Animation',
           type: 'navigate',
           onPress: () => setShowAnimationModal(true),
-        },
-      ],
-    },
-    {
-      title: 'Data & Storage',
-      items: [
-        {
-          icon: 'cloud-download',
-          label: 'Download Settings',
-          type: 'navigate',
-          onPress: () => {},
-        },
-        {
-          icon: 'storage',
-          label: 'Storage Usage',
-          type: 'navigate',
-          onPress: () => {},
-        },
-        {
-          icon: 'backup',
-          label: 'Backup & Restore',
-          type: 'navigate',
-          onPress: () => {},
         },
       ],
     },
@@ -306,19 +339,32 @@ export default function SettingsScreen() {
                   <View style={styles.menuItem}>
                     <View style={styles.menuItemContent}>
                       <MaterialIcons
-                        name={item.icon as keyof typeof MaterialIcons.glyphMap}
+                        name={item.icon}
                         size={22}
                         color={theme.colors.grey5}
                         style={styles.menuItemIcon}
                       />
-                      <Text
-                        style={[
-                          styles.menuItemLabel,
-                          { color: theme.colors.grey5 }
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
+                      <View>
+                        <Text
+                          style={[
+                            styles.menuItemLabel,
+                            { color: theme.colors.grey5 },
+                            item.disabled && { color: theme.colors.grey3 }
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                        {item.description && (
+                          <Text
+                            style={[
+                              styles.menuItemDescription,
+                              { color: theme.colors.grey3 }
+                            ]}
+                          >
+                            {item.description}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                     <Switch
                       value={item.value}
@@ -329,6 +375,7 @@ export default function SettingsScreen() {
                       }}
                       thumbColor={item.value ? theme.colors.primary : theme.colors.grey5}
                       ios_backgroundColor={theme.colors.grey2}
+                      disabled={item.disabled}
                     />
                   </View>
                 ) : (
@@ -338,22 +385,36 @@ export default function SettingsScreen() {
                       pressed && { opacity: 0.7, backgroundColor: theme.colors.grey1 }
                     ]}
                     onPress={item.onPress}
+                    disabled={item.disabled}
                   >
                     <View style={styles.menuItemContent}>
                       <MaterialIcons
-                        name={item.icon as keyof typeof MaterialIcons.glyphMap}
+                        name={item.icon}
                         size={22}
                         color={theme.colors.grey5}
                         style={styles.menuItemIcon}
                       />
-                      <Text
-                        style={[
-                          styles.menuItemLabel,
-                          { color: theme.colors.grey5 }
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
+                      <View>
+                        <Text
+                          style={[
+                            styles.menuItemLabel,
+                            { color: theme.colors.grey5 },
+                            item.disabled && { color: theme.colors.grey3 }
+                          ]}
+                        >
+                          {item.label}
+                        </Text>
+                        {item.description && (
+                          <Text
+                            style={[
+                              styles.menuItemDescription,
+                              { color: theme.colors.grey3 }
+                            ]}
+                          >
+                            {item.description}
+                          </Text>
+                        )}
+                      </View>
                     </View>
                     <MaterialIcons
                       name="chevron-right"
@@ -376,6 +437,21 @@ export default function SettingsScreen() {
           Version 1.0.0
         </Text>
       </ScrollView>
+
+      {showTimePicker && Platform.OS !== 'web' && (
+        <DateTimePicker
+          value={(() => {
+            const date = new Date();
+            date.setHours(notificationSettings.dailyReminder.hour);
+            date.setMinutes(notificationSettings.dailyReminder.minute);
+            return date;
+          })()}
+          mode="time"
+          is24Hour={true}
+          onChange={handleTimeChange}
+        />
+      )}
+
       {showAnimationModal && <AnimationModal />}
     </Container>
   );
@@ -518,5 +594,9 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     marginTop: 8,
+  },
+  menuItemDescription: {
+    fontSize: 13,
+    marginTop: 2,
   },
 }); 
