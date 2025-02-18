@@ -5,7 +5,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import { getDueCards, reviewCard, getDeck, createStudySession, updateStudySession } from '../../../../lib/api/flashcards';
+import { getDueCards, getDeck } from '../../../../lib/api/flashcards';
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
 import { getCardAudioSegments } from '../../../../lib/api/audio';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
@@ -14,7 +14,7 @@ import { StudyCardBack } from '../../../../components/flashcards/study/StudyCard
 import { StudyHeader } from '../../../../components/flashcards/study/StudyHeader';
 import { StudyControls } from '../../../../components/flashcards/study/StudyControls';
 import { StudyCharacterControl } from '../../../../components/flashcards/study/StudyCharacterControl';
-import type { Card, Deck, StudySession } from '../../../../types/flashcards';
+import type { Card, Deck } from '../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
 import { initDatabase } from '../../../../lib/db';
@@ -25,20 +25,14 @@ import { AnimatedCard } from '../../../../components/flashcards/AnimatedCard';
 import { useKeyboardShortcuts } from '../../../../lib/hooks/study/useKeyboardShortcuts';
 import { useAudioManager } from '../../../../lib/hooks/study/useAudioManager';
 import { useCardAnimation } from '../../../../lib/hooks/study/useCardAnimation';
+import { useStudySession } from '../../../../lib/hooks/study/useStudySession';
 
 export default function StudyScreen() {
-  const [cards, setCards] = useState<Card[]>([]);
   const [deck, setDeck] = useState<Deck | null>(null);
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [cardsStudied, setCardsStudied] = useState(0);
-  const [correctResponses, setCorrectResponses] = useState(0);
-  const [startTime] = useState(new Date());
-  const [loading, setLoading] = useState(true);
-  const [reviewing, setReviewing] = useState(false);
   const [characterSize, setCharacterSize] = useState(24);
   const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
-  const [studySession, setStudySession] = useState<StudySession | null>(null);
+  const [loading, setLoading] = useState(true);
   const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
   const [isRecordingEnabled, setIsRecordingEnabled] = useState(false);
 
@@ -47,11 +41,23 @@ export default function StudyScreen() {
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
   const isMandarin = deck?.language === 'Mandarin';
-  const currentCard = cards[currentCardIndex];
-  const progress = cards.length > 0 ? ((currentCardIndex) / cards.length) * 100 : 0;
 
   const { hideNavigationBar, cardAnimationType } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
+
+  // Use the study session hook
+  const {
+    cards,
+    currentCard,
+    currentCardIndex,
+    progress,
+    reviewing,
+    setCards,
+    handleResponse,
+  } = useStudySession({
+    deckId: id as string,
+    onSessionComplete: () => router.back(),
+  });
 
   // Use the card animation hook
   const {
@@ -128,10 +134,6 @@ export default function StudyScreen() {
       if (deckData?.language === 'Mandarin' && deckData.settings?.defaultCharacterSize) {
         setCharacterSize(deckData.settings.defaultCharacterSize);
       }
-
-      // Create a new study session
-      const session = await createStudySession(id as string);
-      setStudySession(session);
     } catch (error) {
       console.error('Error in loadData:', error);
       Toast.show({
@@ -143,7 +145,7 @@ export default function StudyScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id, router, setCards]);
 
   useEffect(() => {
     loadData();
@@ -167,75 +169,14 @@ export default function StudyScreen() {
     }
   }, [currentCard]);
 
-  const handleResponse = async (rating: Rating) => {
-    if (reviewing) return;
-    setReviewing(true);
+  const handleCardResponse = async (rating: Rating) => {
+    const responseTimeMs = cardFlipTime 
+      ? new Date().getTime() - cardFlipTime.getTime()
+      : undefined;
 
-    try {
-      // Calculate response time if card was flipped
-      const responseTimeMs = cardFlipTime 
-        ? new Date().getTime() - cardFlipTime.getTime()
-        : undefined;
-
-      await reviewCard(currentCard.id, rating, responseTimeMs);
-
-      // Update statistics
-      setCardsStudied(prev => prev + 1);
-      if (rating === Rating.Good || rating === Rating.Easy) {
-        setCorrectResponses(prev => prev + 1);
-      }
-
-      // Reset card flip time for next card
-      setCardFlipTime(null);
-
-      if (rating === Rating.Again) {
-        // Move current card to the end of the deck
-        setCards(prevCards => {
-          const newCards = [...prevCards];
-          const currentCard = newCards.splice(currentCardIndex, 1)[0];
-          return [...newCards, currentCard];
-        });
-        // Stay on the same index (which will now show the next card)
-        resetCard();
-      } else {
-        // For other ratings, move to next card
-        if (currentCardIndex < cards.length - 1) {
-          setCurrentCardIndex(prev => prev + 1);
-          resetCard();
-        } else {
-          // End of deck
-          const endTime = new Date();
-          const timeSpent = Math.floor((endTime.getTime() - startTime.getTime()) / 1000);
-          
-          // Update study session
-          if (studySession) {
-            await updateStudySession(studySession.id, {
-              ended_at: endTime.toISOString(),
-              duration: `${timeSpent} seconds`,
-              cards_reviewed: cardsStudied + 1,
-            });
-          }
-          
-          Toast.show({
-            type: 'success',
-            text1: 'Study session complete!',
-            text2: `You reviewed ${cardsStudied + 1} cards in ${Math.floor(timeSpent / 60)}m ${timeSpent % 60}s`,
-          });
-
-          // Navigate back to deck view
-          router.back();
-        }
-      }
-    } catch (error) {
-      console.error('Error reviewing card:', error);
-      Toast.show({
-        type: 'error',
-        text1: 'Error',
-        text2: 'Failed to save review',
-      });
-    } finally {
-      setReviewing(false);
-    }
+    await handleResponse(rating, responseTimeMs);
+    setCardFlipTime(null);
+    resetCard();
   };
 
   // Add effect to handle tab bar visibility when recording interface is shown
@@ -281,7 +222,7 @@ export default function StudyScreen() {
     frontAudioSegments,
     backAudioSegments,
     onFlip: flipCard,
-    onResponse: handleResponse,
+    onResponse: handleCardResponse,
     onPlayAudio: handlePlayAudio,
   });
 
@@ -368,7 +309,7 @@ export default function StudyScreen() {
           />
 
           <StudyControls
-            onResponse={handleResponse}
+            onResponse={handleCardResponse}
             reviewing={reviewing}
           />
         </View>
