@@ -297,12 +297,13 @@ export default function StudyScreen() {
             onPress={flipCard}
             animationType={cardAnimationType}
             cardStyle={{
-              minHeight: 300,
+              minHeight: moveControlsToBottom ? 535 : 300,
               padding: 24,
               borderRadius: 24,
               borderWidth: 1,
               backgroundColor: theme.colors.grey0,
               borderColor: theme.colors.grey2,
+              marginBottom: moveControlsToBottom ? 80 : 32,
             }}
           />
 
@@ -397,18 +398,20 @@ const styles = StyleSheet.create({
   cardContainer: {
     flex: 1,
     gap: 32,
+    paddingHorizontal: 4,
   },
   cardContainerWithBottomControls: {
     position: 'relative',
-    paddingBottom: 80, // Add space for bottom controls
+    paddingBottom: 80,
   },
   bottomControls: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    left: 4,
+    right: 4,
     paddingVertical: 16,
     backgroundColor: 'transparent',
+    zIndex: 1,
   },
   card: {
     minHeight: 300,
