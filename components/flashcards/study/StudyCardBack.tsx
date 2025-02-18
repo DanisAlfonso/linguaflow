@@ -30,7 +30,7 @@ export function StudyCardBack({
             data={card.language_specific_data.mandarin.back}
             characterSize={characterSize}
             color={theme.colors.grey5}
-            audioUrl={backAudioSegments.length > 0 ? backAudioSegments[0].audio_file_path : undefined}
+            audioUrl={backAudioSegments.length > 0 ? backAudioSegments[0].audio_file.url : undefined}
             isStudyMode={true}
           />
           {backAudioSegments.length > 0 && (

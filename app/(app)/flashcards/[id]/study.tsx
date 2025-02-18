@@ -274,7 +274,8 @@ export default function StudyScreen() {
 
         <View style={[
           styles.cardContainer,
-          moveControlsToBottom && styles.cardContainerWithBottomControls
+          moveControlsToBottom && styles.cardContainerWithBottomControls,
+          isMandarin && styles.mandarinCardContainer
         ]}>
           <AnimatedCard
             front={
@@ -297,7 +298,7 @@ export default function StudyScreen() {
             onPress={flipCard}
             animationType={cardAnimationType}
             cardStyle={{
-              minHeight: moveControlsToBottom ? 535 : 300,
+              minHeight: moveControlsToBottom ? (isMandarin ? 465 : 535) : 300,
               padding: 24,
               borderRadius: 24,
               borderWidth: 1,
@@ -310,7 +311,10 @@ export default function StudyScreen() {
           <StudyControls
             onResponse={handleCardResponse}
             reviewing={reviewing}
-            style={moveControlsToBottom ? styles.bottomControls : undefined}
+            style={moveControlsToBottom ? {
+              ...styles.bottomControls,
+              backgroundColor: theme.colors.background
+            } : undefined}
           />
         </View>
 
@@ -404,13 +408,18 @@ const styles = StyleSheet.create({
     position: 'relative',
     paddingBottom: 80,
   },
+  mandarinCardContainer: {
+    paddingTop: 0,
+  },
   bottomControls: {
     position: 'absolute',
     bottom: 0,
     left: 4,
     right: 4,
     paddingVertical: 16,
-    backgroundColor: 'transparent',
+    paddingHorizontal: 4,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     zIndex: 1,
   },
   card: {

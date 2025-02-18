@@ -1,11 +1,15 @@
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
+import { getLocalRecordings, deleteLocalRecording } from '../db';
 
 const RECORDINGS_DIRECTORY = `${FileSystem.documentDirectory}recordings/`;
 
 // Ensure the recordings directory exists
 export async function ensureRecordingsDirectory() {
+  if (Platform.OS === 'web') return;
+  
   const dirInfo = await FileSystem.getInfoAsync(RECORDINGS_DIRECTORY);
+  
   if (!dirInfo.exists) {
     await FileSystem.makeDirectoryAsync(RECORDINGS_DIRECTORY, { intermediates: true });
   }
@@ -51,7 +55,9 @@ export async function saveRecordingFile(uri: string, targetPath: string): Promis
 }
 
 // Delete a recording file
-export async function deleteRecordingFile(filePath: string): Promise<void> {
+export async function deleteRecordingFile(filePath: string) {
+  if (Platform.OS === 'web') return;
+  
   try {
     const fileInfo = await FileSystem.getInfoAsync(filePath);
     if (fileInfo.exists) {
@@ -59,7 +65,6 @@ export async function deleteRecordingFile(filePath: string): Promise<void> {
     }
   } catch (error) {
     console.error('Error deleting recording file:', error);
-    throw error;
   }
 }
 
@@ -79,5 +84,34 @@ export async function cleanupTemporaryRecordings(): Promise<void> {
     await FileSystem.deleteAsync(tempDirectory, { idempotent: true });
   } catch (error) {
     console.error('Error cleaning up temporary recordings:', error);
+  }
+}
+
+export async function cleanupLocalRecordings(cardId: string) {
+  if (Platform.OS === 'web') return;
+
+  try {
+    console.log('Cleaning up local recordings for card:', cardId);
+    
+    // Get all local recordings for this card
+    const recordings = await getLocalRecordings(cardId);
+    
+    // Delete each recording file and database entry
+    for (const recording of recordings) {
+      try {
+        // Delete the file
+        if (recording.file_path) {
+          await deleteRecordingFile(recording.file_path);
+        }
+        
+        // Delete the database entry
+        await deleteLocalRecording(recording.id);
+      } catch (error) {
+        console.error('Error cleaning up recording:', error);
+      }
+    }
+  } catch (error) {
+    console.error('Error in cleanupLocalRecordings:', error);
+    throw error;
   }
 } 

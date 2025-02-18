@@ -268,179 +268,106 @@ export default function CreateCardScreen() {
                 )}
 
                 {isMandarin ? (
-                  <View>
-                    <View style={styles.inputContainer}>
-                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                        Front
-                      </Text>
-                      <View style={styles.inputWrapper}>
-                        <MandarinCardInput
-                          label="Front"
-                          placeholder="Enter the front of the card"
-                          value={front}
-                          onChangeText={setFront}
-                          onMandarinDataChange={setFrontMandarinData}
-                          characterSize={characterSize}
-                          showPreview={isPreview}
-                          audioButton={<AudioAttachButton {...audioButtonProps} side="front" />}
-                          isMandarin={isMandarin}
+                  <>
+                    <MandarinCardInput
+                      value={front}
+                      onChangeText={setFront}
+                      onMandarinDataChange={setFrontMandarinData}
+                      placeholder="Front of card"
+                      label="Front"
+                      characterSize={characterSize}
+                      showPreview={isPreview}
+                      audioButton={
+                        <AudioAttachButton
+                          {...audioButtonProps}
+                          side="front"
                         />
-                      </View>
-                      {frontAudioSegments.length > 0 && (
-                        <View style={[styles.audioSegments, {
-                          backgroundColor: Platform.select({
-                            ios: 'rgba(0, 0, 0, 0.02)',
-                            android: 'rgba(0, 0, 0, 0.04)',
-                            default: 'rgba(0, 0, 0, 0.02)',
-                          })
-                        }]}>
-                          <AudioEnabledText
-                            text={front}
-                            audioSegments={frontAudioSegments}
-                            color={theme.colors.grey5}
-                          />
-                        </View>
-                      )}
-                    </View>
-
-                    <View style={styles.inputContainer}>
-                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
-                        Back
-                      </Text>
-                      <View style={styles.inputWrapper}>
-                        <MandarinCardInput
-                          label="Back"
-                          placeholder="Enter the back of the card"
-                          value={back}
-                          onChangeText={setBack}
-                          onMandarinDataChange={setBackMandarinData}
-                          characterSize={characterSize}
-                          showPreview={isPreview}
-                          audioButton={<AudioAttachButton {...audioButtonProps} side="back" />}
-                          isMandarin={isMandarin}
+                      }
+                      isMandarin={true}
+                    />
+                    <MandarinCardInput
+                      value={back}
+                      onChangeText={setBack}
+                      onMandarinDataChange={setBackMandarinData}
+                      placeholder="Back of card"
+                      label="Back"
+                      characterSize={characterSize}
+                      showPreview={isPreview}
+                      audioButton={
+                        <AudioAttachButton
+                          {...audioButtonProps}
+                          side="back"
                         />
-                      </View>
-                      {backAudioSegments.length > 0 && (
-                        <View style={[styles.audioSegments, {
-                          backgroundColor: Platform.select({
-                            ios: 'rgba(0, 0, 0, 0.02)',
-                            android: 'rgba(0, 0, 0, 0.04)',
-                            default: 'rgba(0, 0, 0, 0.02)',
-                          })
-                        }]}>
-                          <AudioEnabledText
-                            text={back}
-                            audioSegments={backAudioSegments}
-                            color={theme.colors.grey5}
-                          />
-                        </View>
-                      )}
-                    </View>
-                  </View>
+                      }
+                      isMandarin={true}
+                    />
+                  </>
                 ) : (
                   <View>
                     <View style={styles.inputContainer}>
-                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3 }]}>
                         Front
                       </Text>
-                      <View style={styles.inputWrapper}>
-                        <Input
-                          placeholder="Front side of the card"
-                          value={front}
-                          onChangeText={setFront}
-                          multiline
-                          numberOfLines={3}
-                          containerStyle={styles.input}
-                          inputContainerStyle={[
-                            styles.inputField,
-                            styles.textArea,
-                            {
-                              borderColor: theme.colors.grey2,
-                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                            },
-                          ]}
-                          inputStyle={[
-                            styles.inputText,
-                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                          ]}
-                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
-                        />
-                        <View style={styles.actionRow}>
-                          <View style={styles.audioButtonWrapper}>
-                            <AudioAttachButton
-                              {...audioButtonProps}
-                              side="front"
-                            />
-                          </View>
-                        </View>
-                      </View>
-                      {frontAudioSegments.length > 0 && (
-                        <View style={[styles.audioSegments, {
-                          backgroundColor: Platform.select({
-                            ios: 'rgba(0, 0, 0, 0.02)',
-                            android: 'rgba(0, 0, 0, 0.04)',
-                            default: 'rgba(0, 0, 0, 0.02)',
-                          })
-                        }]}>
-                          <AudioEnabledText
-                            text={front}
-                            audioSegments={frontAudioSegments}
-                            color={theme.colors.grey5}
+                      <Input
+                        placeholder="Front of card"
+                        value={front}
+                        onChangeText={setFront}
+                        multiline
+                        numberOfLines={3}
+                        containerStyle={styles.input}
+                        inputContainerStyle={[
+                          styles.inputField,
+                          styles.textArea,
+                          {
+                            borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
+                            backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#FFFFFF',
+                          },
+                        ]}
+                        inputStyle={[
+                          styles.inputText,
+                          { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black },
+                        ]}
+                        placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                        rightIcon={
+                          <AudioAttachButton
+                            {...audioButtonProps}
+                            side="front"
                           />
-                        </View>
-                      )}
+                        }
+                      />
                     </View>
 
                     <View style={styles.inputContainer}>
-                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.grey5 }]}>
+                      <Text style={[styles.label, { color: theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3 }]}>
                         Back
                       </Text>
-                      <View style={styles.inputWrapper}>
-                        <Input
-                          placeholder="Back side of the card"
-                          value={back}
-                          onChangeText={setBack}
-                          multiline
-                          numberOfLines={3}
-                          containerStyle={[styles.input, { flex: 1 }]}
-                          inputContainerStyle={[
-                            styles.inputField,
-                            styles.textArea,
-                            {
-                              borderColor: theme.colors.grey2,
-                              backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey0,
-                            },
-                          ]}
-                          inputStyle={[
-                            styles.inputText,
-                            { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.black },
-                          ]}
-                          placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
-                        />
-                        <View style={styles.actionRow}>
-                          <View style={styles.audioButtonWrapper}>
-                            <AudioAttachButton
-                              {...audioButtonProps}
-                              side="back"
-                            />
-                          </View>
-                        </View>
-                      </View>
-                      {backAudioSegments.length > 0 && (
-                        <View style={[styles.audioSegments, {
-                          backgroundColor: Platform.select({
-                            ios: 'rgba(0, 0, 0, 0.02)',
-                            android: 'rgba(0, 0, 0, 0.04)',
-                            default: 'rgba(0, 0, 0, 0.02)',
-                          })
-                        }]}>
-                          <AudioEnabledText
-                            text={back}
-                            audioSegments={backAudioSegments}
-                            color={theme.colors.grey5}
+                      <Input
+                        placeholder="Back of card"
+                        value={back}
+                        onChangeText={setBack}
+                        multiline
+                        numberOfLines={3}
+                        containerStyle={styles.input}
+                        inputContainerStyle={[
+                          styles.inputField,
+                          styles.textArea,
+                          {
+                            borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
+                            backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#FFFFFF',
+                          },
+                        ]}
+                        inputStyle={[
+                          styles.inputText,
+                          { color: theme.mode === 'dark' ? theme.colors.white : theme.colors.black },
+                        ]}
+                        placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey4}
+                        rightIcon={
+                          <AudioAttachButton
+                            {...audioButtonProps}
+                            side="back"
                           />
-                        </View>
-                      )}
+                        }
+                      />
                     </View>
                   </View>
                 )}

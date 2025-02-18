@@ -27,7 +27,7 @@ export function AudioEnabledText({
     return (
       <AudioTextSegment
         text={text}
-        audioUrl={firstSegment.audio_file_path}
+        audioUrl={firstSegment.audio_file.url}
         isStudyMode={true}
         color={color}
         style={[styles.studyModeText, style]}
@@ -54,7 +54,7 @@ export function AudioEnabledText({
       <AudioTextSegment
         key={`audio-${segment.id}`}
         text={text.slice(segment.text_start, segment.text_end)}
-        audioUrl={segment.audio_file_path}
+        audioUrl={segment.audio_file.url}
         isStudyMode={isStudyMode}
         color={color}
       />

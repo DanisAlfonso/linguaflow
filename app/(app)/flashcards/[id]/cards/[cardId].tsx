@@ -9,7 +9,10 @@ import { getCard, updateCard, deleteCard, getDeck } from '../../../../../lib/api
 import { MandarinCardInput } from '../../../../../components/flashcards/MandarinCardInput';
 import { CharacterSizeControl } from '../../../../../components/flashcards/CharacterSizeControl';
 import { MandarinText } from '../../../../../components/flashcards/MandarinText';
+import { FlashcardAudioSection } from '../../../../../components/flashcards/audio/FlashcardAudioSection';
+import { getCardAudioSegments } from '../../../../../lib/api/audio';
 import type { Card, Deck, MandarinCardData } from '../../../../../types/flashcards';
+import type { CardAudioSegment } from '../../../../../types/audio';
 import Toast from 'react-native-toast-message';
 
 export default function CardDetailsScreen() {
@@ -26,6 +29,8 @@ export default function CardDetailsScreen() {
   const [characterSize, setCharacterSize] = useState(24);
   const [frontMandarinData, setFrontMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
   const [backMandarinData, setBackMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
+  const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
+  const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
   
   const router = useRouter();
   const { id, cardId } = useLocalSearchParams();
@@ -34,9 +39,10 @@ export default function CardDetailsScreen() {
 
   const loadCard = useCallback(async () => {
     try {
-      const [cardData, deckData] = await Promise.all([
+      const [cardData, deckData, audioSegments] = await Promise.all([
         getCard(cardId as string),
         getDeck(id as string),
+        getCardAudioSegments(cardId as string),
       ]);
 
       if (!cardData) {
@@ -55,6 +61,8 @@ export default function CardDetailsScreen() {
       setBack(cardData.back);
       setNotes(cardData.notes || '');
       setTags(cardData.tags?.join(', ') || '');
+      setFrontAudioSegments(audioSegments.filter(s => s.side === 'front'));
+      setBackAudioSegments(audioSegments.filter(s => s.side === 'back'));
 
       if (deckData?.language === 'Mandarin') {
         if (deckData.settings?.defaultCharacterSize) {
@@ -413,6 +421,26 @@ export default function CardDetailsScreen() {
                   ))}
                 </View>
               )}
+            </View>
+
+            <View style={styles.form}>
+              <FlashcardAudioSection
+                label="Front Audio"
+                audioSegments={frontAudioSegments}
+                cardId={cardId as string}
+                side="front"
+                isEditing={isEditing}
+                onAudioChange={loadCard}
+              />
+
+              <FlashcardAudioSection
+                label="Back Audio"
+                audioSegments={backAudioSegments}
+                cardId={cardId as string}
+                side="back"
+                isEditing={isEditing}
+                onAudioChange={loadCard}
+              />
             </View>
 
             <View style={styles.actions}>

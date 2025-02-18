@@ -22,25 +22,41 @@ export function StudyCardFront({
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
+  console.log('StudyCardFront - Rendering with props:', {
+    isMandarin,
+    characterSize,
+    frontAudioSegments,
+    hasMandarinData: !!card.language_specific_data?.mandarin,
+    cardFront: card.front,
+  });
+
   return (
     <View style={styles.cardContent}>
       {isMandarin && card.language_specific_data?.mandarin ? (
-        <View style={styles.mandarinContainer}>
-          <MandarinText
-            data={card.language_specific_data.mandarin.front}
-            characterSize={characterSize}
-            color={theme.colors.grey5}
-            audioUrl={frontAudioSegments.length > 0 ? frontAudioSegments[0].audio_file_path : undefined}
-            isStudyMode={true}
-          />
-          {frontAudioSegments.length > 0 && (
-            <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
-              {isWeb 
-                ? "Click text or press Ctrl+Space to play audio"
-                : "Tap text to play audio"}
-            </Text>
-          )}
-        </View>
+        (() => {
+          console.log('StudyCardFront - Rendering Mandarin content:', {
+            mandarinData: card.language_specific_data.mandarin.front,
+            audioUrl: frontAudioSegments.length > 0 ? frontAudioSegments[0].audio_file.url : undefined,
+          });
+          return (
+            <View style={styles.mandarinContainer}>
+              <MandarinText
+                data={card.language_specific_data.mandarin.front}
+                characterSize={characterSize}
+                color={theme.colors.grey5}
+                audioUrl={frontAudioSegments.length > 0 ? frontAudioSegments[0].audio_file.url : undefined}
+                isStudyMode={true}
+              />
+              {frontAudioSegments.length > 0 && (
+                <Text style={[styles.audioHint, { color: theme.colors.grey3 }]}>
+                  {isWeb 
+                    ? "Click text or press Ctrl+Space to play audio"
+                    : "Tap text to play audio"}
+                </Text>
+              )}
+            </View>
+          );
+        })()
       ) : (
         <View style={styles.textContainer}>
           <AudioEnabledText

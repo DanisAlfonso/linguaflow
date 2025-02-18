@@ -35,7 +35,10 @@ export interface AudioSegment {
 
 export interface CardAudioSegment {
   id: string;
-  audio_file_path: string;
+  audio_file: {
+    url: string;
+    name: string;
+  };
   text_start: number;
   text_end: number;
   side: 'front' | 'back';

@@ -133,13 +133,12 @@ export function MandarinCardInput({
             {
               backgroundColor: theme.mode === 'dark' ? theme.colors.grey0 : '#F8F9FA',
               borderColor: theme.mode === 'dark' ? theme.colors.grey3 : theme.colors.grey2,
-              borderWidth: 1,
             }
           ]}>
             <MandarinText
               data={{
                 characters: value.trim() ? value.split('') : [],
-                pinyin: hasChineseCharacters ? pinyin.split(' ').filter(p => p.length > 0) : [],
+                pinyin: hasChineseCharacters ? pinyin.split(' ') : [],
               }}
               characterSize={characterSize}
               color={theme.mode === 'dark' ? theme.colors.white : theme.colors.black}

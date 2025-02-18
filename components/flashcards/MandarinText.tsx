@@ -28,84 +28,120 @@ export function MandarinText({
   isStudyMode = false,
 }: MandarinTextProps) {
   const { theme } = useTheme();
-  const sound = useRef<Audio.Sound>();
-  const [fullAudioUrl, setFullAudioUrl] = useState<string>('');
+  const sound = useRef<Audio.Sound | HTMLAudioElement>();
   const [isLoading, setIsLoading] = useState(true);
   const [isSoundLoaded, setIsSoundLoaded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const isWeb = Platform.OS === 'web';
 
-  // Get the full audio URL when the component mounts
-  useEffect(() => {
-    const getAudioUrl = async () => {
-      if (!audioUrl) return;
-      
-      try {
-        setIsLoading(true);
-        setIsSoundLoaded(false);
-        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-          .from('audio')
-          .createSignedUrl(audioUrl, 3600);
-
-        if (signedUrlError) {
-          throw signedUrlError;
-        }
-
-        if (signedUrlData?.signedUrl) {
-          console.log('Got signed URL for audio:', signedUrlData.signedUrl);
-          setFullAudioUrl(signedUrlData.signedUrl);
-        }
-      } catch (error) {
-        console.error('Error getting audio URL:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (audioUrl) {
-      getAudioUrl();
-    }
-
-    // Cleanup
-    return () => {
-      if (sound.current) {
-        sound.current.unloadAsync();
-      }
-      setIsSoundLoaded(false);
-    };
-  }, [audioUrl]);
+  console.log('MandarinText - Initializing with props:', {
+    hasData: !!data,
+    characterCount: data.characters.length,
+    pinyinCount: data.pinyin.length,
+    audioUrl,
+    isStudyMode,
+  });
 
   // Load and unload sound
   useEffect(() => {
     let isMounted = true;
 
     const loadSound = async () => {
+      if (!audioUrl) {
+        console.log('MandarinText - No audio URL provided');
+        setIsLoading(false);
+        return;
+      }
+
       try {
-        if (!fullAudioUrl) return;
+        setIsLoading(true);
+        setIsSoundLoaded(false);
+        console.log('MandarinText - Loading audio from:', audioUrl);
 
-        console.log('Loading audio from:', fullAudioUrl);
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
-        });
-        
-        const { sound: audioSound } = await Audio.Sound.createAsync(
-          { uri: fullAudioUrl },
-          { shouldPlay: false }
-        );
+        if (isWeb) {
+          // Web implementation using HTML5 Audio
+          console.log('MandarinText - Using web audio implementation');
+          const audio = new window.Audio(audioUrl);
+          audio.preload = 'auto';
+          
+          audio.addEventListener('canplaythrough', () => {
+            if (isMounted) {
+              console.log('MandarinText - Web audio loaded successfully');
+              setIsSoundLoaded(true);
+              setIsLoading(false);
+            }
+          });
 
-        if (!isMounted) {
-          audioSound.unloadAsync();
-          return;
+          audio.addEventListener('ended', () => {
+            console.log('MandarinText - Web audio playback completed');
+          });
+
+          audio.addEventListener('error', (error: ErrorEvent) => {
+            console.error('MandarinText - Web audio loading error:', {
+              error,
+              audioUrl,
+              errorMessage: error.message,
+            });
+            if (isMounted) {
+              setIsSoundLoaded(false);
+              setIsLoading(false);
+            }
+          });
+
+          sound.current = audio;
+          await audio.load();
+        } else {
+          console.log('MandarinText - Using Expo audio implementation');
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: true,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false,
+            allowsRecordingIOS: false,
+            interruptionModeIOS: 2,
+            interruptionModeAndroid: 2,
+          });
+          
+          const { sound: audioSound } = await Audio.Sound.createAsync(
+            { uri: audioUrl },
+            { 
+              shouldPlay: false,
+              volume: 1.0,
+              isLooping: false,
+              rate: 1.0,
+              isMuted: false,
+              progressUpdateIntervalMillis: 100,
+              positionMillis: 0,
+              androidImplementation: 'MediaPlayer',
+              shouldCorrectPitch: true,
+            },
+            (status) => {
+              console.log('MandarinText - Audio status update:', status);
+            }
+          );
+
+          if (!isMounted) {
+            console.log('MandarinText - Component unmounted during load, cleaning up');
+            audioSound.unloadAsync();
+            return;
+          }
+
+          console.log('MandarinText - Mobile audio loaded successfully');
+          sound.current = audioSound;
+          setIsSoundLoaded(true);
         }
-
-        sound.current = audioSound;
-        setIsSoundLoaded(true);
       } catch (error) {
-        console.error('Error loading sound:', error);
+        console.error('MandarinText - Error loading sound:', {
+          error,
+          audioUrl,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
         if (isMounted) {
           setIsSoundLoaded(false);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
         }
       }
     };
@@ -113,42 +149,72 @@ export function MandarinText({
     loadSound();
 
     return () => {
+      console.log('MandarinText - Cleaning up audio');
       isMounted = false;
-      if (sound.current) {
-        sound.current.unloadAsync();
+      if (isWeb) {
+        if (sound.current instanceof HTMLAudioElement) {
+          sound.current.pause();
+          sound.current.src = '';
+        }
+      } else {
+        if (sound.current instanceof Audio.Sound) {
+          sound.current.unloadAsync();
+        }
       }
       setIsSoundLoaded(false);
     };
-  }, [fullAudioUrl]);
+  }, [audioUrl, isWeb]);
 
   const playSound = useCallback(async () => {
     try {
+      console.log('MandarinText - Attempting to play sound:', {
+        isLoading,
+        isSoundLoaded,
+        audioUrl,
+        soundType: isWeb ? 'web' : 'mobile',
+      });
+
       if (isLoading) {
-        console.log('Audio is still loading URL...');
+        console.log('MandarinText - Audio is still loading...');
         return;
       }
 
       if (!isSoundLoaded) {
-        console.log('Sound is not loaded yet...');
+        console.log('MandarinText - Sound is not loaded yet...');
         return;
       }
 
-      if (sound.current) {
-        console.log('Playing audio...');
-        await sound.current.setPositionAsync(0);
-        const status = await sound.current.getStatusAsync();
-        
-        if (!status.isLoaded) {
-          console.log('Reloading sound...');
-          await sound.current.loadAsync({ uri: fullAudioUrl });
+      if (isWeb) {
+        const webAudio = sound.current as HTMLAudioElement;
+        if (webAudio) {
+          console.log('MandarinText - Playing web audio...');
+          webAudio.currentTime = 0;
+          await webAudio.play();
         }
-        
-        await sound.current.playAsync();
+      } else {
+        const mobileSound = sound.current as Audio.Sound;
+        if (mobileSound) {
+          console.log('MandarinText - Playing mobile audio...');
+          const status = await mobileSound.getStatusAsync();
+          console.log('MandarinText - Current audio status:', status);
+          
+          if (!status.isLoaded && audioUrl) {
+            console.log('MandarinText - Reloading sound...');
+            await mobileSound.loadAsync({ uri: audioUrl });
+          }
+          
+          await mobileSound.setPositionAsync(0);
+          await mobileSound.playAsync();
+        }
       }
     } catch (error) {
-      console.error('Error playing sound:', error);
+      console.error('MandarinText - Error playing sound:', {
+        error,
+        audioUrl,
+        errorMessage: error instanceof Error ? error.message : String(error),
+      });
     }
-  }, [isLoading, isSoundLoaded, fullAudioUrl]);
+  }, [isLoading, isSoundLoaded, audioUrl, isWeb]);
 
   // Handle keyboard shortcut on web
   useEffect(() => {
