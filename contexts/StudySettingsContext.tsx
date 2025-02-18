@@ -8,6 +8,8 @@ type StudySettingsContextType = {
   setHideNavigationBar: (value: boolean) => Promise<void>;
   cardAnimationType: CardAnimationType;
   setCardAnimationType: (value: CardAnimationType) => Promise<void>;
+  moveControlsToBottom: boolean;
+  setMoveControlsToBottom: (value: boolean) => Promise<void>;
 };
 
 const StudySettingsContext = createContext<StudySettingsContextType | undefined>(undefined);
@@ -15,18 +17,21 @@ const StudySettingsContext = createContext<StudySettingsContextType | undefined>
 export function StudySettingsProvider({ children }: { children: React.ReactNode }) {
   const [hideNavigationBar, setHideNavigationBarState] = useState(false);
   const [cardAnimationType, setCardAnimationTypeState] = useState<CardAnimationType>('flip');
+  const [moveControlsToBottom, setMoveControlsToBottomState] = useState(false);
 
   useEffect(() => {
     // Load settings on mount
     const loadSettings = async () => {
       try {
-        const [hideNavBar, animationType] = await Promise.all([
+        const [hideNavBar, animationType, moveControls] = await Promise.all([
           AsyncStorage.getItem('hideNavigationBar'),
           AsyncStorage.getItem('cardAnimationType'),
+          AsyncStorage.getItem('moveControlsToBottom'),
         ]);
         
         setHideNavigationBarState(hideNavBar === 'true');
         setCardAnimationTypeState((animationType as CardAnimationType) || 'flip');
+        setMoveControlsToBottomState(moveControls === 'true');
       } catch (error) {
         console.error('Error loading study settings:', error);
       }
@@ -52,6 +57,15 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
     }
   };
 
+  const setMoveControlsToBottom = async (value: boolean) => {
+    try {
+      await AsyncStorage.setItem('moveControlsToBottom', value.toString());
+      setMoveControlsToBottomState(value);
+    } catch (error) {
+      console.error('Error saving move controls to bottom setting:', error);
+    }
+  };
+
   return (
     <StudySettingsContext.Provider
       value={{
@@ -59,6 +73,8 @@ export function StudySettingsProvider({ children }: { children: React.ReactNode 
         setHideNavigationBar,
         cardAnimationType,
         setCardAnimationType,
+        moveControlsToBottom,
+        setMoveControlsToBottom,
       }}
     >
       {children}

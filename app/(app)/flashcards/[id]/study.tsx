@@ -42,7 +42,7 @@ export default function StudyScreen() {
   const isWeb = Platform.OS === 'web';
   const isMandarin = deck?.language === 'Mandarin';
 
-  const { hideNavigationBar, cardAnimationType } = useStudySettings();
+  const { hideNavigationBar, cardAnimationType, moveControlsToBottom } = useStudySettings();
   const { temporarilyHideTabBar, restoreTabBar } = useTabBar();
 
   // Use the study session hook
@@ -96,7 +96,7 @@ export default function StudyScreen() {
 
   // Effect to handle tab bar visibility
   useEffect(() => {
-    if (hideNavigationBar) {
+    if (hideNavigationBar || moveControlsToBottom) {
       temporarilyHideTabBar();
     } else {
       restoreTabBar();
@@ -106,7 +106,7 @@ export default function StudyScreen() {
     return () => {
       restoreTabBar();
     };
-  }, [hideNavigationBar]);
+  }, [hideNavigationBar, moveControlsToBottom]);
 
   const loadData = useCallback(async () => {
     try {
@@ -277,7 +277,10 @@ export default function StudyScreen() {
           />
         )}
 
-        <View style={styles.cardContainer}>
+        <View style={[
+          styles.cardContainer,
+          moveControlsToBottom && styles.cardContainerWithBottomControls
+        ]}>
           <AnimatedCard
             front={
               <StudyCardFront
@@ -311,6 +314,7 @@ export default function StudyScreen() {
           <StudyControls
             onResponse={handleCardResponse}
             reviewing={reviewing}
+            style={moveControlsToBottom ? styles.bottomControls : undefined}
           />
         </View>
 
@@ -398,6 +402,18 @@ const styles = StyleSheet.create({
   cardContainer: {
     flex: 1,
     gap: 32,
+  },
+  cardContainerWithBottomControls: {
+    position: 'relative',
+    paddingBottom: 80, // Add space for bottom controls
+  },
+  bottomControls: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    paddingVertical: 16,
+    backgroundColor: 'transparent',
   },
   card: {
     minHeight: 300,

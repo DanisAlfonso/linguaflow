@@ -37,7 +37,9 @@ export default function SettingsScreen() {
     hideNavigationBar, 
     setHideNavigationBar,
     cardAnimationType,
-    setCardAnimationType 
+    setCardAnimationType,
+    moveControlsToBottom,
+    setMoveControlsToBottom
   } = useStudySettings();
   const router = useRouter();
   const [notifications, setNotifications] = React.useState(true);
@@ -64,6 +66,16 @@ export default function SettingsScreen() {
       setHideNavigationBar(value);
     } catch (error) {
       console.error('Error saving hide navigation bar setting:', error);
+    }
+  };
+
+  // Save move controls to bottom setting when changed
+  const handleMoveControlsToBottomChange = async (value: boolean) => {
+    try {
+      await AsyncStorage.setItem('moveControlsToBottom', value.toString());
+      setMoveControlsToBottom(value);
+    } catch (error) {
+      console.error('Error saving move controls to bottom setting:', error);
     }
   };
 
@@ -103,6 +115,19 @@ export default function SettingsScreen() {
           type: 'switch',
           value: hideNavigationBar,
           onChange: setHideNavigationBar,
+        },
+        {
+          icon: 'vertical-align-bottom',
+          label: 'Move Controls to Bottom',
+          type: 'switch',
+          value: moveControlsToBottom,
+          onChange: (value) => {
+            setMoveControlsToBottom(value);
+            // If enabling Move Controls to Bottom, also hide navigation bar
+            if (value) {
+              setHideNavigationBar(true);
+            }
+          },
         },
         {
           icon: 'animation',

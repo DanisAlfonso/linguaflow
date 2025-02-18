@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, ViewStyle } from 'react-native';
 import { Button } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Rating } from '../../../lib/spaced-repetition/fsrs';
@@ -7,16 +7,18 @@ import { Rating } from '../../../lib/spaced-repetition/fsrs';
 interface StudyControlsProps {
   onResponse: (rating: Rating) => void;
   reviewing: boolean;
+  style?: ViewStyle;
 }
 
 export function StudyControls({
   onResponse,
   reviewing,
+  style,
 }: StudyControlsProps) {
   const isWeb = Platform.OS === 'web';
 
   return (
-    <View style={styles.controls}>
+    <View style={[styles.controls, style]}>
       <Button
         title={isWeb ? "Again (1)" : "Again"}
         icon={
