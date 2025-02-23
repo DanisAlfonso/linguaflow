@@ -94,7 +94,11 @@ export function StudyControls({
 const styles = StyleSheet.create({
   controls: {
     flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     gap: 8,
+    padding: 16,
+    zIndex: 1,
   },
   buttonIcon: {
     marginRight: 8,

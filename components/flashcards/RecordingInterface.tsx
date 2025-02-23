@@ -461,6 +461,8 @@ const styles = StyleSheet.create({
     padding: 16,
     height: 230,
     paddingBottom: 32,
+    zIndex: 1000,
+    elevation: 1000,
     ...Platform.select({
       web: {
         boxShadow: '0 -2px 4px -1px rgba(65, 57, 57, 0.06)',
@@ -473,7 +475,7 @@ const styles = StyleSheet.create({
         },
         shadowOpacity: 0.05,
         shadowRadius: 2,
-        elevation: 3,
+        elevation: 1000,
       },
     }),
   },
