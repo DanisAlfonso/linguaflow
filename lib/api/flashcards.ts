@@ -137,6 +137,50 @@ export async function deleteCard(id: string): Promise<void> {
   try {
     console.log('🗑️ Starting deletion process for card:', id);
 
+    // Get audio segments before deletion to verify cleanup
+    const { data: audioSegments } = await supabase
+      .from('card_audio_segments')
+      .select('*, audio_files(*)')
+      .eq('card_id', id);
+    console.log('📊 Found audio segments for card:', audioSegments?.length || 0);
+    
+    // Delete audio files from storage first
+    if (audioSegments?.length) {
+      console.log('🎵 Audio files to be deleted:', audioSegments.map(segment => ({
+        segmentId: segment.id,
+        audioFileId: segment.audio_file_id,
+        filePath: segment.audio_files?.file_path
+      })));
+
+      // Delete each audio file from storage
+      for (const segment of audioSegments) {
+        if (segment.audio_files?.file_path) {
+          console.log(`🗑️ Deleting audio file from storage: ${segment.audio_files.file_path}`);
+          const { error: storageError } = await supabase.storage
+            .from('audio')
+            .remove([segment.audio_files.file_path]);
+          
+          if (storageError) {
+            console.error('❌ Error deleting audio file from storage:', storageError);
+          } else {
+            console.log('✅ Audio file deleted from storage successfully');
+          }
+
+          // Delete the audio file record
+          const { error: audioFileError } = await supabase
+            .from('audio_files')
+            .delete()
+            .eq('id', segment.audio_file_id);
+
+          if (audioFileError) {
+            console.error('❌ Error deleting audio file record:', audioFileError);
+          } else {
+            console.log('✅ Audio file record deleted successfully');
+          }
+        }
+      }
+    }
+
     // First clean up local recordings
     console.log('📱 Cleaning up local recordings for card:', id);
     await cleanupLocalRecordings(id);
@@ -162,6 +206,33 @@ export async function deleteCard(id: string): Promise<void> {
     }
 
     console.log('✅ Card deleted successfully');
+
+    // Verify audio segments deletion
+    const { data: remainingSegments } = await supabase
+      .from('card_audio_segments')
+      .select('*')
+      .eq('card_id', id);
+    console.log('📊 Remaining audio segments after deletion:', remainingSegments?.length || 0);
+
+    // Verify audio files deletion
+    if (audioSegments?.length) {
+      for (const segment of audioSegments) {
+        const { data: remainingFile } = await supabase
+          .from('audio_files')
+          .select('*')
+          .eq('id', segment.audio_file_id)
+          .single();
+        console.log(`📊 Audio file ${segment.audio_file_id} exists after deletion:`, !!remainingFile);
+
+        // Verify storage deletion
+        const { data: storageExists } = await supabase.storage
+          .from('audio')
+          .list('', {
+            search: segment.audio_files?.file_path
+          });
+        console.log(`📊 Audio file exists in storage:`, !!storageExists?.length);
+      }
+    }
 
     // Verify recordings deletion
     const { data: remainingRecordings } = await supabase
@@ -239,15 +310,77 @@ export async function deleteDeck(id: string): Promise<void> {
 
     console.log('📊 Found cards in deck:', cards?.length || 0);
 
-    // Clean up recordings for each card
+    // Get all audio segments and files for all cards in the deck
     if (cards && cards.length > 0) {
-      console.log('🧹 Cleaning up recordings for all cards in deck...');
-      for (const card of cards) {
-        console.log(`📱 Processing card: ${card.id}`);
-        await cleanupLocalRecordings(card.id);
+      console.log('🔍 Fetching audio segments for all cards...');
+      const cardIds = cards.map(card => card.id);
+      
+      // First check for audio segments
+      const { data: audioSegments, error: segmentsError } = await supabase
+        .from('card_audio_segments')
+        .select('*, audio_files(*)')
+        .in('card_id', cardIds);
+
+      if (segmentsError) {
+        console.error('❌ Error fetching audio segments:', segmentsError);
       }
-      console.log('✅ All card recordings cleaned up');
+
+      console.log('📊 Found audio segments:', audioSegments?.length || 0);
+
+      // Combine all audio files that need to be deleted
+      const allAudioFiles = (audioSegments?.map(segment => segment.audio_files) || [])
+        .filter(file => file && file.file_path);
+
+      console.log('🎵 Total audio files to be deleted:', allAudioFiles.length);
+
+      // Delete each audio file from storage
+      for (const file of allAudioFiles) {
+        if (file.file_path) {
+          console.log(`🗑️ Attempting to delete audio file from storage: ${file.file_path}`);
+          
+          // Check if file exists in storage first
+          const { data: fileExists } = await supabase.storage
+            .from('audio')
+            .list('', {
+              search: file.file_path
+            });
+          
+          console.log(`📊 File exists in storage: ${!!fileExists?.length}`);
+
+          if (fileExists?.length) {
+            const { error: storageError } = await supabase.storage
+              .from('audio')
+              .remove([file.file_path]);
+            
+            if (storageError) {
+              console.error('❌ Error deleting audio file from storage:', storageError);
+            } else {
+              console.log('✅ Audio file deleted from storage successfully');
+            }
+          }
+
+          // Delete the audio file record
+          const { error: audioFileError } = await supabase
+            .from('audio_files')
+            .delete()
+            .eq('id', file.id);
+
+          if (audioFileError) {
+            console.error('❌ Error deleting audio file record:', audioFileError);
+          } else {
+            console.log('✅ Audio file record deleted successfully');
+          }
+        }
+      }
     }
+
+    // Clean up local recordings for each card
+    console.log('🧹 Cleaning up recordings for all cards in deck...');
+    for (const card of cards) {
+      console.log(`📱 Processing card: ${card.id}`);
+      await cleanupLocalRecordings(card.id);
+    }
+    console.log('✅ All card recordings cleaned up');
 
     // Delete the deck (this will cascade delete cards and recordings)
     console.log('🗑️ Deleting deck from Supabase...');
@@ -270,6 +403,17 @@ export async function deleteDeck(id: string): Promise<void> {
       .eq('deck_id', id);
     console.log('📊 Remaining cards after deletion:', remainingCards?.length || 0);
 
+    // Verify audio segments deletion
+    if (cards?.length) {
+      const cardIds = cards.map(card => card.id);
+      const { data: remainingSegments } = await supabase
+        .from('card_audio_segments')
+        .select('*')
+        .in('card_id', cardIds);
+      console.log('📊 Remaining audio segments after deletion:', remainingSegments?.length || 0);
+    }
+
+    // Verify recordings deletion
     if (cards) {
       for (const card of cards) {
         const { data: remainingRecordings } = await supabase
