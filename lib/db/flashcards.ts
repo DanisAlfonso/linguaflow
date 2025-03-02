@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { ensureDatabase } from './index';
-import type { Deck } from '../../types/flashcards';
+import type { Deck, Card } from '../../types/flashcards';
 
 // Define SQLiteDatabase type to match the one in index.ts
 type SQLiteDatabase = {
@@ -12,6 +12,14 @@ type SQLiteDatabase = {
 
 // Local deck type with sync status
 export interface LocalDeck extends Deck {
+  synced: boolean;
+  remote_id: string | null;
+  modified_offline?: boolean;
+  deleted_offline?: boolean;
+}
+
+// Local card type with sync status
+export interface LocalCard extends Card {
   synced: boolean;
   remote_id: string | null;
 }
@@ -60,6 +68,42 @@ export async function initFlashcardsDatabase(): Promise<void> {
       );
     `);
     console.log('Decks table created or already exists');
+
+    // Create cards table
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS cards (
+        id TEXT PRIMARY KEY,
+        deck_id TEXT NOT NULL,
+        front TEXT NOT NULL,
+        back TEXT NOT NULL,
+        notes TEXT,
+        tags TEXT,
+        language_specific_data TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_reviewed_at TEXT,
+        next_review_at TEXT,
+        review_count INTEGER DEFAULT 0,
+        consecutive_correct INTEGER DEFAULT 0,
+        state INTEGER,
+        difficulty REAL,
+        stability REAL,
+        retrievability REAL,
+        elapsed_days REAL,
+        scheduled_days REAL,
+        reps INTEGER DEFAULT 0,
+        lapses INTEGER DEFAULT 0,
+        scheduled_in_minutes INTEGER,
+        step_index INTEGER DEFAULT 0,
+        queue TEXT DEFAULT 'new',
+        synced INTEGER DEFAULT 0,
+        remote_id TEXT,
+        modified_offline INTEGER DEFAULT 0,
+        deleted_offline INTEGER DEFAULT 0,
+        FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
+      );
+    `);
+    console.log('Cards table created or already exists');
 
     // Check if the table has all required columns and add them if missing
     await migrateFlashcardsDatabase(db);
@@ -503,6 +547,210 @@ export async function markDeckAsSynced(id: string, remoteId: string): Promise<vo
     console.log(`Marked deck ${id} as synced with remote ID ${remoteId}`);
   } catch (error) {
     console.error('Error marking deck as synced:', error);
+    throw error;
+  }
+}
+
+// Create a new card locally
+export async function createLocalCard(data: Partial<Card>): Promise<LocalCard> {
+  // On web platform, throw error as we don't support local storage
+  if (Platform.OS === 'web') {
+    throw new Error('Local card storage is not supported on web platform');
+  }
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) throw new Error('Database not initialized');
+
+    // Get the current table structure to determine available columns
+    const cardColumns = await database.getAllAsync<{name: string}>(`PRAGMA table_info(cards)`);
+    const columnNames = cardColumns.map(col => col.name);
+    console.log('Available columns for card insert:', columnNames.join(', '));
+
+    const id = generateId();
+    const created_at = new Date().toISOString();
+    const updated_at = created_at;
+
+    // Build the SQL query dynamically based on available columns
+    let columns = ['id', 'deck_id', 'front', 'back', 'created_at', 'updated_at'];
+    let placeholders = ['?', '?', '?', '?', '?', '?'];
+    let values: any[] = [id, data.deck_id, data.front, data.back, created_at, updated_at];
+
+    // Add optional columns if they exist in the table
+    if (data.notes !== undefined && columnNames.includes('notes')) {
+      columns.push('notes');
+      placeholders.push('?');
+      values.push(data.notes);
+    }
+
+    if (data.tags && columnNames.includes('tags')) {
+      columns.push('tags');
+      placeholders.push('?');
+      values.push(JSON.stringify(data.tags));
+    }
+
+    if (data.language_specific_data && columnNames.includes('language_specific_data')) {
+      columns.push('language_specific_data');
+      placeholders.push('?');
+      values.push(JSON.stringify(data.language_specific_data));
+    }
+
+    // Add FSRS fields if they exist in the data
+    const fsrsFields = [
+      'state', 'difficulty', 'stability', 'retrievability',
+      'elapsed_days', 'scheduled_days', 'reps', 'lapses',
+      'scheduled_in_minutes', 'step_index', 'queue'
+    ];
+
+    fsrsFields.forEach(field => {
+      if (data[field as keyof typeof data] !== undefined && columnNames.includes(field)) {
+        columns.push(field);
+        placeholders.push('?');
+        values.push(data[field as keyof typeof data]);
+      }
+    });
+
+    // Add sync status fields
+    if (columnNames.includes('synced')) {
+      columns.push('synced');
+      placeholders.push('0');
+    }
+
+    if (columnNames.includes('remote_id')) {
+      columns.push('remote_id');
+      placeholders.push('NULL');
+    }
+
+    if (columnNames.includes('modified_offline')) {
+      columns.push('modified_offline');
+      placeholders.push('1');
+    }
+
+    if (columnNames.includes('deleted_offline')) {
+      columns.push('deleted_offline');
+      placeholders.push('0');
+    }
+
+    const query = `
+      INSERT INTO cards (${columns.join(', ')})
+      VALUES (${placeholders.join(', ')});
+    `;
+
+    console.log('Executing card insert query:', query);
+    console.log('With values:', values);
+
+    const result = await database.runAsync(query, values);
+
+    if (result.changes === 0) {
+      throw new Error('Failed to insert card');
+    }
+
+    // Update the deck's card count
+    await updateDeckCardCount(data.deck_id as string);
+
+    // Return the created card with local properties
+    return {
+      id,
+      deck_id: data.deck_id as string,
+      front: data.front as string,
+      back: data.back as string,
+      notes: data.notes || null,
+      tags: data.tags || [],
+      language_specific_data: data.language_specific_data,
+      created_at: new Date(created_at),
+      last_reviewed_at: null,
+      next_review_at: null,
+      review_count: 0,
+      consecutive_correct: 0,
+      state: data.state || 0,
+      difficulty: data.difficulty || 0,
+      stability: data.stability || 0,
+      retrievability: data.retrievability || 0,
+      elapsed_days: data.elapsed_days || 0,
+      scheduled_days: data.scheduled_days || 0,
+      reps: data.reps || 0,
+      lapses: data.lapses || 0,
+      scheduled_in_minutes: data.scheduled_in_minutes,
+      step_index: data.step_index || 0,
+      queue: data.queue || 'new',
+      synced: false,
+      remote_id: null
+    };
+  } catch (error) {
+    console.error('Error creating local card:', error);
+    throw error;
+  }
+}
+
+// Update a deck's card count
+async function updateDeckCardCount(deckId: string): Promise<void> {
+  try {
+    const database = await ensureDatabase();
+    if (!database) return;
+
+    // Count the cards for this deck
+    const result = await database.getFirstAsync<{ count: number }>(
+      'SELECT COUNT(*) as count FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL)',
+      [deckId]
+    );
+
+    const count = result?.count || 0;
+
+    // Update the deck's total_cards field
+    await database.runAsync(
+      'UPDATE decks SET total_cards = ?, modified_offline = 1, updated_at = ? WHERE id = ?',
+      [count, new Date().toISOString(), deckId]
+    );
+
+    console.log(`Updated deck ${deckId} card count to ${count}`);
+  } catch (error) {
+    console.error(`Error updating deck card count: ${error}`);
+  }
+}
+
+// Get cards for a deck from local database
+export async function getLocalCards(deckId: string): Promise<LocalCard[]> {
+  // On web platform, return empty array
+  if (Platform.OS === 'web') return [];
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return [];
+
+    const result = await database.getAllAsync<any>(
+      'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
+      [deckId]
+    );
+
+    return result.map(item => ({
+      id: item.id,
+      deck_id: item.deck_id,
+      front: item.front,
+      back: item.back,
+      notes: item.notes || null,
+      tags: item.tags ? JSON.parse(item.tags) : [],
+      language_specific_data: item.language_specific_data ? JSON.parse(item.language_specific_data) : undefined,
+      created_at: new Date(item.created_at),
+      last_reviewed_at: item.last_reviewed_at ? new Date(item.last_reviewed_at) : null,
+      next_review_at: item.next_review_at ? new Date(item.next_review_at) : null,
+      review_count: item.review_count || 0,
+      consecutive_correct: item.consecutive_correct || 0,
+      state: item.state || 0,
+      difficulty: item.difficulty || 0,
+      stability: item.stability || 0,
+      retrievability: item.retrievability || 0,
+      elapsed_days: item.elapsed_days || 0,
+      scheduled_days: item.scheduled_days || 0,
+      reps: item.reps || 0,
+      lapses: item.lapses || 0,
+      scheduled_in_minutes: item.scheduled_in_minutes,
+      step_index: item.step_index || 0,
+      queue: item.queue || 'new',
+      synced: Boolean(item.synced),
+      remote_id: item.remote_id || null
+    }));
+  } catch (error) {
+    console.error('Error getting local cards:', error);
     throw error;
   }
 } 
