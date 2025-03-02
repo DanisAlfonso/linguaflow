@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, ScrollView, StyleSheet, Platform, Pressable, Animated } from 'react-native';
-import { Text, Button, Input, useTheme, Overlay } from '@rneui/themed';
+import { Text, Button, Input, useTheme, Overlay, Badge } from '@rneui/themed';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Container } from '../../../components/layout/Container';
-import { getDeck, getCards, deleteCard } from '../../../lib/services/flashcards';
+import { getDeck, getCards, deleteCard, syncOfflineDecks } from '../../../lib/services/flashcards';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
-import { checkNetworkStatus, logOperationMode } from '../../../lib/utils/network';
+import { checkNetworkStatus, logOperationMode, isNetworkConnected } from '../../../lib/utils/network';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export default function DeckScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -22,11 +23,13 @@ export default function DeckScreen() {
   const [editTooltipOpacity] = useState(new Animated.Value(0));
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [prevNetworkStatus, setPrevNetworkStatus] = useState(isNetworkConnected());
   
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+  const { user } = useAuth();
 
   const loadDeckAndCards = useCallback(async () => {
     try {
@@ -52,25 +55,41 @@ export default function DeckScreen() {
       console.log('✅ [DECK SCREEN] Successfully loaded deck data', { deckId: id, deckName: deckData.name });
       setDeck(deckData);
       
-      // Then try to get the cards
+      // Then try to get the cards - wrapping in try/catch to handle errors without failing the whole component
       try {
         logOperationMode('Fetching cards for deck', { deckId: id });
         const cardsData = await getCards(id as string);
-        console.log(`✅ [DECK SCREEN] Successfully loaded ${cardsData.length} cards`);
-        setCards(cardsData);
+        
+        // If we have cards, show them
+        if (cardsData && cardsData.length > 0) {
+          console.log(`✅ [DECK SCREEN] Successfully loaded ${cardsData.length} cards`);
+          setCards(cardsData);
+        } else {
+          console.log('ℹ️ [DECK SCREEN] No cards found for this deck');
+          setCards([]);
+        }
       } catch (cardsError) {
-        console.error('Error loading cards:', cardsError);
-        // If we're offline, we might not be able to get cards from the API
-        // but we still want to show the deck
-        Toast.show({
-          type: 'warning',
-          text1: 'Limited functionality',
-          text2: 'Cards could not be loaded. Some features may be unavailable.',
-        });
+        console.error('❌ [DECK SCREEN] Error loading cards:', cardsError);
+        
+        // More descriptive error handling based on online/offline status
+        if (!isOnline) {
+          console.log('ℹ️ [DECK SCREEN] This is likely because we are offline');
+          Toast.show({
+            type: 'info',
+            text1: 'Offline Mode',
+            text2: 'You are working offline. Some features may be limited.',
+          });
+        } else {
+          Toast.show({
+            type: 'warning',
+            text1: 'Limited functionality',
+            text2: 'Cards could not be loaded. Please try again later.',
+          });
+        }
         setCards([]);
       }
     } catch (error) {
-      console.error('Error loading deck:', error);
+      console.error('❌ [DECK SCREEN] Error loading deck:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -94,6 +113,55 @@ export default function DeckScreen() {
       }
     }, [loading, loadDeckAndCards])
   );
+
+  // Check for network status changes and trigger sync when going from offline to online
+  useEffect(() => {
+    const checkNetworkChange = async () => {
+      const currentStatus = isNetworkConnected();
+      
+      // If we just came back online and we were previously offline, try to sync
+      if (currentStatus && !prevNetworkStatus && !isWeb && user) {
+        console.log('🔄 [DECK SCREEN] Network connection restored - triggering sync');
+        
+        try {
+          Toast.show({
+            type: 'info',
+            text1: 'Syncing...',
+            text2: 'Syncing offline changes to the server',
+          });
+          
+          await syncOfflineDecks(user.id);
+          
+          // Refresh the deck and cards after sync
+          await loadDeckAndCards();
+          
+          Toast.show({
+            type: 'success',
+            text1: 'Sync Complete',
+            text2: 'Your offline changes have been synced',
+          });
+        } catch (error) {
+          console.error('❌ [DECK SCREEN] Error syncing:', error);
+          Toast.show({
+            type: 'error',
+            text1: 'Sync Failed',
+            text2: 'Could not sync offline changes',
+          });
+        }
+      }
+      
+      // Update the previous status
+      setPrevNetworkStatus(currentStatus);
+    };
+    
+    // Check on component mount and when the component updates
+    checkNetworkChange();
+    
+    // Also setup a regular interval to check
+    const interval = setInterval(checkNetworkChange, 10000);
+    
+    return () => clearInterval(interval);
+  }, [user, isWeb, loadDeckAndCards, prevNetworkStatus]);
 
   const handleStartStudy = () => {
     if (!deck) {
@@ -328,6 +396,14 @@ export default function DeckScreen() {
           <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
             {deck.name}
           </Text>
+          {!isNetworkConnected() && (
+            <Badge
+              value="OFFLINE"
+              status="warning"
+              containerStyle={styles.offlineBadge}
+              textStyle={styles.offlineBadgeText}
+            />
+          )}
         </View>
 
         <ScrollView
@@ -524,130 +600,143 @@ export default function DeckScreen() {
                 />
 
                 <View style={styles.cardList}>
-                  {filteredCards.map((card) => (
-                    <React.Fragment key={card.id}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.cardItem,
-                          {
-                            backgroundColor: theme.colors.grey0,
-                            borderColor: theme.colors.grey2,
-                            transform: [
-                              { scale: pressed ? 0.98 : 1 },
-                              { translateY: pressed ? 0 : isWeb ? -2 : 0 },
-                            ],
-                          },
-                        ]}
-                        onPress={() => handleCardPress(card.id)}
-                        onLongPress={(event) => handleLongPressCard(card.id, event)}
-                      >
-                        <View style={styles.cardContent}>
-                          <View style={styles.cardTexts}>
-                            <Text style={[styles.cardFront, { color: theme.colors.grey5 }]}>
-                              {card.front}
-                            </Text>
-                            <Text style={[styles.cardBack, { color: theme.colors.grey3 }]}>
-                              {card.back}
-                            </Text>
-                          </View>
-                          <MaterialIcons
-                            name="chevron-right"
-                            size={24}
-                            color={theme.colors.grey3}
-                          />
-                        </View>
-
-                        {card.tags && card.tags.length > 0 && (
-                          <View style={styles.cardTags}>
-                            {card.tags.map((tag, index) => (
-                              <View
-                                key={index}
-                                style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
-                              >
-                                <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
-                                  {tag}
-                                </Text>
-                              </View>
-                            ))}
-                          </View>
-                        )}
-                      </Pressable>
-
-                      {editingCardId === card.id && (
-                        <Overlay
-                          isVisible={true}
-                          onBackdropPress={handleCloseCardMenu}
-                          overlayStyle={styles.overlayContainer}
-                          backdropStyle={styles.backdrop}
-                          animationType="fade"
+                  {filteredCards.length > 0 ? (
+                    filteredCards.map((card) => (
+                      <React.Fragment key={card.id}>
+                        <Pressable
+                          style={({ pressed }) => [
+                            styles.cardItem,
+                            {
+                              backgroundColor: theme.colors.grey0,
+                              borderColor: theme.colors.grey2,
+                              transform: [
+                                { scale: pressed ? 0.98 : 1 },
+                                { translateY: pressed ? 0 : isWeb ? -2 : 0 },
+                              ],
+                            },
+                          ]}
+                          onPress={() => handleCardPress(card.id)}
+                          onLongPress={(event) => handleLongPressCard(card.id, event)}
                         >
-                          <Pressable 
-                            style={StyleSheet.absoluteFill}
-                            onPress={handleCloseCardMenu}
-                          >
-                            <View style={StyleSheet.absoluteFill}>
-                              <BlurView 
-                                intensity={30} 
-                                style={StyleSheet.absoluteFill}
-                                tint={theme.mode === 'dark' ? 'dark' : 'light'}
-                              />
-                            </View>
-                          </Pressable>
-
-                          <View
-                            style={[
-                              styles.menuContainer,
-                              {
-                                position: 'absolute',
-                                left: menuPosition.x,
-                                top: menuPosition.y,
-                                width: menuPosition.width,
-                                backgroundColor: Platform.OS === 'ios' 
-                                  ? 'rgba(250, 250, 250, 0.8)' 
-                                  : theme.mode === 'dark' 
-                                    ? 'rgba(30, 30, 30, 0.95)'
-                                    : 'rgba(255, 255, 255, 0.95)',
-                                ...Platform.select({
-                                  ios: {
-                                    shadowColor: '#000',
-                                    shadowOffset: { width: 0, height: 4 },
-                                    shadowOpacity: 0.2,
-                                    shadowRadius: 8,
-                                  },
-                                  android: {
-                                    elevation: 8,
-                                  },
-                                  web: {
-                                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
-                                  },
-                                }),
-                              },
-                            ]}
-                          >
-                            <Pressable
-                              style={({ pressed }) => [
-                                styles.menuOption,
-                                pressed && styles.menuOptionPressed,
-                              ]}
-                              onPress={() => handleDeleteCard(card.id)}
-                            >
-                              <MaterialIcons 
-                                name="delete-outline" 
-                                size={20} 
-                                color={theme.mode === 'dark' ? '#EF4444' : '#DC2626'} 
-                              />
-                              <Text style={[
-                                styles.menuOptionText, 
-                                { color: theme.mode === 'dark' ? '#EF4444' : '#DC2626' }
-                              ]}>
-                                Delete Card
+                          <View style={styles.cardContent}>
+                            <View style={styles.cardTexts}>
+                              <Text style={[styles.cardFront, { color: theme.colors.grey5 }]}>
+                                {card.front}
                               </Text>
-                            </Pressable>
+                              <Text style={[styles.cardBack, { color: theme.colors.grey3 }]}>
+                                {card.back}
+                              </Text>
+                            </View>
+                            <MaterialIcons
+                              name="chevron-right"
+                              size={24}
+                              color={theme.colors.grey3}
+                            />
                           </View>
-                        </Overlay>
-                      )}
-                    </React.Fragment>
-                  ))}
+
+                          {card.tags && card.tags.length > 0 && (
+                            <View style={styles.cardTags}>
+                              {card.tags.map((tag, index) => (
+                                <View
+                                  key={index}
+                                  style={[styles.tag, { backgroundColor: theme.colors.grey1 }]}
+                                >
+                                  <Text style={[styles.tagText, { color: theme.colors.grey4 }]}>
+                                    {tag}
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          )}
+                        </Pressable>
+
+                        {editingCardId === card.id && (
+                          <Overlay
+                            isVisible={true}
+                            onBackdropPress={handleCloseCardMenu}
+                            overlayStyle={styles.overlayContainer}
+                            backdropStyle={styles.backdrop}
+                            animationType="fade"
+                          >
+                            <Pressable 
+                              style={StyleSheet.absoluteFill}
+                              onPress={handleCloseCardMenu}
+                            >
+                              <View style={StyleSheet.absoluteFill}>
+                                <BlurView 
+                                  intensity={30} 
+                                  style={StyleSheet.absoluteFill}
+                                  tint={theme.mode === 'dark' ? 'dark' : 'light'}
+                                />
+                              </View>
+                            </Pressable>
+
+                            <View
+                              style={[
+                                styles.menuContainer,
+                                {
+                                  position: 'absolute',
+                                  left: menuPosition.x,
+                                  top: menuPosition.y,
+                                  width: menuPosition.width,
+                                  backgroundColor: Platform.OS === 'ios' 
+                                    ? 'rgba(250, 250, 250, 0.8)' 
+                                    : theme.mode === 'dark' 
+                                      ? 'rgba(30, 30, 30, 0.95)'
+                                      : 'rgba(255, 255, 255, 0.95)',
+                                  ...Platform.select({
+                                    ios: {
+                                      shadowColor: '#000',
+                                      shadowOffset: { width: 0, height: 4 },
+                                      shadowOpacity: 0.2,
+                                      shadowRadius: 8,
+                                    },
+                                    android: {
+                                      elevation: 8,
+                                    },
+                                    web: {
+                                      boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                                    },
+                                  }),
+                                },
+                              ]}
+                            >
+                              <Pressable
+                                style={({ pressed }) => [
+                                  styles.menuOption,
+                                  pressed && styles.menuOptionPressed,
+                                ]}
+                                onPress={() => handleDeleteCard(card.id)}
+                              >
+                                <MaterialIcons
+                                  name="delete-outline" 
+                                  size={20} 
+                                  color={theme.mode === 'dark' ? '#EF4444' : '#DC2626'} 
+                                />
+                                <Text style={[
+                                  styles.menuOptionText, 
+                                  { color: theme.mode === 'dark' ? '#EF4444' : '#DC2626' }
+                                ]}>
+                                  Delete Card
+                                </Text>
+                              </Pressable>
+                            </View>
+                          </Overlay>
+                        )}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <View style={styles.emptySearchState}>
+                      <MaterialIcons
+                        name="search-off"
+                        size={32}
+                        color={theme.colors.grey2}
+                      />
+                      <Text style={[styles.emptySearchText, { color: theme.colors.grey3 }]}>
+                        No cards match your search
+                      </Text>
+                    </View>
+                  )}
                 </View>
               </>
             ) : (
@@ -662,7 +751,10 @@ export default function DeckScreen() {
                   No Cards Yet
                 </Text>
                 <Text style={[styles.emptyText, { color: theme.colors.grey3 }]}>
-                  Start by adding some cards to your deck
+                  {!isNetworkConnected() 
+                    ? "Network issue or cards haven't synced yet"
+                    : "Start by adding some cards to your deck"
+                  }
                 </Text>
               </View>
             )}
@@ -931,5 +1023,28 @@ const styles = StyleSheet.create({
   menuOptionText: {
     fontSize: 16,
     fontWeight: '500',
+  },
+  offlineBadge: {
+    position: 'absolute',
+    right: 20,
+    top: 20,
+    backgroundColor: '#FFB11B',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  offlineBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'white',
+  },
+  emptySearchState: {
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  emptySearchText: {
+    fontSize: 14,
+    textAlign: 'center',
+    maxWidth: 240,
   },
 }); 

@@ -717,14 +717,81 @@ export async function getLocalCards(deckId: string): Promise<LocalCard[]> {
     const database = await ensureDatabase();
     if (!database) return [];
 
-    const result = await database.getAllAsync<any>(
-      'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
-      [deckId]
-    );
+    let cards: any[] = [];
+    let usedLocalId = false;
+    
+    console.log(`🔍 [DB] Getting local cards for deck ID: ${deckId}`);
+    
+    // Check if this is a local ID or a remote ID
+    if (deckId.startsWith('local_')) {
+      // This is a local ID, fetch directly
+      console.log(`🔍 [DB] Fetching cards by local deck ID: ${deckId}`);
+      usedLocalId = true;
+      
+      cards = await database.getAllAsync<any>(
+        'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
+        [deckId]
+      );
+      
+      // If no cards found, check if this deck has a remote ID and try that
+      if (cards.length === 0) {
+        const deck = await database.getFirstAsync<{remote_id: string}>(
+          'SELECT remote_id FROM decks WHERE id = ?',
+          [deckId]
+        );
+        
+        if (deck && deck.remote_id) {
+          console.log(`🔍 [DB] No cards found with local deck ID. Trying with remote ID: ${deck.remote_id}`);
+          
+          const remoteCards = await database.getAllAsync<any>(
+            'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
+            [deck.remote_id]
+          );
+          
+          if (remoteCards.length > 0) {
+            console.log(`🔍 [DB] Found ${remoteCards.length} cards using remote deck ID`);
+            cards = remoteCards;
+          }
+        }
+      }
+    } else {
+      // This is a remote ID, fetch directly
+      console.log(`🔍 [DB] Fetching cards by remote deck ID: ${deckId}`);
+      
+      cards = await database.getAllAsync<any>(
+        'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
+        [deckId]
+      );
+      
+      // If no cards found, check if there's a corresponding local deck ID
+      if (cards.length === 0) {
+        const localDecks = await database.getAllAsync<{id: string}>(
+          'SELECT id FROM decks WHERE remote_id = ?',
+          [deckId]
+        );
+        
+        if (localDecks && localDecks.length > 0) {
+          const localDeckId = localDecks[0].id;
+          console.log(`🔍 [DB] No cards found with remote deck ID. Trying with local ID: ${localDeckId}`);
+          
+          const localCards = await database.getAllAsync<any>(
+            'SELECT * FROM cards WHERE deck_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL) ORDER BY created_at DESC',
+            [localDeckId]
+          );
+          
+          if (localCards.length > 0) {
+            console.log(`🔍 [DB] Found ${localCards.length} cards using local deck ID`);
+            cards = localCards;
+          }
+        }
+      }
+    }
+    
+    console.log(`🔍 [DB] Found ${cards.length} cards for deck ${deckId}`);
 
-    return result.map(item => ({
+    return cards.map(item => ({
       id: item.id,
-      deck_id: item.deck_id,
+      deck_id: usedLocalId ? item.deck_id : deckId, // Ensure we return with the requested deck ID
       front: item.front,
       back: item.back,
       notes: item.notes || null,
@@ -752,5 +819,78 @@ export async function getLocalCards(deckId: string): Promise<LocalCard[]> {
   } catch (error) {
     console.error('Error getting local cards:', error);
     throw error;
+  }
+}
+
+// Get a single deck by remote ID
+export async function getDeckByRemoteId(id: string): Promise<LocalDeck | null> {
+  // On web platform, return null
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return null;
+
+    console.log(`🔍 [DB] Looking up deck with ID: ${id}`);
+    
+    let result: any = null;
+    
+    // First, try using the provided ID directly
+    if (id.startsWith('local_')) {
+      // This is a local ID, get it directly
+      console.log(`🔍 [DB] Looking up deck by local ID: ${id}`);
+      result = await database.getFirstAsync<any>(
+        'SELECT * FROM decks WHERE id = ?;',
+        [id]
+      );
+    } else {
+      // This is a remote ID, check if we have it
+      console.log(`🔍 [DB] Looking up deck by remote ID: ${id}`);
+      result = await database.getFirstAsync<any>(
+        'SELECT * FROM decks WHERE remote_id = ?;',
+        [id]
+      );
+      
+      // If not found but it's a local ID formatted like remote_XX, try local lookup
+      if (!result && id.includes('_')) {
+        const possibleLocalId = `local_${id}`;
+        console.log(`🔍 [DB] Not found as remote ID. Trying possible local ID: ${possibleLocalId}`);
+        result = await database.getFirstAsync<any>(
+          'SELECT * FROM decks WHERE id = ?;',
+          [possibleLocalId]
+        );
+      }
+    }
+
+    if (!result) {
+      console.log(`🔍 [DB] No deck found with ID: ${id}`);
+      return null;
+    }
+
+    console.log(`🔍 [DB] Found deck: ${result.name} (${result.id})`);
+
+    // Create a deck object with default values for missing fields
+    const deck: LocalDeck = {
+      id: result.id,
+      user_id: result.user_id,
+      name: result.name,
+      description: result.description || null,
+      language: result.language || 'General',
+      settings: result.settings ? JSON.parse(result.settings) : {},
+      tags: result.tags ? JSON.parse(result.tags) : [],
+      color_preset: result.color_preset || undefined,
+      created_at: result.created_at,
+      updated_at: result.updated_at || result.created_at,
+      synced: Boolean(result.synced),
+      remote_id: result.remote_id || null,
+      total_cards: result.total_cards || 0,
+      new_cards: result.new_cards || 0,
+      cards_to_review: result.cards_to_review || 0
+    };
+
+    return deck;
+  } catch (error) {
+    console.error('Error getting deck by remote ID:', error);
+    return null;
   }
 } 

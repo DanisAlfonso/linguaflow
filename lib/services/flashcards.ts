@@ -6,6 +6,8 @@ import { initFlashcardsDatabase } from '../db/flashcards';
 import { ensureDatabase } from '../db/index';
 import NetInfo from '@react-native-community/netinfo';
 import { createNewCard } from '@/lib/spaced-repetition/fsrs';
+import { getLocalCards, getDeckByRemoteId } from '../db/flashcards';
+import { supabase } from '../supabase';
 
 // Initialize the database
 export async function initializeDatabase(): Promise<void> {
@@ -593,9 +595,16 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
       throw new Error('Database not initialized');
     }
     
-    // First, sync new decks created offline
-    const unsyncedDecks = localDecks.filter(deck => !deck.synced);
-    console.log(`Found ${unsyncedDecks.length} unsynced decks to create remotely`);
+    // First, sync new decks created offline (synced=0 or remote_id is NULL)
+    const unsyncedDecks = localDecks.filter(deck => 
+      !deck.synced || 
+      !deck.remote_id || 
+      deck.remote_id === 'null' || 
+      deck.remote_id === 'NULL' || 
+      (typeof deck.remote_id === 'string' && deck.remote_id.startsWith('local_'))
+    );
+    console.log(`Found ${unsyncedDecks.length} unsynced decks to create remotely`, 
+      unsyncedDecks.map(d => ({ id: d.id, name: d.name, synced: d.synced, remote_id: d.remote_id })));
     
     for (const deck of unsyncedDecks) {
       try {
@@ -614,7 +623,7 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
         
         console.log(`Created remote deck: ${remoteDeck.id}`);
         
-        // Mark local deck as synced
+        // Mark local deck as synced and store the remote ID
         await db.runAsync(
           'UPDATE decks SET synced = 1, remote_id = ?, modified_offline = 0 WHERE id = ?',
           [remoteDeck.id, deck.id]
@@ -622,13 +631,58 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
         
         console.log(`Updated local deck ${deck.id} with remote ID ${remoteDeck.id}`);
         
-        // Update card references to point to the new remote deck ID
-        await db.runAsync(
-          'UPDATE cards SET deck_id = ? WHERE deck_id = ?',
-          [remoteDeck.id, deck.id]
+        // Now sync any cards for this deck that were created offline
+        const localCards = await db.getAllAsync<any>(
+          'SELECT * FROM cards WHERE deck_id = ?',
+          [deck.id]
         );
         
-        console.log(`Updated card references from local deck ${deck.id} to remote deck ${remoteDeck.id}`);
+        console.log(`Found ${localCards.length} local cards for deck ${deck.id} to process`);
+        
+        for (const cardData of localCards) {
+          try {
+            console.log(`Syncing offline card for new deck: ${cardData.front} (${cardData.id})`);
+            
+            // Parse JSON fields
+            const tags = cardData.tags ? JSON.parse(cardData.tags) : [];
+            const language_specific_data = cardData.language_specific_data 
+              ? JSON.parse(cardData.language_specific_data) 
+              : undefined;
+            
+            // Create card in Supabase with the remote deck ID
+            const remoteCard = await SupabaseAPI.createCard({
+              deck_id: remoteDeck.id, // Use the remote deck ID!
+              front: cardData.front,
+              back: cardData.back,
+              notes: cardData.notes,
+              tags,
+              language_specific_data,
+              state: cardData.state,
+              difficulty: cardData.difficulty,
+              stability: cardData.stability,
+              retrievability: cardData.retrievability,
+              elapsed_days: cardData.elapsed_days,
+              scheduled_days: cardData.scheduled_days,
+              reps: cardData.reps,
+              lapses: cardData.lapses,
+              step_index: cardData.step_index,
+              queue: cardData.queue,
+            });
+            
+            console.log(`Created remote card: ${remoteCard.id}`);
+            
+            // Update local card to point to remote deck ID and mark as synced
+            await db.runAsync(
+              'UPDATE cards SET synced = 1, remote_id = ?, deck_id = ?, modified_offline = 0 WHERE id = ?',
+              [remoteCard.id, remoteDeck.id, cardData.id]
+            );
+            
+            console.log(`Updated local card ${cardData.id} with remote ID ${remoteCard.id} and deck ID ${remoteDeck.id}`);
+          } catch (cardError) {
+            console.error(`Error syncing card ${cardData.id} for new deck:`, cardError);
+            // Continue with next card
+          }
+        }
       } catch (error) {
         console.error(`Error syncing deck ${deck.id}:`, error);
         // Continue with next deck
@@ -636,7 +690,12 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
     }
     
     // Then, update modified decks
-    const modifiedDecks = localDecks.filter(deck => deck.synced && deck.remote_id && deck.modified_offline);
+    const modifiedDecks = localDecks.filter(deck => 
+      deck.synced && 
+      deck.remote_id && 
+      !deck.remote_id.startsWith('local_') && 
+      deck.modified_offline
+    );
     console.log(`Found ${modifiedDecks.length} modified decks to update remotely`);
     
     for (const deck of modifiedDecks) {
@@ -697,28 +756,33 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
       console.error('Error processing deleted decks:', error);
     }
 
-    // Now sync cards
-    console.log('Starting to sync cards...');
+    // Now sync cards for already synced decks
+    console.log('Starting to sync cards for already synced decks...');
     
-    // Get all local decks that are synced and have remote IDs
-    const syncedDecks = localDecks.filter(deck => deck.synced && deck.remote_id);
+    // Get all local decks that are synced and have valid remote IDs (not local_* IDs)
+    const syncedDecks = localDecks.filter(deck => 
+      deck.synced && 
+      deck.remote_id && 
+      typeof deck.remote_id === 'string' && 
+      !deck.remote_id.startsWith('local_')
+    );
     console.log(`Found ${syncedDecks.length} synced decks to process cards for`);
     
     for (const deck of syncedDecks) {
       try {
-        console.log(`Processing cards for deck: ${deck.name} (${deck.id})`);
+        console.log(`Processing cards for synced deck: ${deck.name} (${deck.id})`);
         
         // Get all unsynchronized cards for this deck
         const unsyncedCards = await db.getAllAsync<any>(
-          'SELECT * FROM cards WHERE deck_id = ? AND synced = 0 AND (deleted_offline = 0 OR deleted_offline IS NULL)',
+          'SELECT * FROM cards WHERE deck_id = ? AND (synced = 0 OR synced IS NULL) AND (deleted_offline = 0 OR deleted_offline IS NULL)',
           [deck.id]
         );
         
-        console.log(`Found ${unsyncedCards.length} unsynced cards to create remotely for deck ${deck.id}`);
+        console.log(`Found ${unsyncedCards.length} unsynced cards to create remotely for synced deck ${deck.id}`);
         
         for (const cardData of unsyncedCards) {
           try {
-            console.log(`Syncing card: ${cardData.id}`);
+            console.log(`Syncing card: ${cardData.id}, front: "${cardData.front}"`);
             
             // Parse JSON fields
             const tags = cardData.tags ? JSON.parse(cardData.tags) : [];
@@ -726,9 +790,9 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
               ? JSON.parse(cardData.language_specific_data) 
               : undefined;
             
-            // Create card in Supabase
+            // Create card in Supabase with the remote deck ID
             const remoteCard = await SupabaseAPI.createCard({
-              deck_id: deck.remote_id as string,
+              deck_id: deck.remote_id as string,  // Use the remote ID of the deck
               front: cardData.front,
               back: cardData.back,
               notes: cardData.notes,
@@ -748,15 +812,57 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
             
             console.log(`Created remote card: ${remoteCard.id}`);
             
-            // Mark local card as synced
+            // Mark local card as synced and update its deck_id to the remote deck ID
             await db.runAsync(
-              'UPDATE cards SET synced = 1, remote_id = ?, modified_offline = 0 WHERE id = ?',
-              [remoteCard.id, cardData.id]
+              'UPDATE cards SET synced = 1, remote_id = ?, deck_id = ?, modified_offline = 0 WHERE id = ?',
+              [remoteCard.id, deck.remote_id, cardData.id]
             );
             
             console.log(`Updated local card ${cardData.id} with remote ID ${remoteCard.id}`);
           } catch (error) {
             console.error(`Error syncing card ${cardData.id}:`, error);
+            // Continue with next card
+          }
+        }
+        
+        // Get modified but already synced cards
+        const modifiedCards = await db.getAllAsync<any>(
+          'SELECT * FROM cards WHERE deck_id = ? AND synced = 1 AND remote_id IS NOT NULL AND modified_offline = 1 AND (deleted_offline = 0 OR deleted_offline IS NULL)',
+          [deck.id]
+        );
+        
+        console.log(`Found ${modifiedCards.length} modified cards to update remotely for deck ${deck.id}`);
+        
+        for (const cardData of modifiedCards) {
+          try {
+            console.log(`Updating modified card: ${cardData.id}`);
+            
+            // Parse JSON fields
+            const tags = cardData.tags ? JSON.parse(cardData.tags) : [];
+            const language_specific_data = cardData.language_specific_data 
+              ? JSON.parse(cardData.language_specific_data) 
+              : undefined;
+            
+            // Update card in Supabase
+            await SupabaseAPI.updateCard(cardData.remote_id, {
+              front: cardData.front,
+              back: cardData.back,
+              notes: cardData.notes,
+              tags,
+              language_specific_data,
+            });
+            
+            console.log(`Updated remote card: ${cardData.remote_id}`);
+            
+            // Mark local card as no longer modified offline
+            await db.runAsync(
+              'UPDATE cards SET modified_offline = 0 WHERE id = ?',
+              [cardData.id]
+            );
+            
+            console.log(`Marked local card ${cardData.id} as synced`);
+          } catch (error) {
+            console.error(`Error updating card ${cardData.id}:`, error);
             // Continue with next card
           }
         }
@@ -807,14 +913,44 @@ export async function getDeck(id: string): Promise<Deck | null> {
     }
 
     console.log(`Getting deck with ID: ${id}`);
+    
+    // Check if this is a local ID (starts with 'local_')
+    const isLocalId = id.startsWith('local_');
 
     // On web, always use Supabase
     if (Platform.OS === 'web') {
+      if (isLocalId) {
+        console.log('Cannot fetch local deck on web platform');
+        return null;
+      }
       return await SupabaseAPI.getDeck(id);
     }
 
     // On mobile, check if online
     const online = await isOnline();
+    
+    // If it's a local ID, always get from local storage
+    if (isLocalId) {
+      console.log(`Local deck ID detected (${id}), fetching from local database`);
+      const localDeck = await LocalDB.getLocalDeck(id);
+      if (!localDeck) return null;
+      
+      return {
+        id: localDeck.id,
+        user_id: localDeck.user_id,
+        name: localDeck.name,
+        description: localDeck.description,
+        language: localDeck.language,
+        settings: localDeck.settings,
+        tags: localDeck.tags,
+        color_preset: localDeck.color_preset,
+        created_at: localDeck.created_at,
+        updated_at: localDeck.updated_at,
+        total_cards: localDeck.total_cards || 0,
+        new_cards: localDeck.new_cards || 0,
+        cards_to_review: localDeck.cards_to_review || 0
+      };
+    }
 
     if (online) {
       try {
@@ -823,9 +959,31 @@ export async function getDeck(id: string): Promise<Deck | null> {
         return remoteDeck;
       } catch (remoteError) {
         console.error('Error getting deck from Supabase, falling back to local:', remoteError);
-        // Fall back to local storage if Supabase fails
-        const localDeck = await LocalDB.getLocalDeck(id);
-        if (!localDeck) return null;
+        
+        // Fall back to local storage if Supabase fails - first try by remote_id
+        const localDeck = await LocalDB.getDeckByRemoteId(id);
+        
+        // If not found by remote_id, try as a regular local id
+        if (!localDeck) {
+          const directLocalDeck = await LocalDB.getLocalDeck(id);
+          if (!directLocalDeck) return null;
+          
+          return {
+            id: directLocalDeck.id,
+            user_id: directLocalDeck.user_id,
+            name: directLocalDeck.name,
+            description: directLocalDeck.description,
+            language: directLocalDeck.language,
+            settings: directLocalDeck.settings,
+            tags: directLocalDeck.tags,
+            color_preset: directLocalDeck.color_preset,
+            created_at: directLocalDeck.created_at,
+            updated_at: directLocalDeck.updated_at,
+            total_cards: directLocalDeck.total_cards || 0,
+            new_cards: directLocalDeck.new_cards || 0,
+            cards_to_review: directLocalDeck.cards_to_review || 0
+          };
+        }
         
         return {
           id: localDeck.id,
@@ -846,7 +1004,27 @@ export async function getDeck(id: string): Promise<Deck | null> {
     } else {
       // Offline mode - get from local only
       const localDeck = await LocalDB.getLocalDeck(id);
-      if (!localDeck) return null;
+      if (!localDeck) {
+        // If not found directly, try looking up by remote_id
+        const deckByRemoteId = await LocalDB.getDeckByRemoteId(id);
+        if (!deckByRemoteId) return null;
+        
+        return {
+          id: deckByRemoteId.id,
+          user_id: deckByRemoteId.user_id,
+          name: deckByRemoteId.name,
+          description: deckByRemoteId.description,
+          language: deckByRemoteId.language,
+          settings: deckByRemoteId.settings,
+          tags: deckByRemoteId.tags,
+          color_preset: deckByRemoteId.color_preset,
+          created_at: deckByRemoteId.created_at,
+          updated_at: deckByRemoteId.updated_at,
+          total_cards: deckByRemoteId.total_cards || 0,
+          new_cards: deckByRemoteId.new_cards || 0,
+          cards_to_review: deckByRemoteId.cards_to_review || 0
+        };
+      }
       
       return {
         id: localDeck.id,
@@ -873,158 +1051,120 @@ export async function getDeck(id: string): Promise<Deck | null> {
 // Get cards for a deck
 export async function getCards(deckId: string): Promise<Card[]> {
   try {
+    const networkStatus = await isOnline();
     console.log(`📊 [SERVICE] Fetching cards for deck: ${deckId}`);
+    console.log(`📡 [SERVICE] Network status for getCards: ${networkStatus ? 'Online' : 'Offline'}`);
     
-    // Check if we're online
-    const online = await isOnline();
-    console.log(`📡 [SERVICE] Network status for getCards: ${online ? 'Online' : 'Offline'}`);
-
-    // On web, always use Supabase
-    if (Platform.OS === 'web') {
-      return await SupabaseAPI.getCards(deckId);
+    let effectiveDeckId = deckId;
+    let localDeckId = null;
+    
+    // If we're online and have a local ID, try to find the corresponding remote ID for API calls
+    if (networkStatus && deckId.startsWith('local_')) {
+      try {
+        // Get the local deck to find its remote ID
+        const localDeck = await getDeckByRemoteId(deckId);
+        if (localDeck && localDeck.remote_id) {
+          console.log(`🔄 [SERVICE] Found remote ID ${localDeck.remote_id} for local deck ${deckId}`);
+          effectiveDeckId = localDeck.remote_id;
+          localDeckId = deckId; // Store the local ID for fallback
+        }
+      } catch (error) {
+        console.error('Error checking for remote deck ID:', error);
+      }
+    }
+    // If we're offline and have a remote ID, try to find the corresponding local ID
+    else if (!networkStatus && !deckId.startsWith('local_')) {
+      try {
+        // Try to get the local deck by remote ID
+        const db = await ensureDatabase();
+        if (db) {
+          const localDecks = await db.getAllAsync<{id: string}>(
+            'SELECT id FROM decks WHERE remote_id = ?',
+            [deckId]
+          );
+          
+          if (localDecks && localDecks.length > 0) {
+            localDeckId = localDecks[0].id;
+            console.log(`🔄 [SERVICE] Found local ID ${localDeckId} for remote deck ${deckId}`);
+            effectiveDeckId = localDeckId;
+          }
+        }
+      } catch (error) {
+        console.error('Error checking for local deck ID:', error);
+      }
     }
 
-    if (online) {
+    if (networkStatus) {
+      console.log(`🔄 [SERVICE] Fetching cards from Supabase using deck ID: ${effectiveDeckId}`);
       try {
-        // Try to get from Supabase first
-        console.log('🔄 [SERVICE] Fetching cards from Supabase');
-        const remoteCards = await SupabaseAPI.getCards(deckId);
-        console.log(`✅ [SERVICE] Retrieved ${remoteCards.length} cards from Supabase`);
+        // Use the effective deck ID (remote ID if we found one, original ID otherwise)
+        const cards = await getCardsFromSupabase(effectiveDeckId);
         
-        // Cache them locally for offline access
-        try {
-          console.log('💾 [SERVICE] Caching cards locally for offline access');
-          const db = await ensureDatabase();
-          if (db) {
-            for (const card of remoteCards) {
-              // Convert dates to ISO strings for storage
-              const cardData = {
-                ...card,
-                created_at: card.created_at instanceof Date ? card.created_at.toISOString() : card.created_at,
-                last_reviewed_at: card.last_reviewed_at instanceof Date ? card.last_reviewed_at.toISOString() : card.last_reviewed_at,
-                next_review_at: card.next_review_at instanceof Date ? card.next_review_at.toISOString() : card.next_review_at,
-              };
-              
-              // Ensure we have an updated_at value (required by SQLite schema)
-              const updatedAt = (card as any).updated_at || cardData.created_at;
-              const updatedAtStr = updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt);
-
-              // Check if card already exists
-              const existingCard = await db.getFirstAsync<{count: number}>(
-                'SELECT COUNT(*) as count FROM cards WHERE id = ?',
-                [card.id]
-              );
-              
-              if (existingCard && existingCard.count > 0) {
-                // Update existing card
-                // For simplicity, we'll just delete and re-insert
-                await db.runAsync('DELETE FROM cards WHERE id = ?', [card.id]);
-              }
-              
-              // Prepare data for insertion
-              const tags = JSON.stringify(card.tags || []);
-              const language_specific_data = card.language_specific_data 
-                ? JSON.stringify(card.language_specific_data) 
-                : null;
-              
-              // Insert the card
-              await db.runAsync(`
-                INSERT INTO cards (
-                  id, deck_id, front, back, notes, tags, language_specific_data,
-                  created_at, updated_at, last_reviewed_at, next_review_at,
-                  review_count, consecutive_correct,
-                  state, difficulty, stability, retrievability,
-                  elapsed_days, scheduled_days, reps, lapses,
-                  step_index, queue,
-                  synced, remote_id, modified_offline, deleted_offline
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              `, [
-                card.id, card.deck_id, card.front, card.back, card.notes, tags, language_specific_data,
-                cardData.created_at, updatedAtStr, cardData.last_reviewed_at, cardData.next_review_at,
-                card.review_count || 0, card.consecutive_correct || 0,
-                card.state, card.difficulty, card.stability, card.retrievability,
-                card.elapsed_days, card.scheduled_days, card.reps, card.lapses,
-                card.step_index, card.queue,
-                1, card.id, 0, 0  // Synced = 1, remote_id = card.id, not modified, not deleted
-              ]);
-            }
-            console.log(`💾 [SERVICE] Cached ${remoteCards.length} cards locally`);
+        // Cache cards locally if on mobile
+        if (Platform.OS !== 'web') {
+          console.log(`💾 [SERVICE] Caching ${cards.length} cards locally`);
+          await cacheCardsLocally(cards, effectiveDeckId);
+          
+          // If we used a remote ID but have a local ID, also cache with the local ID for offline use
+          if (localDeckId && effectiveDeckId !== localDeckId) {
+            console.log(`💾 [SERVICE] Also caching cards with local deck ID ${localDeckId}`);
+            
+            // Update the deck_id in the cards for this cache operation
+            const localCards = cards.map(card => ({
+              ...card,
+              deck_id: localDeckId
+            }));
+            
+            await cacheCardsLocally(localCards, localDeckId);
           }
-        } catch (localError) {
-          console.error('❌ [SERVICE] Error caching cards locally:', localError);
-          // Continue anyway since we have the remote cards
         }
         
-        return remoteCards;
-      } catch (remoteError) {
-        console.error('❌ [SERVICE] Error fetching cards from Supabase, falling back to local:', remoteError);
-        
-        // Fall back to local storage if Supabase fails
-        console.log('💾 [SERVICE] Falling back to local database for cards');
-        const localCards = await LocalDB.getLocalCards(deckId);
-        console.log(`💾 [SERVICE] Retrieved ${localCards.length} cards from local database`);
-        
-        return localCards.map(card => ({
-          id: card.id,
-          deck_id: card.deck_id,
-          front: card.front,
-          back: card.back,
-          notes: card.notes,
-          tags: card.tags || [],
-          language_specific_data: card.language_specific_data,
-          created_at: card.created_at,
-          last_reviewed_at: card.last_reviewed_at,
-          next_review_at: card.next_review_at,
-          review_count: card.review_count,
-          consecutive_correct: card.consecutive_correct,
-          state: card.state,
-          difficulty: card.difficulty,
-          stability: card.stability,
-          retrievability: card.retrievability,
-          elapsed_days: card.elapsed_days,
-          scheduled_days: card.scheduled_days,
-          reps: card.reps,
-          lapses: card.lapses,
-          scheduled_in_minutes: card.scheduled_in_minutes,
-          step_index: card.step_index,
-          queue: card.queue,
-        }));
+        return cards;
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error fetching cards from Supabase, falling back to local:`, error);
+        if (Platform.OS !== 'web') {
+          console.log(`💾 [SERVICE] Falling back to local database for cards`);
+          // Try with original deck ID first
+          const localCards = await getLocalCards(deckId);
+          
+          // If we found no cards but have a different effective ID, try that
+          if (localCards.length === 0 && effectiveDeckId !== deckId) {
+            console.log(`💾 [SERVICE] No cards found with ID ${deckId}, trying ${effectiveDeckId}`);
+            const effectiveLocalCards = await getLocalCards(effectiveDeckId);
+            console.log(`💾 [SERVICE] Retrieved ${effectiveLocalCards.length} cards from local database`);
+            return effectiveLocalCards.map(formatLocalCard);
+          }
+          
+          console.log(`💾 [SERVICE] Retrieved ${localCards.length} cards from local database`);
+          return localCards.map(formatLocalCard);
+        } else {
+          throw error;
+        }
       }
     } else {
-      // Offline mode - get from local storage
-      console.log('💾 [SERVICE] In offline mode, retrieving cards from local database');
-      const localCards = await LocalDB.getLocalCards(deckId);
-      console.log(`💾 [SERVICE] Retrieved ${localCards.length} cards from local database in offline mode`);
+      console.log(`💾 [SERVICE] In offline mode, retrieving cards from local database using ID: ${effectiveDeckId}`);
+      if (Platform.OS === 'web') {
+        console.log(`⚠️ [SERVICE] Local database not available on web platform`);
+        return [];
+      }
       
-      return localCards.map(card => ({
-        id: card.id,
-        deck_id: card.deck_id,
-        front: card.front,
-        back: card.back,
-        notes: card.notes,
-        tags: card.tags || [],
-        language_specific_data: card.language_specific_data,
-        created_at: card.created_at,
-        last_reviewed_at: card.last_reviewed_at,
-        next_review_at: card.next_review_at,
-        review_count: card.review_count,
-        consecutive_correct: card.consecutive_correct,
-        state: card.state,
-        difficulty: card.difficulty,
-        stability: card.stability,
-        retrievability: card.retrievability,
-        elapsed_days: card.elapsed_days,
-        scheduled_days: card.scheduled_days,
-        reps: card.reps,
-        lapses: card.lapses,
-        scheduled_in_minutes: card.scheduled_in_minutes,
-        step_index: card.step_index,
-        queue: card.queue,
-      }));
+      // Try with effective ID first (which may be the local ID we found)
+      const localCards = await getLocalCards(effectiveDeckId);
+      
+      // If no cards found and we have a different original ID, try with that as fallback
+      if (localCards.length === 0 && effectiveDeckId !== deckId) {
+        console.log(`💾 [SERVICE] No cards found with ID ${effectiveDeckId}, trying original ID ${deckId}`);
+        const originalLocalCards = await getLocalCards(deckId);
+        console.log(`💾 [SERVICE] Retrieved ${originalLocalCards.length} cards from local database in offline mode`);
+        return originalLocalCards.map(formatLocalCard);
+      }
+      
+      console.log(`💾 [SERVICE] Retrieved ${localCards.length} cards from local database in offline mode`);
+      return localCards.map(formatLocalCard);
     }
   } catch (error) {
-    console.error('❌ [SERVICE] Error in getCards service:', error);
-    throw error;
+    console.error(`❌ [SERVICE] Error in getCards:`, error);
+    return [];
   }
 }
 
@@ -1064,5 +1204,193 @@ export async function deleteCard(cardId: string): Promise<void> {
   } catch (error) {
     console.error('Error in deleteCard service:', error);
     throw error;
+  }
+}
+
+// Function to format a local card to the Card interface expected by the app
+function formatLocalCard(card: any): Card {
+  return {
+    id: card.id,
+    deck_id: card.deck_id,
+    front: card.front,
+    back: card.back,
+    notes: card.notes,
+    tags: card.tags || [],
+    language_specific_data: card.language_specific_data,
+    created_at: card.created_at,
+    last_reviewed_at: card.last_reviewed_at,
+    next_review_at: card.next_review_at,
+    review_count: card.review_count,
+    consecutive_correct: card.consecutive_correct,
+    state: card.state,
+    difficulty: card.difficulty,
+    stability: card.stability,
+    retrievability: card.retrievability,
+    elapsed_days: card.elapsed_days,
+    scheduled_days: card.scheduled_days,
+    reps: card.reps,
+    lapses: card.lapses,
+    scheduled_in_minutes: card.scheduled_in_minutes,
+    step_index: card.step_index,
+    queue: card.queue,
+  };
+}
+
+// Function to get cards from Supabase
+async function getCardsFromSupabase(deckId: string): Promise<Card[]> {
+  console.log('📡 [NETWORK] Status check:', await isOnline() ? 'Online' : 'Offline');
+  console.log('📊 [API] getCards called:', { deckId, networkStatus: await isOnline() ? 'online' : 'offline' });
+  console.log('🔄 [API] Fetching cards for deck from Supabase');
+
+  try {
+    const { data, error } = await supabase
+      .from('cards')
+      .select('*')
+      .eq('deck_id', deckId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ [API] Error fetching cards from Supabase:', error);
+      throw error;
+    }
+
+    return data || [];
+  } catch (error) {
+    console.error('❌ [API] Error in getCards:', error);
+    throw error;
+  }
+}
+
+// Function to cache cards locally
+async function cacheCardsLocally(cards: Card[], deckId: string): Promise<void> {
+  try {
+    const db = await ensureDatabase();
+    if (!db) return;
+
+    // Find the local deck ID if we're using a remote ID
+    let localDeckId = null;
+    if (!deckId.startsWith('local_')) {
+      // This is a remote ID, try to find the corresponding local deck
+      try {
+        const localDecks = await db.getAllAsync<{id: string, remote_id: string}>(
+          'SELECT id, remote_id FROM decks WHERE remote_id = ?',
+          [deckId]
+        );
+        
+        if (localDecks && localDecks.length > 0) {
+          localDeckId = localDecks[0].id;
+          console.log(`🔄 [SERVICE] Found corresponding local deck ID ${localDeckId} for remote deck ${deckId}`);
+        }
+      } catch (err) {
+        console.error('Error finding local deck:', err);
+      }
+    } else {
+      // This is a local ID, try to find the remote ID
+      try {
+        const deckData = await db.getFirstAsync<{remote_id: string}>(
+          'SELECT remote_id FROM decks WHERE id = ?',
+          [deckId]
+        );
+        
+        if (deckData && deckData.remote_id) {
+          console.log(`🔄 [SERVICE] Found corresponding remote deck ID ${deckData.remote_id} for local deck ${deckId}`);
+        }
+      } catch (err) {
+        console.error('Error finding remote deck:', err);
+      }
+    }
+
+    for (const card of cards) {
+      // Convert dates to ISO strings for storage
+      const cardData = {
+        ...card,
+        created_at: card.created_at instanceof Date ? card.created_at.toISOString() : card.created_at,
+        last_reviewed_at: card.last_reviewed_at instanceof Date ? card.last_reviewed_at.toISOString() : card.last_reviewed_at,
+        next_review_at: card.next_review_at instanceof Date ? card.next_review_at.toISOString() : card.next_review_at,
+      };
+      
+      // Ensure we have an updated_at value (required by SQLite schema)
+      const updatedAt = (card as any).updated_at || cardData.created_at;
+      const updatedAtStr = updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt);
+
+      // Check if card already exists
+      const existingCard = await db.getFirstAsync<{count: number}>(
+        'SELECT COUNT(*) as count FROM cards WHERE id = ?',
+        [card.id]
+      );
+      
+      if (existingCard && existingCard.count > 0) {
+        // Update existing card
+        // For simplicity, we'll just delete and re-insert
+        await db.runAsync('DELETE FROM cards WHERE id = ?', [card.id]);
+      }
+      
+      // Prepare data for insertion
+      const tags = JSON.stringify(card.tags || []);
+      const language_specific_data = card.language_specific_data 
+        ? JSON.stringify(card.language_specific_data) 
+        : null;
+      
+      // Insert the card with the provided deck ID
+      await db.runAsync(`
+        INSERT INTO cards (
+          id, deck_id, front, back, notes, tags, language_specific_data,
+          created_at, updated_at, last_reviewed_at, next_review_at,
+          review_count, consecutive_correct,
+          state, difficulty, stability, retrievability,
+          elapsed_days, scheduled_days, reps, lapses,
+          step_index, queue,
+          synced, remote_id, modified_offline, deleted_offline
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        card.id, card.deck_id, card.front, card.back, card.notes, tags, language_specific_data,
+        cardData.created_at, updatedAtStr, cardData.last_reviewed_at, cardData.next_review_at,
+        card.review_count || 0, card.consecutive_correct || 0,
+        card.state, card.difficulty, card.stability, card.retrievability,
+        card.elapsed_days, card.scheduled_days, card.reps, card.lapses,
+        card.step_index, card.queue,
+        1, card.id, 0, 0  // Synced = 1, remote_id = card.id, not modified, not deleted
+      ]);
+      
+      // If we found a local deck ID corresponding to this remote deck ID,
+      // create a duplicate mapping with the local deck ID to ensure the card
+      // is accessible when using either ID
+      if (localDeckId && !deckId.startsWith('local_')) {
+        // Generate a unique id for this mapping
+        const mappingId = `mapping_${card.id}_${localDeckId}`;
+        
+        // Delete any existing mapping first
+        await db.runAsync(
+          'DELETE FROM cards WHERE id = ?',
+          [mappingId]
+        );
+        
+        // Create a mapping entry that points to the local deck
+        await db.runAsync(`
+          INSERT INTO cards (
+            id, deck_id, front, back, notes, tags, language_specific_data,
+            created_at, updated_at, last_reviewed_at, next_review_at,
+            review_count, consecutive_correct,
+            state, difficulty, stability, retrievability,
+            elapsed_days, scheduled_days, reps, lapses,
+            step_index, queue,
+            synced, remote_id, modified_offline, deleted_offline
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          mappingId, localDeckId, card.front, card.back, card.notes, tags, language_specific_data,
+          cardData.created_at, updatedAtStr, cardData.last_reviewed_at, cardData.next_review_at,
+          card.review_count || 0, card.consecutive_correct || 0,
+          card.state, card.difficulty, card.stability, card.retrievability,
+          card.elapsed_days, card.scheduled_days, card.reps, card.lapses,
+          card.step_index, card.queue,
+          1, card.id, 0, 0  // Synced = 1, remote_id = card.id, not modified, not deleted
+        ]);
+        
+        console.log(`🔄 [SERVICE] Created mapping from local deck ID ${localDeckId} to card ${card.id}`);
+      }
+    }
+    console.log(`💾 [SERVICE] Cached ${cards.length} cards locally`);
+  } catch (error) {
+    console.error('❌ [SERVICE] Error caching cards locally:', error);
   }
 } 

@@ -1,4 +1,6 @@
 import NetInfo from '@react-native-community/netinfo';
+import { syncOfflineDecks } from '../services/flashcards';
+import { Platform } from 'react-native';
 
 /**
  * Utility functions for network status detection and logging
@@ -21,7 +23,13 @@ export const initNetworkMonitoring = () => {
     // Log network status changes
     if (prevConnected !== isConnected) {
       if (isConnected) {
-        console.log('📡 [NETWORK] Connection restored, sync may be needed');
+        console.log('📡 [NETWORK] Connection restored, triggering sync');
+        
+        // Trigger sync when connection is restored
+        // Only for mobile platforms since they have SQLite
+        if (Platform.OS !== 'web') {
+          syncReconnected();
+        }
       } else {
         console.log('📡 [NETWORK] Device is offline, switching to local mode');
       }
@@ -29,6 +37,28 @@ export const initNetworkMonitoring = () => {
   });
   
   return unsubscribe;
+};
+
+/**
+ * Trigger synchronization when connection is restored
+ */
+const syncReconnected = async () => {
+  try {
+    console.log('🔄 [SYNC] Attempting to sync offline data after reconnection');
+    
+    // For now, we'll skip auto-syncing here because we don't have direct access
+    // to the auth context. The sync will be handled elsewhere where we have access
+    // to the user ID.
+    console.log('ℹ️ [SYNC] Auto-sync temporarily disabled - will sync on next app interaction');
+    
+    // When we can access the auth context:
+    // const userId = getCurrentUserId();
+    // if (userId) {
+    //   await syncOfflineDecks(userId);
+    // }
+  } catch (error) {
+    console.error('❌ [SYNC] Error syncing after reconnection:', error);
+  }
 };
 
 /**
