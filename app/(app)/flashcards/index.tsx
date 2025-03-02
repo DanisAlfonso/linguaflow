@@ -1,15 +1,17 @@
 import React, { useState, useCallback } from 'react';
-import { View, ScrollView, StyleSheet, Platform, Pressable, RefreshControl } from 'react-native';
+import { View, ScrollView, StyleSheet, Platform, Pressable, RefreshControl, Switch } from 'react-native';
 import { Text, Button, useTheme, Overlay, Input } from '@rneui/themed';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Container } from '../../../components/layout/Container';
-import { getDecks, updateDeck, deleteDeck } from '../../../lib/api/flashcards';
+import { getDecks, updateDeck, deleteDeck } from '../../../lib/services/flashcards';
 import type { Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 import { BlurView } from 'expo-blur';
+import { useDatabase } from '../../../contexts/DatabaseContext';
+import { useAuth } from '../../../contexts/AuthContext';
 
 // Add gradient presets with names
 type GradientPreset = 'blue' | 'purple' | 'green' | 'orange' | 'pink';
@@ -44,12 +46,36 @@ export default function FlashcardsScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
+  const { isOnline, syncData } = useDatabase();
+  const { user } = useAuth();
 
   const loadDecks = async () => {
     try {
-      const data = await getDecks();
+      if (!user) {
+        console.error('Cannot load decks: user is not authenticated');
+        Toast.show({
+          type: 'error',
+          text1: 'Authentication Error',
+          text2: 'Please sign in again',
+        });
+        router.replace('/sign-in');
+        return;
+      }
+      
+      // If we're online, try to sync offline changes first
+      if (isOnline && Platform.OS !== 'web') {
+        try {
+          await syncData();
+        } catch (syncError) {
+          console.error('Error syncing offline data:', syncError);
+          // Continue loading decks even if sync fails
+        }
+      }
+      
+      const data = await getDecks(user.id);
       setDecks(data);
     } catch (error) {
+      console.error('Error loading decks:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -131,12 +157,14 @@ export default function FlashcardsScreen() {
 
       Toast.show({
         type: 'success',
-        text1: 'Color updated successfully',
+        text1: 'Success',
+        text2: isOnline ? 'Color updated successfully' : 'Color updated successfully (offline). Will sync when online.',
       });
     } catch (error) {
       Toast.show({
         type: 'error',
-        text1: 'Failed to update color',
+        text1: 'Error',
+        text2: 'Failed to update color',
       });
     } finally {
       setShowColorPicker(false);
@@ -164,12 +192,14 @@ export default function FlashcardsScreen() {
 
       Toast.show({
         type: 'success',
-        text1: 'Deck renamed successfully',
+        text1: 'Success',
+        text2: isOnline ? 'Deck renamed successfully' : 'Deck renamed successfully (offline). Will sync when online.',
       });
     } catch (error) {
       Toast.show({
         type: 'error',
-        text1: 'Failed to rename deck',
+        text1: 'Error',
+        text2: 'Failed to rename deck',
       });
     } finally {
       setShowRename(false);
@@ -186,12 +216,14 @@ export default function FlashcardsScreen() {
 
       Toast.show({
         type: 'success',
-        text1: 'Deck deleted successfully',
+        text1: 'Success',
+        text2: isOnline ? 'Deck deleted successfully' : 'Deck deleted successfully (offline). Will sync when online.',
       });
     } catch (error) {
       Toast.show({
         type: 'error',
-        text1: 'Failed to delete deck',
+        text1: 'Error',
+        text2: 'Failed to delete deck',
       });
     } finally {
       setEditingDeckId(null);

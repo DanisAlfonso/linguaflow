@@ -12,6 +12,7 @@ export async function createDeck(
     settings?: Record<string, any>;
     tags?: string[];
     userId: string;
+    color_preset?: string;
   }
 ): Promise<Deck> {
   console.log('Creating deck with data:', data);
@@ -27,6 +28,7 @@ export async function createDeck(
         language: data.language || 'General',
         settings: data.settings || {},
         tags: data.tags || [],
+        color_preset: data.color_preset || null
       })
       .select()
       .single();
@@ -247,10 +249,11 @@ export async function deleteCard(id: string): Promise<void> {
   }
 }
 
-export async function getDecks(): Promise<Deck[]> {
+export async function getDecks(userId: string): Promise<Deck[]> {
   const { data: decks, error } = await supabase
     .from('decks')
     .select()
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) {

@@ -5,9 +5,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
-import { createDeck } from '../../../lib/api/flashcards';
+import { createDeck } from '../../../lib/services/flashcards';
 import Toast from 'react-native-toast-message';
 import { useAuth } from '../../../contexts/AuthContext';
+import { useDatabase } from '../../../contexts/DatabaseContext';
 
 export default function CreateDeckScreen() {
   const [name, setName] = useState('');
@@ -19,6 +20,7 @@ export default function CreateDeckScreen() {
   const router = useRouter();
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { isOnline } = useDatabase();
 
   const handleCreateDeck = async () => {
     if (!name.trim()) {
@@ -61,7 +63,9 @@ export default function CreateDeckScreen() {
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: 'Deck created successfully',
+        text2: isOnline 
+          ? 'Deck created successfully' 
+          : 'Deck created offline. Will sync when online.',
       });
 
       router.replace('/flashcards');
@@ -186,7 +190,8 @@ export default function CreateDeckScreen() {
                 <Switch
                   value={isMandarin}
                   onValueChange={setIsMandarin}
-                  color={theme.colors.primary}
+                  trackColor={{ false: '#767577', true: theme.colors.primary }}
+                  thumbColor={isMandarin ? '#ffffff' : '#f4f3f4'}
                 />
               </View>
               {isMandarin && (

@@ -10,6 +10,7 @@ import { useBackgroundSync } from '../hooks/useBackgroundSync';
 import { StudySettingsProvider } from '../contexts/StudySettingsContext';
 import { TabBarProvider } from '../contexts/TabBarContext';
 import { NotificationsProvider } from '../contexts/NotificationsContext';
+import { DatabaseProvider } from '../contexts/DatabaseContext';
 
 // Suppress specific warnings
 LogBox.ignoreLogs([
@@ -24,50 +25,52 @@ function AppContent() {
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <AuthProvider initialPathname={initialPathname}>
-        <NotificationsProvider>
-          <StudySettingsProvider>
-            <TabBarProvider>
-              <Stack 
-                screenOptions={{
-                  headerShown: false,
-                  animation: 'slide_from_right',
-                }}
-              >
-                <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
-                <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
-                <Stack.Screen 
-                  name="profile" 
-                  options={{
+        <DatabaseProvider>
+          <NotificationsProvider>
+            <StudySettingsProvider>
+              <TabBarProvider>
+                <Stack 
+                  screenOptions={{
+                    headerShown: false,
                     animation: 'slide_from_right',
-                    presentation: 'card',
-                  }} 
-                />
-                <Stack.Screen 
-                  name="settings" 
-                  options={{
-                    animation: 'slide_from_right',
-                    presentation: 'card',
-                  }} 
-                />
-                <Stack.Screen 
-                  name="chat" 
-                  options={{
-                    animation: 'slide_from_right',
-                    presentation: 'card',
-                  }} 
-                />
-                <Stack.Screen 
-                  name="statistics" 
-                  options={{
-                    animation: 'slide_from_right',
-                    presentation: 'card',
-                  }} 
-                />
-              </Stack>
-            </TabBarProvider>
-          </StudySettingsProvider>
-          <Toast />
-        </NotificationsProvider>
+                  }}
+                >
+                  <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
+                  <Stack.Screen name="(app)" options={{ animation: 'fade' }} />
+                  <Stack.Screen 
+                    name="profile" 
+                    options={{
+                      animation: 'slide_from_right',
+                      presentation: 'card',
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="settings" 
+                    options={{
+                      animation: 'slide_from_right',
+                      presentation: 'card',
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="chat" 
+                    options={{
+                      animation: 'slide_from_right',
+                      presentation: 'card',
+                    }} 
+                  />
+                  <Stack.Screen 
+                    name="statistics" 
+                    options={{
+                      animation: 'slide_from_right',
+                      presentation: 'card',
+                    }} 
+                  />
+                </Stack>
+              </TabBarProvider>
+            </StudySettingsProvider>
+            <Toast />
+          </NotificationsProvider>
+        </DatabaseProvider>
       </AuthProvider>
     </View>
   );
