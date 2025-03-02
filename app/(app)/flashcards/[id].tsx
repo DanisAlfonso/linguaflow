@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Container } from '../../../components/layout/Container';
-import { getDeck, getCards, deleteCard } from '../../../lib/api/flashcards';
+import { getDeck, getCards, deleteCard } from '../../../lib/services/flashcards';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 
@@ -29,11 +29,9 @@ export default function DeckScreen() {
 
   const loadDeckAndCards = useCallback(async () => {
     try {
-      const [deckData, cardsData] = await Promise.all([
-        getDeck(id as string),
-        getCards(id as string),
-      ]);
-
+      // First try to get the deck
+      const deckData = await getDeck(id as string);
+      
       if (!deckData) {
         Toast.show({
           type: 'error',
@@ -43,9 +41,24 @@ export default function DeckScreen() {
         router.back();
         return;
       }
-
+      
       setDeck(deckData);
-      setCards(cardsData);
+      
+      // Then try to get the cards
+      try {
+        const cardsData = await getCards(id as string);
+        setCards(cardsData);
+      } catch (cardsError) {
+        console.error('Error loading cards:', cardsError);
+        // If we're offline, we might not be able to get cards from the API
+        // but we still want to show the deck
+        Toast.show({
+          type: 'warning',
+          text1: 'Limited functionality',
+          text2: 'Cards could not be loaded. Some features may be unavailable.',
+        });
+        setCards([]);
+      }
     } catch (error) {
       console.error('Error loading deck:', error);
       Toast.show({
@@ -171,9 +184,16 @@ export default function DeckScreen() {
         text1: 'Card deleted successfully',
       });
     } catch (error) {
+      console.error('Error deleting card:', error);
+      
+      // Check if it's an offline error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete card';
+      const isOfflineError = errorMessage.includes('offline');
+      
       Toast.show({
         type: 'error',
-        text1: 'Failed to delete card',
+        text1: isOfflineError ? 'Offline Mode' : 'Error',
+        text2: errorMessage,
       });
     } finally {
       setEditingCardId(null);

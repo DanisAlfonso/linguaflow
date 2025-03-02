@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { Deck } from '../../types/flashcards';
+import { Deck, Card } from '../../types/flashcards';
 import * as SupabaseAPI from '../api/flashcards';
 import * as LocalDB from '../db/flashcards';
 import { initFlashcardsDatabase } from '../db/flashcards';
@@ -522,6 +522,157 @@ export async function syncOfflineDecks(userId: string): Promise<void> {
     console.log('Finished syncing offline decks to server');
   } catch (error) {
     console.error('Error in syncOfflineDecks:', error);
+    throw error;
+  }
+}
+
+// Get a single deck by ID
+export async function getDeck(id: string): Promise<Deck | null> {
+  try {
+    if (!id) {
+      console.error('Cannot get deck: id is null or undefined');
+      return null;
+    }
+
+    console.log(`Getting deck with ID: ${id}`);
+
+    // On web, always use Supabase
+    if (Platform.OS === 'web') {
+      return await SupabaseAPI.getDeck(id);
+    }
+
+    // On mobile, check if online
+    const online = await isOnline();
+
+    if (online) {
+      try {
+        // Try to get from Supabase first
+        const remoteDeck = await SupabaseAPI.getDeck(id);
+        return remoteDeck;
+      } catch (remoteError) {
+        console.error('Error getting deck from Supabase, falling back to local:', remoteError);
+        // Fall back to local storage if Supabase fails
+        const localDeck = await LocalDB.getLocalDeck(id);
+        if (!localDeck) return null;
+        
+        return {
+          id: localDeck.id,
+          user_id: localDeck.user_id,
+          name: localDeck.name,
+          description: localDeck.description,
+          language: localDeck.language,
+          settings: localDeck.settings,
+          tags: localDeck.tags,
+          color_preset: localDeck.color_preset,
+          created_at: localDeck.created_at,
+          updated_at: localDeck.updated_at,
+          total_cards: localDeck.total_cards || 0,
+          new_cards: localDeck.new_cards || 0,
+          cards_to_review: localDeck.cards_to_review || 0
+        };
+      }
+    } else {
+      // Offline mode - get from local only
+      const localDeck = await LocalDB.getLocalDeck(id);
+      if (!localDeck) return null;
+      
+      return {
+        id: localDeck.id,
+        user_id: localDeck.user_id,
+        name: localDeck.name,
+        description: localDeck.description,
+        language: localDeck.language,
+        settings: localDeck.settings,
+        tags: localDeck.tags,
+        color_preset: localDeck.color_preset,
+        created_at: localDeck.created_at,
+        updated_at: localDeck.updated_at,
+        total_cards: localDeck.total_cards || 0,
+        new_cards: localDeck.new_cards || 0,
+        cards_to_review: localDeck.cards_to_review || 0
+      };
+    }
+  } catch (error) {
+    console.error('Error in getDeck service:', error);
+    throw error;
+  }
+}
+
+// Get cards for a deck
+export async function getCards(deckId: string): Promise<Card[]> {
+  try {
+    if (!deckId) {
+      console.error('Cannot get cards: deckId is null or undefined');
+      return [];
+    }
+
+    console.log(`Getting cards for deck ID: ${deckId}`);
+
+    // On web, always use Supabase
+    if (Platform.OS === 'web') {
+      return await SupabaseAPI.getCards(deckId);
+    }
+
+    // On mobile, check if online
+    const online = await isOnline();
+
+    if (online) {
+      try {
+        // Try to get from Supabase first
+        const remoteCards = await SupabaseAPI.getCards(deckId);
+        return remoteCards;
+      } catch (remoteError) {
+        console.error('Error getting cards from Supabase, falling back to local:', remoteError);
+        // Fall back to local storage if Supabase fails
+        // For now, return empty array as local card storage is not implemented yet
+        return [];
+      }
+    } else {
+      // Offline mode - get from local only
+      // For now, return empty array as local card storage is not implemented yet
+      return [];
+    }
+  } catch (error) {
+    console.error('Error in getCards service:', error);
+    throw error;
+  }
+}
+
+// Delete a card
+export async function deleteCard(cardId: string): Promise<void> {
+  try {
+    if (!cardId) {
+      console.error('Cannot delete card: cardId is null or undefined');
+      throw new Error('Card ID is required to delete a card');
+    }
+
+    console.log(`Deleting card with ID: ${cardId}`);
+
+    // On web, always use Supabase
+    if (Platform.OS === 'web') {
+      return await SupabaseAPI.deleteCard(cardId);
+    }
+
+    // On mobile, check if online
+    const online = await isOnline();
+
+    if (online) {
+      try {
+        // Try to delete from Supabase first
+        await SupabaseAPI.deleteCard(cardId);
+        // Since we don't have local card storage yet, we don't need to delete locally
+      } catch (remoteError) {
+        console.error('Error deleting card from Supabase:', remoteError);
+        // Since we don't have local card storage yet, just throw the error
+        throw remoteError;
+      }
+    } else {
+      // Offline mode - since we don't have local card storage yet, show error
+      console.log('Device is offline. Cannot delete card when offline.');
+      throw new Error('Cannot delete card when offline. Please try again when you have an internet connection.');
+    }
+  } catch (error) {
+    console.error('Error in deleteCard service:', error);
     throw error;
   }
 } 
