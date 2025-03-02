@@ -15,6 +15,7 @@ import type { Deck, MandarinCardData } from '../../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../../types/audio';
 import { getCardAudioSegments } from '../../../../../lib/api/audio';
 import Toast from 'react-native-toast-message';
+import { checkNetworkStatus, logOperationMode, isNetworkConnected } from '../../../../../lib/utils/network';
 
 export default function CreateCardScreen() {
   const [front, setFront] = useState('');
@@ -44,18 +45,39 @@ export default function CreateCardScreen() {
 
   useEffect(() => {
     const loadDeck = async () => {
+      // Check network status before loading deck
+      const isOnline = await checkNetworkStatus();
+      
+      console.log('🔄 [CREATE CARD] Screen mounted, loading deck information', { 
+        deckId: id,
+        networkStatus: isOnline ? 'online' : 'offline'
+      });
+      
       try {
+        logOperationMode('Fetching deck data for card creation', { deckId: id });
         const deckData = await getDeck(id as string);
+        
+        console.log('✅ [CREATE CARD] Deck loaded successfully', { 
+          deckName: deckData?.name, 
+          language: deckData?.language,
+          settings: deckData?.settings,
+          source: isOnline ? 'remote' : 'local'
+        });
+        
         setDeck(deckData);
         if (deckData?.language === 'Mandarin' && deckData.settings?.defaultCharacterSize) {
           setCharacterSize(deckData.settings.defaultCharacterSize);
         }
       } catch (error) {
-        console.error('Error loading deck:', error);
+        console.error('❌ [CREATE CARD] Error loading deck:', error);
+        console.log('❌ [CREATE CARD] Offline status during error:', !isNetworkConnected());
+        
         Toast.show({
           type: 'error',
           text1: 'Error',
-          text2: 'Failed to load deck information',
+          text2: isNetworkConnected() 
+            ? 'Failed to load deck information' 
+            : 'You are offline. Offline card creation will be available soon.',
         });
       }
     };
@@ -76,8 +98,15 @@ export default function CreateCardScreen() {
   }, []);
 
   const handleCreateCard = async (andContinue = false) => {
-    console.log('handleCreateCard called:', { andContinue, currentCreatedCard: createdCard });
+    console.log('🔄 [CREATE CARD] handleCreateCard called:', { 
+      andContinue, 
+      currentCreatedCard: createdCard,
+      frontLength: front.length,
+      backLength: back.length 
+    });
+    
     if (!front.trim() || !back.trim()) {
+      console.log('❌ [CREATE CARD] Validation failed: front or back is empty');
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -92,10 +121,13 @@ export default function CreateCardScreen() {
       
       // Only create a new card if one doesn't exist
       if (!cardId) {
+        console.log('🔄 [CREATE CARD] No existing card ID, creating new card');
         cardId = await audioButtonProps.onCreateCard();
         if (!cardId) {
+          console.log('❌ [CREATE CARD] Failed to create card (no ID returned)');
           return;
         }
+        console.log('✅ [CREATE CARD] Card created successfully with ID:', cardId);
       }
       
       Toast.show({
@@ -107,13 +139,14 @@ export default function CreateCardScreen() {
       // Show finish button after creating a card
       setShowFinishButton(true);
       setCardsCreated(prev => prev + 1);
+      console.log('🔄 [CREATE CARD] Updated cards created count:', cardsCreated + 1);
 
       if (andContinue) {
-        console.log('Clearing form after card creation');
+        console.log('🔄 [CREATE CARD] Clearing form after card creation to add another card');
         clearForm();
       }
     } catch (error) {
-      console.error('Error creating card:', error);
+      console.error('❌ [CREATE CARD] Error creating card:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -125,7 +158,16 @@ export default function CreateCardScreen() {
   };
 
   const handleFinish = () => {
-    const duration = Math.round((new Date().getTime() - sessionStartTime.getTime()) / 1000);
+    const endTime = new Date();
+    const duration = Math.floor((endTime.getTime() - sessionStartTime.getTime()) / 1000);
+    
+    console.log('✅ [CREATE CARD] Session complete', { 
+      cardsCreated,
+      sessionDuration: `${Math.floor(duration / 60)}m ${duration % 60}s`,
+      networkStatus: isNetworkConnected() ? 'online' : 'offline',
+      pendingSyncRequired: !isNetworkConnected() && cardsCreated > 0
+    });
+    
     Toast.show({
       type: 'success',
       text1: 'Session Complete',
@@ -135,15 +177,37 @@ export default function CreateCardScreen() {
   };
 
   const handleAudioAttached = async () => {
-    console.log('handleAudioAttached called:', { currentCreatedCard: createdCard });
+    const isOnline = isNetworkConnected();
+    
+    console.log('🔄 [CREATE CARD] Audio attachment requested', { 
+      currentCreatedCard: createdCard,
+      networkStatus: isOnline ? 'online' : 'offline'
+    });
+    
+    if (!isOnline) {
+      console.log('❌ [CREATE CARD] Cannot attach audio while offline');
+      Toast.show({
+        type: 'error',
+        text1: 'Offline Mode',
+        text2: 'Audio attachment is not available offline.',
+      });
+      return;
+    }
     
     try {
       // Load audio segments for the card
+      console.log('🔄 [CREATE CARD] Fetching audio segments', { cardId: createdCard });
       const segments = await getCardAudioSegments(createdCard!);
+      
+      console.log('✅ [CREATE CARD] Audio segments loaded', { 
+        frontSegments: segments.filter(s => s.side === 'front').length,
+        backSegments: segments.filter(s => s.side === 'back').length
+      });
+      
       setFrontAudioSegments(segments.filter(s => s.side === 'front'));
       setBackAudioSegments(segments.filter(s => s.side === 'back'));
     } catch (error) {
-      console.error('Error attaching audio:', error);
+      console.error('❌ [CREATE CARD] Error attaching audio:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -175,24 +239,40 @@ export default function CreateCardScreen() {
     cardId: createdCard || '',
     onAudioAttached: handleAudioAttached,
     onCreateCard: async () => {
-      console.log('audioButtonProps.onCreateCard called:', { currentCreatedCard: createdCard });
-      // Only create a new card if one doesn't exist
-      if (createdCard) {
-        console.log('Card already exists, returning existing cardId:', createdCard);
-        return createdCard;
-      }
-
+      setLoading(true);
+      // Validation checks
       if (!front.trim() || !back.trim()) {
+        console.log('❌ [CREATE CARD] Validation failed: Missing front or back content');
         Toast.show({
           type: 'error',
           text1: 'Error',
-          text2: 'Front and back of the card are required',
+          text2: 'Front and back content are required',
         });
+        setLoading(false);
         return '';
       }
       
       try {
-        console.log('Creating card in audioButtonProps.onCreateCard...');
+        // Check network status before card creation
+        const isOnline = await checkNetworkStatus();
+        
+        console.log('🔄 [CREATE CARD] Creating card with data:', {
+          deckId: id,
+          front: front.trim(),
+          back: back.trim(),
+          notes: notes.trim() || undefined,
+          tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+          hasMandarinData: Boolean(isMandarin),
+          frontMandarinDataLength: isMandarin ? frontMandarinData.characters.length : 0,
+          backMandarinDataLength: isMandarin ? backMandarinData.characters.length : 0,
+          networkStatus: isOnline ? 'online' : 'offline'
+        });
+        
+        logOperationMode('Creating new flashcard', { 
+          deckId: id,
+          method: isOnline ? 'api' : 'localDatabase'
+        });
+        
         const card = await createCard({
           deck_id: id as string,
           front: front.trim(),
@@ -206,16 +286,31 @@ export default function CreateCardScreen() {
             },
           } : undefined,
         });
-        console.log('Card created in audioButtonProps.onCreateCard:', { cardId: card.id });
+        
+        console.log('✅ [CREATE CARD] Card created successfully:', { 
+          cardId: card.id,
+          createdAt: card.created_at,
+          storageLocation: isOnline ? 'remote' : 'local',
+          pendingSync: !isOnline
+        });
+        
         setCreatedCard(card.id);
         return card.id;
       } catch (error) {
-        console.error('Error creating card:', error);
+        const isOfflineError = !isNetworkConnected() || 
+          (error && String(error).includes('Network request failed'));
+          
+        console.error('❌ [CREATE CARD] Error in onCreateCard:', error);
+        console.log('❌ [CREATE CARD] Error appears to be network-related:', isOfflineError);
+        
         Toast.show({
           type: 'error',
           text1: 'Error',
-          text2: 'Failed to create card',
+          text2: isOfflineError 
+            ? 'You are offline. Offline card creation will be available soon.'
+            : 'Failed to create card',
         });
+        setLoading(false);
         return '';
       }
     },

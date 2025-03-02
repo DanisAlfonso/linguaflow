@@ -3,6 +3,7 @@ import type { Card, Deck, MandarinCardData } from '../../types/flashcards';
 import { scheduleReview, Rating, CardState } from '../spaced-repetition/fsrs';
 import { createNewCard } from '@/lib/spaced-repetition/fsrs';
 import { getCardAudioSegments, deleteAudioFile, cleanupLocalRecordings } from './audio';
+import { checkNetworkStatus, isNetworkConnected } from '../utils/network';
 
 export async function createDeck(
   data: {
@@ -53,38 +54,123 @@ export async function createDeck(
 }
 
 export async function createCard(data: Partial<Card>): Promise<Card> {
-  const fsrsState = createNewCard();
+  // Check network status at the start of the operation
+  const isOnline = await checkNetworkStatus();
   
-  const { data: card, error } = await supabase
-    .from('cards')
-    .insert({
-      ...data,
-      ...fsrsState,
-    })
-    .select()
-    .single();
+  console.log('📊 [API] createCard called with data:', {
+    deck_id: data.deck_id,
+    front: data.front,
+    back: data.back,
+    notes: data.notes,
+    tags: data.tags,
+    has_language_specific_data: Boolean(data.language_specific_data),
+    network_status: isOnline ? 'online' : 'offline'
+  });
 
-  if (error) {
-    console.error('Error creating card:', error);
-    throw error;
+  // Log if this will likely fail due to being offline
+  if (!isOnline) {
+    console.log('⚠️ [API] Network appears to be offline. This operation will fail until offline mode is implemented.');
   }
 
-  return card;
+  const fsrsState = createNewCard();
+  console.log('📊 [API] Generated FSRS state for new card:', fsrsState);
+  
+  try {
+    const { data: card, error } = await supabase
+      .from('cards')
+      .insert({
+        ...data,
+        ...fsrsState,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ [API] Error creating card in Supabase:', error);
+      console.log('❌ [API] Error details:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        isNetworkError: error.message?.includes('Network request failed') || !isNetworkConnected()
+      });
+      throw error;
+    }
+
+    console.log('✅ [API] Card created successfully in Supabase:', {
+      id: card.id,
+      deck_id: card.deck_id,
+      created_at: card.created_at,
+      time_to_create: new Date().toISOString()
+    });
+
+    // Log what would happen in offline mode (for future implementation)
+    console.log('ℹ️ [API] In offline mode, this card would be:', {
+      stored_locally: true,
+      sync_status: 'pending',
+      sync_timestamp: null,
+      data_structure: 'Matches online schema with additional sync fields'
+    });
+
+    return card;
+  } catch (error) {
+    // Check if this is a network error
+    const isNetworkError = 
+      (error instanceof Error && error.message?.includes('Network request failed')) || 
+      !isNetworkConnected();
+      
+    if (isNetworkError) {
+      console.error('❌ [API] Network error creating card. Offline functionality would handle this:', error);
+      console.log('💾 [OFFLINE] This operation would be saved to local database for later synchronization');
+      
+      // Re-throw with enhanced message for offline handling
+      throw new Error(`Network request failed. Offline support coming soon!`);
+    }
+    
+    // For non-network errors, log and re-throw
+    console.error('❌ [API] Unexpected error creating card:', error);
+    throw error;
+  }
 }
 
 export async function getDeck(id: string): Promise<Deck | null> {
+  // Check network status at the start of the operation
+  const isOnline = await checkNetworkStatus();
+  
+  console.log('📊 [API] getDeck called:', { 
+    deckId: id, 
+    networkStatus: isOnline ? 'online' : 'offline' 
+  });
+  
   try {
     // First update the deck's review stats
-    const { error: statsError } = await supabase.rpc('update_deck_review_stats', {
-      p_deck_id: id,
-    });
-
-    if (statsError) {
-      console.error('Error updating deck stats:', statsError);
-      throw statsError;
+    console.log('🔄 [API] Updating deck review stats...');
+    
+    try {
+      const { error: statsError } = await supabase.rpc('update_deck_review_stats', {
+        p_deck_id: id,
+      });
+  
+      if (statsError) {
+        console.error('❌ [API] Error updating deck stats:', statsError);
+        
+        // Check if this is a network error
+        if (!isNetworkConnected() || statsError.message?.includes('Network request failed')) {
+          console.log('ℹ️ [API] Network error updating stats - this is expected in offline mode and can be ignored');
+        } else {
+          throw statsError;
+        }
+      } else {
+        console.log('✅ [API] Deck stats updated successfully');
+      }
+    } catch (statsError) {
+      // Only log the error but continue with fetching the deck
+      console.error('❌ [API] Caught error updating deck stats (continuing):', statsError);
     }
 
     // Then get the deck with updated stats
+    console.log('🔄 [API] Fetching deck data from Supabase');
+    
     const { data: deck, error } = await supabase
       .from('decks')
       .select('*')
@@ -92,29 +178,108 @@ export async function getDeck(id: string): Promise<Deck | null> {
       .single();
 
     if (error) {
-      console.error('Error fetching deck:', error);
+      console.error('❌ [API] Error fetching deck from Supabase:', error);
+      
+      // Check if this is a network error
+      if (!isNetworkConnected() || error.message?.includes('Network request failed')) {
+        console.log('💾 [OFFLINE] This would fall back to local database in offline mode');
+        console.log('ℹ️ [OFFLINE] Deck data would be retrieved from local storage');
+      }
+      
       throw error;
     }
 
+    console.log('✅ [API] Deck fetched successfully from Supabase:', {
+      deckId: deck.id,
+      name: deck.name,
+      language: deck.language,
+      cardCount: deck.card_count
+    });
+    
     return deck;
   } catch (error) {
-    console.error('Error in getDeck:', error);
+    // Check if this is a network error
+    const isNetworkError = 
+      (error instanceof Error && error.message?.includes('Network request failed')) || 
+      !isNetworkConnected();
+      
+    if (isNetworkError) {
+      console.error('❌ [API] Network error fetching deck. Offline functionality would handle this:', error);
+      console.log('💾 [OFFLINE] This operation would fall back to local database');
+      
+      // Re-throw with enhanced message for offline handling
+      throw {
+        code: '',
+        message: 'Network request failed',
+        details: 'Network request failed. Offline support coming soon!',
+        hint: ''
+      };
+    }
+    
+    console.error('❌ [API] Error in getDeck:', error);
     throw error;
   }
 }
 
 export async function getCards(deckId: string): Promise<Card[]> {
-  const { data: cards, error } = await supabase
-    .from('cards')
-    .select()
-    .eq('deck_id', deckId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
+  // Check network status at the start of the operation
+  const isOnline = await checkNetworkStatus();
+  
+  console.log('📊 [API] getCards called:', { 
+    deckId, 
+    networkStatus: isOnline ? 'online' : 'offline' 
+  });
+  
+  try {
+    console.log('🔄 [API] Fetching cards for deck from Supabase');
+    
+    const { data: cards, error } = await supabase
+      .from('cards')
+      .select()
+      .eq('deck_id', deckId)
+      .order('created_at', { ascending: false });
+  
+    if (error) {
+      console.error('❌ [API] Error fetching cards from Supabase:', error);
+      
+      // Check if this is a network error
+      if (!isNetworkConnected() || error.message?.includes('Network request failed')) {
+        console.log('💾 [OFFLINE] This would fall back to local database in offline mode');
+        console.log('ℹ️ [OFFLINE] Cards would be retrieved from local storage');
+      }
+      
+      throw error;
+    }
+  
+    console.log('✅ [API] Cards fetched successfully from Supabase:', {
+      deckId,
+      cardCount: cards.length,
+      source: 'remote'
+    });
+    
+    return cards;
+  } catch (error) {
+    // Check if this is a network error
+    const isNetworkError = 
+      (error instanceof Error && error.message?.includes('Network request failed')) || 
+      !isNetworkConnected();
+      
+    if (isNetworkError) {
+      console.error('❌ [API] Network error fetching cards. Offline functionality would handle this:', error);
+      console.log('💾 [OFFLINE] This operation would fall back to local database');
+      
+      // Re-throw with enhanced message for offline handling
+      throw {
+        code: '',
+        message: 'Network request failed',
+        details: 'Network request failed. Offline support coming soon!',
+        hint: ''
+      };
+    }
+    
+    console.error('❌ [API] Error in getCards:', error);
     throw error;
   }
-
-  return cards;
 }
 
 export async function updateCard(

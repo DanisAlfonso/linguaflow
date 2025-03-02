@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, LogBox } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
 import { ThemeProvider as RNEThemeProvider, useTheme } from '@rneui/themed';
@@ -11,6 +11,7 @@ import { StudySettingsProvider } from '../contexts/StudySettingsContext';
 import { TabBarProvider } from '../contexts/TabBarContext';
 import { NotificationsProvider } from '../contexts/NotificationsContext';
 import { DatabaseProvider } from '../contexts/DatabaseContext';
+import { initNetworkMonitoring } from '../lib/utils/network';
 
 // Suppress specific warnings
 LogBox.ignoreLogs([
@@ -21,6 +22,18 @@ function AppContent() {
   const { theme } = useTheme();
   const pathname = usePathname();
   const [initialPathname] = useState(pathname);
+
+  // Initialize network monitoring
+  useEffect(() => {
+    // Start monitoring network status
+    const unsubscribe = initNetworkMonitoring();
+    
+    // Cleanup on unmount
+    return () => {
+      unsubscribe();
+      console.log('📡 [NETWORK] Network monitoring stopped');
+    };
+  }, []);
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>

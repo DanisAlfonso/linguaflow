@@ -9,6 +9,7 @@ import { Container } from '../../../components/layout/Container';
 import { getDeck, getCards, deleteCard } from '../../../lib/services/flashcards';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
+import { checkNetworkStatus, logOperationMode } from '../../../lib/utils/network';
 
 export default function DeckScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -29,10 +30,16 @@ export default function DeckScreen() {
 
   const loadDeckAndCards = useCallback(async () => {
     try {
+      // Check network status before loading data
+      const isOnline = await checkNetworkStatus();
+      console.log(`📡 [NETWORK] Loading deck and cards in ${isOnline ? 'online' : 'offline'} mode`);
+      
       // First try to get the deck
+      logOperationMode('Fetching deck data', { deckId: id });
       const deckData = await getDeck(id as string);
       
       if (!deckData) {
+        console.log('❌ [DECK SCREEN] Failed to load deck data');
         Toast.show({
           type: 'error',
           text1: 'Error',
@@ -42,11 +49,14 @@ export default function DeckScreen() {
         return;
       }
       
+      console.log('✅ [DECK SCREEN] Successfully loaded deck data', { deckId: id, deckName: deckData.name });
       setDeck(deckData);
       
       // Then try to get the cards
       try {
+        logOperationMode('Fetching cards for deck', { deckId: id });
         const cardsData = await getCards(id as string);
+        console.log(`✅ [DECK SCREEN] Successfully loaded ${cardsData.length} cards`);
         setCards(cardsData);
       } catch (cardsError) {
         console.error('Error loading cards:', cardsError);
@@ -86,19 +96,8 @@ export default function DeckScreen() {
   );
 
   const handleStartStudy = () => {
-    if (!hasCardsToStudy) {
-      Toast.show({
-        type: 'info',
-        text1: 'No cards to study',
-        text2: 'All caught up! Come back later.',
-      });
-      return;
-    }
-    router.push(`/flashcards/${id}/study`);
-  };
-
-  const handleAddCard = () => {
     if (!deck) {
+      console.log('❌ [DECK SCREEN] Cannot start study - deck not loaded');
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -106,6 +105,36 @@ export default function DeckScreen() {
       });
       return;
     }
+    console.log('🔄 [DECK SCREEN] Starting study session', { deckId: id, deckName: deck.name });
+    router.push(`/flashcards/${id}/study`);
+  };
+
+  const handleAddCard = async () => {
+    // Check network status before navigating
+    const isOnline = await checkNetworkStatus();
+    
+    console.log('🔄 [DECK SCREEN] "Add Card" button pressed', { 
+      deckId: id, 
+      deckName: deck?.name,
+      networkStatus: isOnline ? 'online' : 'offline'
+    });
+    
+    if (!deck) {
+      console.log('❌ [DECK SCREEN] Cannot add card - deck not loaded');
+      Toast.show({
+        type: 'error',
+        text1: 'Error',
+        text2: 'Please wait for deck to load',
+      });
+      return;
+    }
+    
+    logOperationMode('Navigating to create card screen', { 
+      route: `/flashcards/${id}/cards/create`, 
+      deckId: id 
+    });
+    
+    console.log('🔄 [DECK SCREEN] Navigating to create card screen', { route: `/flashcards/${id}/cards/create` });
     router.push(`/flashcards/${id}/cards/create`);
   };
 
