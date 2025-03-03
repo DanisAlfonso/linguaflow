@@ -1569,4 +1569,131 @@ export async function syncDeletedCards(): Promise<void> {
   } catch (error) {
     console.error('❌ [SERVICE] Error syncing deleted cards:', error);
   }
+}
+
+// Store cards locally for offline access
+async function storeCardsLocally(cards: Card[]): Promise<void> {
+  if (Platform.OS === 'web') return;
+  
+  try {
+    const db = await ensureDatabase();
+    if (!db) return;
+    
+    console.log(`💾 [SERVICE] Storing ${cards.length} cards locally`);
+    
+    for (const card of cards) {
+      // Convert dates to ISO strings for storage
+      const cardData = {
+        ...card,
+        created_at: card.created_at instanceof Date ? card.created_at.toISOString() : card.created_at,
+        last_reviewed_at: card.last_reviewed_at instanceof Date ? card.last_reviewed_at.toISOString() : card.last_reviewed_at,
+        next_review_at: card.next_review_at instanceof Date ? card.next_review_at.toISOString() : card.next_review_at,
+      };
+      
+      // Ensure we have an updated_at value (required by SQLite schema)
+      const updatedAt = (card as any).updated_at || cardData.created_at;
+      const updatedAtStr = updatedAt instanceof Date ? updatedAt.toISOString() : String(updatedAt);
+
+      // Check if card already exists
+      const existingCard = await db.getFirstAsync<{count: number}>(
+        'SELECT COUNT(*) as count FROM cards WHERE id = ?',
+        [card.id]
+      );
+      
+      if (existingCard && existingCard.count > 0) {
+        // Card already exists, skip
+        console.log(`💾 [SERVICE] Card ${card.id} already exists locally, skipping`);
+        continue;
+      }
+      
+      // Prepare data for insertion
+      const tags = JSON.stringify(card.tags || []);
+      const language_specific_data = card.language_specific_data 
+        ? JSON.stringify(card.language_specific_data) 
+        : null;
+      
+      // Insert the card
+      await db.runAsync(`
+        INSERT INTO cards (
+          id, deck_id, front, back, notes, tags, language_specific_data,
+          created_at, updated_at, last_reviewed_at, next_review_at,
+          review_count, consecutive_correct,
+          state, difficulty, stability, retrievability,
+          elapsed_days, scheduled_days, reps, lapses,
+          step_index, queue,
+          synced, remote_id, modified_offline, deleted_offline
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [
+        card.id, card.deck_id, card.front, card.back, card.notes, tags, language_specific_data,
+        cardData.created_at, updatedAtStr, cardData.last_reviewed_at, cardData.next_review_at,
+        card.review_count || 0, card.consecutive_correct || 0,
+        card.state, card.difficulty, card.stability, card.retrievability,
+        card.elapsed_days, card.scheduled_days, card.reps, card.lapses,
+        card.step_index, card.queue,
+        1, card.id, 0, 0  // Synced = 1, remote_id = card.id, not modified, not deleted
+      ]);
+      
+      console.log(`💾 [SERVICE] Stored card ${card.id} locally`);
+    }
+  } catch (error) {
+    console.error('Error storing cards locally:', error);
+    throw error;
+  }
+}
+
+// Get a single card by ID
+export async function getCard(id: string): Promise<Card | null> {
+  try {
+    console.log(`📡 [SERVICE] Getting card with ID: ${id}`);
+    
+    // Check if we're online
+    const networkStatus = await isOnline();
+    console.log(`📡 [SERVICE] Network status for getCard: ${networkStatus ? 'Online' : 'Offline'}`);
+    
+    // Check if this is a local ID
+    const isLocalId = id.startsWith('local_') || id.startsWith('offline_');
+    
+    if (networkStatus && !isLocalId) {
+      // Online mode and not a local ID - try to get from Supabase
+      try {
+        console.log(`📡 [SERVICE] Fetching card from Supabase: ${id}`);
+        const card = await SupabaseAPI.getCard(id);
+        
+        if (card) {
+          console.log(`📡 [SERVICE] Card found in Supabase: ${card.front}`);
+          
+          // Store in local DB for offline access
+          try {
+            await storeCardsLocally([card]);
+            console.log(`📡 [SERVICE] Card stored locally for offline access`);
+          } catch (localError) {
+            console.error(`❌ [SERVICE] Error storing card locally:`, localError);
+            // Continue even if local storage fails
+          }
+          
+          return card;
+        } else {
+          console.log(`📡 [SERVICE] Card not found in Supabase, checking local storage`);
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error fetching card from Supabase:`, error);
+        console.log(`📡 [SERVICE] Falling back to local storage`);
+      }
+    }
+    
+    // Offline mode or Supabase failed - try to get from local DB
+    console.log(`📡 [SERVICE] Fetching card from local storage: ${id}`);
+    const localCard = await LocalDB.getLocalCardById(id);
+    
+    if (localCard) {
+      console.log(`📡 [SERVICE] Card found in local storage: ${localCard.front}`);
+      return localCard;
+    }
+    
+    console.log(`❌ [SERVICE] Card not found in local storage`);
+    return null;
+  } catch (error) {
+    console.error(`❌ [SERVICE] Error in getCard:`, error);
+    throw error;
+  }
 } 

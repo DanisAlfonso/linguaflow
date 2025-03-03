@@ -5,15 +5,17 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../../components/layout/Container';
-import { getCard, updateCard, deleteCard, getDeck } from '../../../../../lib/api/flashcards';
+import { updateCard, deleteCard } from '../../../../../lib/api/flashcards';
+import { getCard, getDeck } from '../../../../../lib/services/flashcards';
+import { getCardAudioSegments } from '../../../../../lib/services/audio';
 import { MandarinCardInput } from '../../../../../components/flashcards/MandarinCardInput';
 import { CharacterSizeControl } from '../../../../../components/flashcards/CharacterSizeControl';
 import { MandarinText } from '../../../../../components/flashcards/MandarinText';
 import { FlashcardAudioSection } from '../../../../../components/flashcards/audio/FlashcardAudioSection';
-import { getCardAudioSegments } from '../../../../../lib/api/audio';
 import type { Card, Deck, MandarinCardData } from '../../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../../types/audio';
 import Toast from 'react-native-toast-message';
+import NetInfo from '@react-native-community/netinfo';
 
 export default function CardDetailsScreen() {
   const [card, setCard] = useState<Card | null>(null);
@@ -31,11 +33,29 @@ export default function CardDetailsScreen() {
   const [backMandarinData, setBackMandarinData] = useState<MandarinCardData>({ characters: [], pinyin: [] });
   const [frontAudioSegments, setFrontAudioSegments] = useState<CardAudioSegment[]>([]);
   const [backAudioSegments, setBackAudioSegments] = useState<CardAudioSegment[]>([]);
+  const [isOffline, setIsOffline] = useState(false);
   
   const router = useRouter();
   const { id, cardId } = useLocalSearchParams();
   const { theme } = useTheme();
   const isMandarin = deck?.language === 'Mandarin';
+
+  // Check network status
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      const networkStatus = await NetInfo.fetch();
+      setIsOffline(!(networkStatus.isConnected && networkStatus.isInternetReachable));
+    };
+    
+    checkNetworkStatus();
+    
+    // Subscribe to network status updates
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!(state.isConnected && state.isInternetReachable));
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   const loadCard = useCallback(async () => {
     try {
@@ -102,6 +122,15 @@ export default function CardDetailsScreen() {
       return;
     }
 
+    if (isOffline) {
+      Toast.show({
+        type: 'info',
+        text1: 'Offline Mode',
+        text2: 'Editing cards is not available in offline mode',
+      });
+      return;
+    }
+
     setSaving(true);
     try {
       await updateCard(cardId as string, {
@@ -138,6 +167,15 @@ export default function CardDetailsScreen() {
   };
 
   const handleDelete = async () => {
+    if (isOffline) {
+      Toast.show({
+        type: 'info',
+        text1: 'Offline Mode',
+        text2: 'Deleting cards is not available in offline mode',
+      });
+      return;
+    }
+
     setDeleting(true);
     try {
       await deleteCard(cardId as string);

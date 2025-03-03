@@ -2,6 +2,8 @@ import * as FileSystem from 'expo-file-system';
 import { saveAudioFile, generateAudioPath, ensureAudioDirectory } from '../fs/audio';
 import { saveAudioFile as saveAudioFileToDb, LocalAudioFile, getAudioFilesInFolder } from '../db';
 import { Platform } from 'react-native';
+import type { CardAudioSegment } from '@/types/audio';
+import { ensureDatabase } from '../db/index';
 
 // Generate a random ID that's compatible with React Native
 function generateId(prefix = '') {
@@ -140,7 +142,7 @@ export async function saveAudioFileOffline(params: OfflineAudioParams): Promise<
 }
 
 // Get offline audio segments for a card
-export async function getOfflineAudioSegments(cardId: string): Promise<any[]> {
+export async function getOfflineAudioSegments(cardId: string): Promise<CardAudioSegment[]> {
   console.log('🔄 [OFFLINE AUDIO] Fetching offline audio segments for card', { cardId });
   
   try {
@@ -148,14 +150,27 @@ export async function getOfflineAudioSegments(cardId: string): Promise<any[]> {
     const audioFiles = await getAudioFilesInFolder(null);
     console.log('🔄 [OFFLINE AUDIO] Found audio files in database:', audioFiles.length);
     
+    // Filter to get front and back sides
+    const frontFiles = audioFiles.filter((file) => {
+      const mapping = audioSegmentMap[file.id];
+      return mapping && mapping.cardId === cardId && mapping.side === 'front';
+    });
+    
+    const backFiles = audioFiles.filter((file) => {
+      const mapping = audioSegmentMap[file.id];
+      return mapping && mapping.cardId === cardId && mapping.side === 'back';
+    });
+    
+    console.log(`🔄 [OFFLINE AUDIO] Distribution: front=${frontFiles.length}, back=${backFiles.length}`);
+    
     // Filter and map audio files to segments
     const segments = audioFiles
-      .filter((file: LocalAudioFile) => {
+      .filter((file) => {
         // Only include files that are mapped to this card
         const mapping = audioSegmentMap[file.id];
         return mapping && mapping.cardId === cardId;
       })
-      .map((file: LocalAudioFile) => {
+      .map((file) => {
         // Create a segment ID
         const segmentId = generateId('offline_segment');
         
@@ -164,7 +179,6 @@ export async function getOfflineAudioSegments(cardId: string): Promise<any[]> {
         
         return {
           id: segmentId,
-          card_id: cardId,
           audio_file: {
             id: file.id,
             name: file.title || file.original_filename,
@@ -179,26 +193,11 @@ export async function getOfflineAudioSegments(cardId: string): Promise<any[]> {
         };
       });
     
-    // Log the side distribution
-    const frontSegments = segments.filter(s => s.side === 'front').length;
-    const backSegments = segments.filter(s => s.side === 'back').length;
-    
-    console.log('✅ [OFFLINE AUDIO] Returning segments for offline card', { 
-      cardId,
-      segmentCount: segments.length,
-      frontSegments,
-      backSegments,
-      segments: segments.map((s: any) => ({ 
-        id: s.id, 
-        audioFile: s.audio_file.name,
-        side: s.side
-      }))
-    });
-    
+    console.log(`🔄 [OFFLINE AUDIO] Found ${segments.length} segments for card ${cardId}`);
     return segments;
   } catch (error) {
-    console.error('❌ [OFFLINE AUDIO] Error fetching offline audio segments:', error);
-    return [];
+    console.error('❌ [OFFLINE AUDIO] Error getting offline audio segments:', error);
+    return []; // Return empty array instead of throwing
   }
 }
 

@@ -918,6 +918,87 @@ export async function getDeckByRemoteId(id: string): Promise<LocalDeck | null> {
   }
 }
 
+// Get a single card by ID
+export async function getLocalCardById(id: string): Promise<LocalCard | null> {
+  // On web platform, return null
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return null;
+
+    console.log(`🔍 [DB] Looking up card with ID: ${id}`);
+    
+    let result: any = null;
+    
+    // First, try using the provided ID directly
+    if (id.startsWith('local_') || id.startsWith('offline_')) {
+      // This is a local ID, get it directly
+      console.log(`🔍 [DB] Looking up card by local ID: ${id}`);
+      result = await database.getFirstAsync<any>(
+        'SELECT * FROM cards WHERE id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL);',
+        [id]
+      );
+    } else {
+      // This is a remote ID, check if we have it
+      console.log(`🔍 [DB] Looking up card by remote ID: ${id}`);
+      result = await database.getFirstAsync<any>(
+        'SELECT * FROM cards WHERE remote_id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL);',
+        [id]
+      );
+      
+      // If not found but it's a local ID formatted like remote_XX, try local lookup
+      if (!result && id.includes('_')) {
+        const possibleLocalId = `local_${id}`;
+        console.log(`🔍 [DB] Not found as remote ID. Trying possible local ID: ${possibleLocalId}`);
+        result = await database.getFirstAsync<any>(
+          'SELECT * FROM cards WHERE id = ? AND (deleted_offline = 0 OR deleted_offline IS NULL);',
+          [possibleLocalId]
+        );
+      }
+    }
+
+    if (!result) {
+      console.log(`🔍 [DB] No card found with ID: ${id}`);
+      return null;
+    }
+
+    console.log(`🔍 [DB] Found card: ${result.front} (${result.id})`);
+
+    // Create a card object with default values for missing fields
+    return {
+      id: result.id,
+      deck_id: result.deck_id,
+      front: result.front,
+      back: result.back,
+      notes: result.notes || null,
+      tags: result.tags ? JSON.parse(result.tags) : [],
+      language_specific_data: result.language_specific_data ? JSON.parse(result.language_specific_data) : undefined,
+      created_at: new Date(result.created_at),
+      last_reviewed_at: result.last_reviewed_at ? new Date(result.last_reviewed_at) : null,
+      next_review_at: result.next_review_at ? new Date(result.next_review_at) : null,
+      review_count: result.review_count || 0,
+      consecutive_correct: result.consecutive_correct || 0,
+      state: result.state || 0,
+      difficulty: result.difficulty || 0,
+      stability: result.stability || 0,
+      retrievability: result.retrievability || 0,
+      elapsed_days: result.elapsed_days || 0,
+      scheduled_days: result.scheduled_days || 0,
+      reps: result.reps || 0,
+      lapses: result.lapses || 0,
+      scheduled_in_minutes: result.scheduled_in_minutes,
+      step_index: result.step_index || 0,
+      queue: result.queue || 'new',
+      synced: Boolean(result.synced),
+      remote_id: result.remote_id || null
+    };
+  } catch (error) {
+    console.error('Error getting local card:', error);
+    return null;
+  }
+}
+
 // Delete a card from local storage
 export async function deleteLocalCard(id: string): Promise<void> {
   try {
