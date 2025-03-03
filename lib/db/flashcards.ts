@@ -125,7 +125,7 @@ async function migrateFlashcardsDatabase(db: SQLiteDatabase): Promise<void> {
     console.log('Current deck table columns:', deckColumns.map(col => col.name).join(', '));
     
     // Add missing columns to decks table if needed
-    const requiredColumns = [
+    const requiredDeckColumns = [
       { name: 'settings', type: 'TEXT' },
       { name: 'tags', type: 'TEXT' },
       { name: 'color_preset', type: 'TEXT' },
@@ -135,7 +135,7 @@ async function migrateFlashcardsDatabase(db: SQLiteDatabase): Promise<void> {
       { name: 'deleted_offline', type: 'INTEGER DEFAULT 0' }
     ];
     
-    for (const column of requiredColumns) {
+    for (const column of requiredDeckColumns) {
       const hasColumn = deckColumns.some((col: {name: string}) => col.name === column.name);
       if (!hasColumn) {
         console.log(`Adding ${column.name} column to decks table...`);
@@ -143,6 +143,29 @@ async function migrateFlashcardsDatabase(db: SQLiteDatabase): Promise<void> {
         console.log(`Added ${column.name} column to decks table`);
       } else {
         console.log(`${column.name} column already exists in decks table`);
+      }
+    }
+    
+    // Check and migrate card table if needed
+    const cardColumns = await db.getAllAsync<{name: string}>(`PRAGMA table_info(cards)`);
+    console.log('Current card table columns:', cardColumns.map(col => col.name).join(', '));
+    
+    // Add missing columns to cards table if needed
+    const requiredCardColumns = [
+      { name: 'synced', type: 'BOOLEAN DEFAULT 0' },
+      { name: 'remote_id', type: 'TEXT' },
+      { name: 'modified_offline', type: 'INTEGER DEFAULT 0' },
+      { name: 'deleted_offline', type: 'INTEGER DEFAULT 0' }
+    ];
+    
+    for (const column of requiredCardColumns) {
+      const hasColumn = cardColumns.some((col: {name: string}) => col.name === column.name);
+      if (!hasColumn) {
+        console.log(`Adding ${column.name} column to cards table...`);
+        await db.execAsync(`ALTER TABLE cards ADD COLUMN ${column.name} ${column.type}`);
+        console.log(`Added ${column.name} column to cards table`);
+      } else {
+        console.log(`${column.name} column already exists in cards table`);
       }
     }
     
@@ -892,5 +915,114 @@ export async function getDeckByRemoteId(id: string): Promise<LocalDeck | null> {
   } catch (error) {
     console.error('Error getting deck by remote ID:', error);
     return null;
+  }
+}
+
+// Delete a card from local storage
+export async function deleteLocalCard(id: string): Promise<void> {
+  try {
+    console.log('🔍 [DB] Deleting local card with ID:', id);
+    
+    if (Platform.OS === 'web') {
+      console.log('🔍 [DB] Skipping local delete on web platform');
+      return;
+    }
+    
+    const db = await ensureDatabase();
+    if (!db) {
+      throw new Error('Database connection not established');
+    }
+    
+    // First get the card to check if it exists and get its deck_id
+    const card = await db.getFirstAsync<LocalCard>('SELECT * FROM cards WHERE id = ?', [id]);
+    
+    if (!card) {
+      console.log('🔍 [DB] Card not found in local database:', id);
+      return;
+    }
+    
+    const deckId = card.deck_id;
+    
+    // Check if this is a remotely synced card
+    if (card.remote_id) {
+      // If this card is synced with Supabase, mark it as deleted instead of actually deleting
+      console.log('🔍 [DB] Card has remote ID, marking as deleted_offline:', id);
+      await db.runAsync(
+        'UPDATE cards SET deleted_offline = 1 WHERE id = ?',
+        [id]
+      );
+    } else {
+      // If it's a local-only card, delete it permanently
+      console.log('🔍 [DB] Permanently deleting local-only card:', id);
+      await db.runAsync('DELETE FROM cards WHERE id = ?', [id]);
+    }
+    
+    // Update the card count for the deck
+    await updateDeckCardCount(deckId);
+    
+    console.log('✅ [DB] Successfully deleted local card:', id);
+  } catch (error) {
+    console.error('❌ [DB] Error deleting local card:', error);
+    throw error;
+  }
+}
+
+// Get a list of cards that were marked for deletion while offline
+export async function getOfflineDeletedCards(): Promise<LocalCard[]> {
+  try {
+    console.log('🔍 [DB] Getting cards marked for deletion while offline');
+    
+    if (Platform.OS === 'web') {
+      console.log('🔍 [DB] Skipping on web platform');
+      return [];
+    }
+    
+    const db = await ensureDatabase();
+    if (!db) {
+      throw new Error('Database connection not established');
+    }
+    
+    // Get all cards marked as deleted_offline=1 that have a remote_id (meaning they exist in Supabase)
+    const deletedCards = await db.getAllAsync<LocalCard>(
+      'SELECT * FROM cards WHERE deleted_offline = 1 AND remote_id IS NOT NULL'
+    );
+    
+    console.log(`🔍 [DB] Found ${deletedCards.length} cards marked for deletion`);
+    return deletedCards;
+  } catch (error) {
+    console.error('❌ [DB] Error getting offline deleted cards:', error);
+    return [];
+  }
+}
+
+// Remove cards that were successfully deleted from Supabase
+export async function removeDeletedCards(cardIds: string[]): Promise<void> {
+  try {
+    if (!cardIds.length) {
+      return;
+    }
+    
+    console.log(`🔍 [DB] Removing ${cardIds.length} cards that were synced for deletion`);
+    
+    if (Platform.OS === 'web') {
+      console.log('🔍 [DB] Skipping on web platform');
+      return;
+    }
+    
+    const db = await ensureDatabase();
+    if (!db) {
+      throw new Error('Database connection not established');
+    }
+    
+    // Delete each card that was successfully synced
+    for (const cardId of cardIds) {
+      await db.runAsync('DELETE FROM cards WHERE id = ?', [cardId]);
+      console.log(`🔍 [DB] Permanently removed card after sync: ${cardId}`);
+    }
+    
+    console.log('✅ [DB] Successfully removed all synced deleted cards');
+  } catch (error) {
+    console.error('❌ [DB] Error removing deleted cards:', error);
+    throw error;
   }
 } 

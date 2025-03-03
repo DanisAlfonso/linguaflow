@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Container } from '../../../components/layout/Container';
-import { getDeck, getCards, deleteCard, syncOfflineDecks } from '../../../lib/services/flashcards';
+import { getDeck, getCards, deleteCard, syncOfflineDecks, syncDeletedCards } from '../../../lib/services/flashcards';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 import { checkNetworkStatus, logOperationMode, isNetworkConnected } from '../../../lib/utils/network';
@@ -178,6 +178,10 @@ export default function DeckScreen() {
               text2: 'Syncing offline changes to the server',
             });
             
+            // Sync offline deleted cards
+            await syncDeletedCards();
+            
+            // Sync offline decks
             await syncOfflineDecks(user.id);
             
             // Refresh the deck and cards after sync
@@ -324,17 +328,32 @@ export default function DeckScreen() {
 
   const handleDeleteCard = async (cardId: string) => {
     try {
+      // Check network status
+      const isOnline = await checkNetworkStatus();
+      setNetworkStatus(isOnline ? 'online' : 'offline');
+
+      console.log(`🔄 [DECK SCREEN] Deleting card ${cardId} (${isOnline ? 'online' : 'offline'} mode)`);
+      
       await deleteCard(cardId);
       
       // Update local state
       setCards(prevCards => prevCards.filter(c => c.id !== cardId));
 
-      Toast.show({
-        type: 'success',
-        text1: 'Card deleted successfully',
-      });
+      // Show appropriate success message based on network status
+      if (isOnline) {
+        Toast.show({
+          type: 'success',
+          text1: 'Card deleted successfully',
+        });
+      } else {
+        Toast.show({
+          type: 'success',
+          text1: 'Card deleted locally',
+          text2: 'It will be deleted from the server when you go back online',
+        });
+      }
     } catch (error) {
-      console.error('Error deleting card:', error);
+      console.error('❌ [DECK SCREEN] Error deleting card:', error);
       
       // Check if it's an offline error
       const errorMessage = error instanceof Error ? error.message : 'Failed to delete card';

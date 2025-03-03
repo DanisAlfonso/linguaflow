@@ -6,12 +6,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Container } from '../../../components/layout/Container';
-import { getDecks, updateDeck, deleteDeck } from '../../../lib/services/flashcards';
+import { getDecks, updateDeck, deleteDeck, getCards } from '../../../lib/services/flashcards';
 import type { Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 import { BlurView } from 'expo-blur';
 import { useDatabase } from '../../../contexts/DatabaseContext';
 import { useAuth } from '../../../contexts/AuthContext';
+import { checkNetworkStatus } from '../../../lib/utils/network';
 
 // Add gradient presets with names
 type GradientPreset = 'blue' | 'purple' | 'green' | 'orange' | 'pink';
@@ -42,6 +43,7 @@ export default function FlashcardsScreen() {
   const [showRename, setShowRename] = useState(false);
   const [newDeckName, setNewDeckName] = useState('');
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [displayDecks, setDisplayDecks] = useState<Deck[]>([]);
   
   const router = useRouter();
   const { theme } = useTheme();
@@ -49,10 +51,77 @@ export default function FlashcardsScreen() {
   const { isOnline, syncData } = useDatabase();
   const { user } = useAuth();
 
+  const correctOfflineDeckCounts = async (decksData: Deck[]): Promise<Deck[]> => {
+    // Explicitly check network status again
+    const networkStatus = await checkNetworkStatus();
+    
+    console.log('📊 [FLASHCARDS] Network status in correctOfflineDeckCounts:', 
+      networkStatus ? 'Online' : 'Offline', 
+      { isOnlineContext: isOnline }
+    );
+    
+    // If online, just use the original deck data
+    if (networkStatus) {
+      console.log('📊 [FLASHCARDS] Online mode - no correction needed');
+      return decksData;
+    }
+    
+    console.log('📊 [FLASHCARDS] Offline mode - correcting deck card counts');
+    
+    try {
+      // Create a copy of the decks array to avoid mutating the original
+      const correctedDecks = await Promise.all(
+        decksData.map(async (deck) => {
+          try {
+            console.log(`📊 [FLASHCARDS] Checking deck "${deck.name}" (${deck.id})`, {
+              total_cards: deck.total_cards,
+              new_cards: deck.new_cards
+            });
+            
+            // Always check for cards in offline mode, even if total_cards is not zero
+            // This ensures we get an accurate count regardless of metadata state
+            const deckCards = await getCards(deck.id);
+            console.log(`📊 [FLASHCARDS] Actual card count for "${deck.name}": ${deckCards.length}`);
+            
+            if (deckCards.length > 0) {
+              // Return a corrected deck object with accurate card counts
+              console.log(`📊 [FLASHCARDS] Correcting counts for "${deck.name}" from ${deck.total_cards} to ${deckCards.length}`);
+              return {
+                ...deck,
+                total_cards: deckCards.length,
+                new_cards: deckCards.length, // Simplification: treat all cards as "new" in offline mode
+                cards_to_review: 0
+              };
+            }
+            return deck;
+          } catch (error) {
+            console.error(`❌ [FLASHCARDS] Error correcting deck "${deck.name}":`, error);
+            return deck;
+          }
+        })
+      );
+      
+      console.log('📊 [FLASHCARDS] Deck correction completed');
+      correctedDecks.forEach(deck => {
+        console.log(`📊 [FLASHCARDS] Corrected deck: ${deck.name}`, {
+          id: deck.id,
+          total_cards: deck.total_cards,
+          new_cards: deck.new_cards,
+          cards_to_review: deck.cards_to_review
+        });
+      });
+      
+      return correctedDecks;
+    } catch (error) {
+      console.error('❌ [FLASHCARDS] Error in correctOfflineDeckCounts:', error);
+      return decksData;
+    }
+  };
+
   const loadDecks = async () => {
     try {
       if (!user) {
-        console.error('Cannot load decks: user is not authenticated');
+        console.error('❌ [FLASHCARDS] Cannot load decks: user is not authenticated');
         Toast.show({
           type: 'error',
           text1: 'Authentication Error',
@@ -62,20 +131,53 @@ export default function FlashcardsScreen() {
         return;
       }
       
+      // Explicitly check network status
+      const networkStatus = await checkNetworkStatus();
+      
+      console.log('📊 [FLASHCARDS] Loading decks', { 
+        isOnlineCheck: networkStatus, 
+        isOnlineContext: isOnline, 
+        networkType: networkStatus ? 'online' : 'offline',
+        userId: user.id
+      });
+      
       // If we're online, try to sync offline changes first
-      if (isOnline && Platform.OS !== 'web') {
+      if (networkStatus && Platform.OS !== 'web') {
         try {
+          console.log('📊 [FLASHCARDS] Online mode - attempting to sync offline data');
           await syncData();
+          console.log('✅ [FLASHCARDS] Sync completed successfully');
         } catch (syncError) {
-          console.error('Error syncing offline data:', syncError);
+          console.error('❌ [FLASHCARDS] Error syncing offline data:', syncError);
           // Continue loading decks even if sync fails
         }
+      } else if (!networkStatus) {
+        console.log('📊 [FLASHCARDS] Offline mode detected - will use local data');
       }
       
       const data = await getDecks(user.id);
+      console.log(`📊 [FLASHCARDS] Successfully loaded ${data.length} decks`);
+      
+      // Log the decks data for debugging
+      data.forEach(deck => {
+        console.log(`📊 [FLASHCARDS] Deck: ${deck.name}`, {
+          id: deck.id,
+          total_cards: deck.total_cards,
+          new_cards: deck.new_cards,
+          cards_to_review: deck.cards_to_review
+        });
+      });
+      
+      // Set the original decks data
       setDecks(data);
+      
+      console.log('📊 [FLASHCARDS] Now correcting offline deck counts if needed');
+      // Correct offline deck counts for display
+      const correctedDecks = await correctOfflineDeckCounts(data);
+      setDisplayDecks(correctedDecks);
+      
     } catch (error) {
-      console.error('Error loading decks:', error);
+      console.error('❌ [FLASHCARDS] Error loading decks:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -89,8 +191,9 @@ export default function FlashcardsScreen() {
 
   useFocusEffect(
     React.useCallback(() => {
+      console.log('📊 [FLASHCARDS] Screen focused, loading decks. Network status:', isOnline ? 'Online' : 'Offline');
       loadDecks();
-    }, [])
+    }, [isOnline, user])
   );
 
   const onRefresh = useCallback(() => {
@@ -107,13 +210,12 @@ export default function FlashcardsScreen() {
   };
 
   const handleLongPressDeck = (deckId: string, event: any) => {
-    // Get the position of the pressed element for menu placement
     if (event?.nativeEvent) {
       const { pageX, pageY, locationX, locationY } = event.nativeEvent;
       setMenuPosition({
         x: pageX - locationX,
         y: pageY - locationY,
-        width: 220, // Fixed menu width
+        width: 220,
         height: 0,
       });
     }
@@ -141,92 +243,135 @@ export default function FlashcardsScreen() {
 
   const handleChangeColor = async (deckId: string, colorKey: GradientPreset) => {
     try {
-      const deck = decks.find(d => d.id === deckId);
-      if (!deck) return;
+      const deckToUpdate = decks.find(d => d.id === deckId);
+      if (!deckToUpdate) {
+        console.error('❌ [FLASHCARDS] Cannot change color: Deck not found');
+        return;
+      }
 
-      await updateDeck(deckId, {
-        ...deck,
-        color_preset: colorKey
-      });
+      console.log(`🔄 [FLASHCARDS] Changing deck color: ${deckId} to "${colorKey}"`);
+      
+      // Update the deck
+      await updateDeck(deckId, { color_preset: colorKey });
 
-      setDecks(prevDecks => 
-        prevDecks.map(d => 
-          d.id === deckId ? { ...d, color_preset: colorKey } : d
-        )
+      // Update both deck states
+      setDecks(prevDecks =>
+        prevDecks.map(d => (d.id === deckId ? { ...d, color_preset: colorKey } : d))
+      );
+      
+      setDisplayDecks(prevDecks =>
+        prevDecks.map(d => (d.id === deckId ? { ...d, color_preset: colorKey } : d))
       );
 
       Toast.show({
         type: 'success',
-        text1: 'Success',
-        text2: isOnline ? 'Color updated successfully' : 'Color updated successfully (offline). Will sync when online.',
+        text1: 'Color Updated',
+        text2: `Deck color has been changed to ${GRADIENT_PRESETS[colorKey].name}`,
       });
+
+      setShowColorPicker(false);
+      handleCloseMenu();
     } catch (error) {
+      console.error('❌ [FLASHCARDS] Error changing deck color:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to update color',
+        text2: 'Failed to update deck color',
       });
-    } finally {
-      setShowColorPicker(false);
-      setEditingDeckId(null);
     }
   };
 
   const handleRenameDeck = async () => {
-    if (!editingDeckId || !newDeckName.trim()) return;
-
     try {
-      const deck = decks.find(d => d.id === editingDeckId);
-      if (!deck) return;
+      if (!editingDeckId) {
+        console.error('❌ [FLASHCARDS] Cannot rename deck: No deck is being edited');
+        return;
+      }
 
-      await updateDeck(editingDeckId, {
-        ...deck,
-        name: newDeckName.trim()
-      });
+      if (!newDeckName.trim()) {
+        console.error('❌ [FLASHCARDS] Cannot rename deck: Deck name cannot be empty');
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Deck name cannot be empty',
+        });
+        return;
+      }
 
-      setDecks(prevDecks => 
-        prevDecks.map(d => 
-          d.id === editingDeckId ? { ...d, name: newDeckName.trim() } : d
-        )
+      const deckToRename = decks.find(d => d.id === editingDeckId);
+      if (!deckToRename) {
+        console.error('❌ [FLASHCARDS] Cannot rename deck: Deck not found');
+        return;
+      }
+
+      console.log(`🔄 [FLASHCARDS] Renaming deck: ${editingDeckId} to "${newDeckName}"`);
+      
+      // Update the deck
+      const updatedDeck = await updateDeck(editingDeckId, { name: newDeckName });
+
+      // Update both deck states
+      setDecks(prevDecks =>
+        prevDecks.map(d => (d.id === editingDeckId ? { ...d, name: newDeckName } : d))
+      );
+      
+      setDisplayDecks(prevDecks =>
+        prevDecks.map(d => (d.id === editingDeckId ? { ...d, name: newDeckName } : d))
       );
 
       Toast.show({
         type: 'success',
-        text1: 'Success',
-        text2: isOnline ? 'Deck renamed successfully' : 'Deck renamed successfully (offline). Will sync when online.',
+        text1: 'Deck Renamed',
+        text2: `Deck has been renamed to "${newDeckName}"`,
       });
+
+      setNewDeckName('');
+      setShowRename(false);
+      handleCloseMenu();
     } catch (error) {
+      console.error('❌ [FLASHCARDS] Error renaming deck:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
         text2: 'Failed to rename deck',
       });
-    } finally {
-      setShowRename(false);
-      setEditingDeckId(null);
     }
   };
 
   const handleDeleteDeck = async (deckId: string) => {
     try {
-      await deleteDeck(deckId);
-      
-      // Update local state
-      setDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+      const deckToDelete = decks.find(d => d.id === deckId);
+      if (!deckToDelete) {
+        console.error('❌ [FLASHCARDS] Cannot delete deck: Deck not found');
+        return;
+      }
 
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: isOnline ? 'Deck deleted successfully' : 'Deck deleted successfully (offline). Will sync when online.',
-      });
+      // Show confirmation dialog
+      if (confirm(`Are you sure you want to delete "${deckToDelete.name}"? This action cannot be undone.`)) {
+        setLoading(true);
+        
+        console.log(`🔄 [FLASHCARDS] Deleting deck: ${deckId}`);
+        await deleteDeck(deckId);
+        
+        // Update both decks states
+        setDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+        setDisplayDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+
+        Toast.show({
+          type: 'success',
+          text1: 'Deck Deleted',
+          text2: `"${deckToDelete.name}" has been deleted`,
+        });
+      }
     } catch (error) {
+      console.error('❌ [FLASHCARDS] Error deleting deck:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
         text2: 'Failed to delete deck',
       });
     } finally {
-      setEditingDeckId(null);
+      setLoading(false);
+      handleCloseMenu();
     }
   };
 
@@ -279,14 +424,14 @@ export default function FlashcardsScreen() {
               refreshing={refreshing}
               onRefresh={onRefresh}
               tintColor={theme.colors.grey4}
-              colors={['#4F46E5']} // Android
-              progressBackgroundColor={theme.mode === 'dark' ? '#1F2937' : '#F3F4F6'} // Android
-              progressViewOffset={8} // Android
+              colors={['#4F46E5']}
+              progressBackgroundColor={theme.mode === 'dark' ? '#1F2937' : '#F3F4F6'}
+              progressViewOffset={8}
               style={{ backgroundColor: 'transparent' }}
             />
           }
         >
-          {decks.length === 0 ? (
+          {displayDecks.length === 0 ? (
             <View style={styles.emptyState}>
               <MaterialIcons
                 name="library-books"
@@ -302,7 +447,7 @@ export default function FlashcardsScreen() {
               </Text>
             </View>
           ) : (
-            decks.map((deck, index) => (
+            displayDecks.map((deck, index) => (
               <React.Fragment key={deck.id}>
                 <Pressable
                   style={({ pressed }) => [
@@ -417,7 +562,6 @@ export default function FlashcardsScreen() {
                     >
                       <Pressable onPress={(e) => e.stopPropagation()}>
                         {!showColorPicker && !showRename ? (
-                          // Main Menu
                           <>
                             <Pressable
                               style={({ pressed }) => [
@@ -494,7 +638,6 @@ export default function FlashcardsScreen() {
                             </Pressable>
                           </>
                         ) : showRename ? (
-                          // Rename Interface
                           <>
                             <View style={styles.colorPickerHeader}>
                               <Pressable
@@ -547,7 +690,6 @@ export default function FlashcardsScreen() {
                             </View>
                           </>
                         ) : (
-                          // Color Picker (existing code)
                           <>
                             <View style={styles.colorPickerHeader}>
                               <Pressable

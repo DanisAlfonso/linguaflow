@@ -1176,7 +1176,7 @@ export async function deleteCard(cardId: string): Promise<void> {
       throw new Error('Card ID is required to delete a card');
     }
 
-    console.log(`Deleting card with ID: ${cardId}`);
+    console.log(`📊 [SERVICE] Deleting card with ID: ${cardId}`);
 
     // On web, always use Supabase
     if (Platform.OS === 'web') {
@@ -1185,24 +1185,33 @@ export async function deleteCard(cardId: string): Promise<void> {
 
     // On mobile, check if online
     const online = await isOnline();
+    console.log(`📡 [SERVICE] Network status for deleteCard: ${online ? 'Online' : 'Offline'}`);
 
     if (online) {
       try {
         // Try to delete from Supabase first
         await SupabaseAPI.deleteCard(cardId);
-        // Since we don't have local card storage yet, we don't need to delete locally
+        console.log(`✅ [SERVICE] Successfully deleted card from Supabase: ${cardId}`);
+        
+        // Also delete from local storage to keep them in sync
+        await LocalDB.deleteLocalCard(cardId);
+        console.log(`✅ [SERVICE] Successfully deleted card from local storage: ${cardId}`);
       } catch (remoteError) {
-        console.error('Error deleting card from Supabase:', remoteError);
-        // Since we don't have local card storage yet, just throw the error
-        throw remoteError;
+        console.error('❌ [SERVICE] Error deleting card from Supabase:', remoteError);
+        
+        // If Supabase delete fails but we're online, it might be an authorization issue or the card doesn't exist remotely
+        // Still attempt to delete locally
+        await LocalDB.deleteLocalCard(cardId);
+        console.log(`✅ [SERVICE] Deleted card from local storage after Supabase error: ${cardId}`);
       }
     } else {
-      // Offline mode - since we don't have local card storage yet, show error
-      console.log('Device is offline. Cannot delete card when offline.');
-      throw new Error('Cannot delete card when offline. Please try again when you have an internet connection.');
+      // Offline mode - delete from local database and mark for sync when back online
+      console.log(`💾 [SERVICE] Device is offline. Deleting card from local storage: ${cardId}`);
+      await LocalDB.deleteLocalCard(cardId);
+      console.log(`✅ [SERVICE] Successfully deleted card from local storage in offline mode: ${cardId}`);
     }
   } catch (error) {
-    console.error('Error in deleteCard service:', error);
+    console.error('❌ [SERVICE] Error in deleteCard service:', error);
     throw error;
   }
 }
@@ -1392,5 +1401,58 @@ async function cacheCardsLocally(cards: Card[], deckId: string): Promise<void> {
     console.log(`💾 [SERVICE] Cached ${cards.length} cards locally`);
   } catch (error) {
     console.error('❌ [SERVICE] Error caching cards locally:', error);
+  }
+}
+
+// Function to sync cards that were deleted while offline
+export async function syncDeletedCards(): Promise<void> {
+  try {
+    // Check if we're online
+    const online = await isOnline();
+    if (!online) {
+      console.log('📡 [SERVICE] Cannot sync deleted cards - device is offline');
+      return;
+    }
+
+    console.log('🔄 [SERVICE] Starting sync of cards deleted while offline...');
+    
+    // Get all cards marked for deletion
+    const deletedCards = await LocalDB.getOfflineDeletedCards();
+    console.log(`📊 [SERVICE] Found ${deletedCards.length} cards marked for deletion`);
+    
+    if (deletedCards.length === 0) {
+      console.log('✅ [SERVICE] No cards to sync for deletion');
+      return;
+    }
+    
+    // Track successfully deleted card IDs
+    const successfullyDeletedIds: string[] = [];
+    
+    // Process each deleted card
+    for (const card of deletedCards) {
+      try {
+        if (card.remote_id) {
+          // Delete from Supabase
+          await SupabaseAPI.deleteCard(card.remote_id);
+          console.log(`✅ [SERVICE] Deleted remote card: ${card.remote_id}`);
+          
+          // Add to list of successfully deleted cards
+          successfullyDeletedIds.push(card.id);
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error deleting card ${card.id} from Supabase:`, error);
+        // Continue with next card
+      }
+    }
+    
+    // Remove successfully deleted cards from local database
+    if (successfullyDeletedIds.length > 0) {
+      await LocalDB.removeDeletedCards(successfullyDeletedIds);
+      console.log(`✅ [SERVICE] Removed ${successfullyDeletedIds.length} synced deleted cards from local database`);
+    }
+    
+    console.log('✅ [SERVICE] Deleted cards sync completed successfully');
+  } catch (error) {
+    console.error('❌ [SERVICE] Error syncing deleted cards:', error);
   }
 } 
