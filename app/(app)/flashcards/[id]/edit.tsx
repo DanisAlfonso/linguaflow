@@ -5,7 +5,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import { getDeck, updateDeck, deleteDeck } from '../../../../lib/api/flashcards';
+import { getDeck, updateDeck, deleteDeck } from '../../../../lib/services/flashcards';
+import { checkNetworkStatus } from '../../../../lib/utils/network';
 import type { Deck } from '../../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 
@@ -21,15 +22,42 @@ export default function EditDeckScreen() {
   const [isSaveHovered, setIsSaveHovered] = useState(false);
   const [deleteTooltipOpacity] = useState(new Animated.Value(0));
   const [saveTooltipOpacity] = useState(new Animated.Value(0));
+  const [isOnline, setIsOnline] = useState(true);
 
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
+  // Check network status on mount and when component updates
+  useEffect(() => {
+    const checkNetwork = async () => {
+      const online = await checkNetworkStatus();
+      setIsOnline(online);
+    };
+    
+    checkNetwork();
+    
+    // Set up interval to check network status
+    const interval = setInterval(checkNetwork, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
+
   const loadDeck = useCallback(async () => {
     try {
-      const data = await getDeck(id as string);
+      const online = await checkNetworkStatus();
+      setIsOnline(online);
+      
+      const deckId = id as string;
+      console.log(`📊 [EDIT DECK] Loading deck ${deckId} in ${online ? 'online' : 'offline'} mode`);
+      console.log(`📊 [EDIT DECK] Deck ID details:`, {
+        id: deckId,
+        isRemoteId: deckId.includes('-') && deckId.length > 30,
+        length: deckId.length
+      });
+      
+      const data = await getDeck(deckId);
       if (!data) {
         Toast.show({
           type: 'error',
@@ -40,12 +68,19 @@ export default function EditDeckScreen() {
         return;
       }
 
+      console.log(`📊 [EDIT DECK] Successfully loaded deck`, { 
+        id: data.id,
+        remoteId: (data as any).remote_id,
+        name: data.name, 
+        tags: data.tags
+      });
+      
       setDeck(data);
       setName(data.name);
       setDescription(data.description || '');
       setTags(data.tags?.join(', ') || '');
     } catch (error) {
-      console.error('Error loading deck:', error);
+      console.error('❌ [EDIT DECK] Error loading deck:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
@@ -73,25 +108,57 @@ export default function EditDeckScreen() {
 
     setSaving(true);
     try {
-      await updateDeck(id as string, {
+      // Check network status before saving
+      const online = await checkNetworkStatus();
+      setIsOnline(online);
+      
+      const deckId = id as string;
+      console.log(`📊 [EDIT DECK] Saving deck ${deckId} in ${online ? 'online' : 'offline'} mode`);
+      console.log(`📊 [EDIT DECK] Saving with ID details:`, {
+        id: deckId,
+        isRemoteId: deckId.includes('-') && deckId.length > 30,
+        length: deckId.length,
+        originalDeckId: deck?.id
+      });
+      
+      const updatedData = {
         name: name.trim(),
         description: description.trim() || undefined,
         tags: tags.trim() ? tags.split(',').map(tag => tag.trim()) : undefined,
+      };
+      
+      // Use the deck's ID from state if available, otherwise use the route param
+      const idToUse = deck?.id || deckId;
+      console.log(`📊 [EDIT DECK] Using ID for update:`, idToUse);
+      
+      const updatedDeck = await updateDeck(idToUse, updatedData);
+      
+      console.log(`✅ [EDIT DECK] Successfully saved deck`, { 
+        id: updatedDeck.id,
+        name: updatedDeck.name,
+        online
       });
 
       Toast.show({
         type: 'success',
-        text1: 'Success',
-        text2: 'Deck updated successfully',
+        text1: online ? 'Success' : 'Saved Offline',
+        text2: online 
+          ? 'Deck updated successfully' 
+          : 'Deck updated locally. Changes will sync when you go back online.',
       });
 
       router.back();
     } catch (error) {
-      console.error('Error updating deck:', error);
+      console.error('❌ [EDIT DECK] Error updating deck:', error);
+      
+      // Determine if it's an offline error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to update deck';
+      const isOfflineError = errorMessage.includes('offline');
+      
       Toast.show({
         type: 'error',
-        text1: 'Error',
-        text2: 'Failed to update deck',
+        text1: isOfflineError ? 'Offline' : 'Error',
+        text2: errorMessage,
       });
     } finally {
       setSaving(false);
@@ -99,23 +166,49 @@ export default function EditDeckScreen() {
   };
 
   const handleDelete = async () => {
+    if (!deck) return;
+
+    // Confirm before deleting
+    if (!confirm(`Are you sure you want to delete "${deck.name}"? This cannot be undone.`)) {
+      return;
+    }
+
     setDeleting(true);
     try {
+      // Check network status before deletion
+      const online = await checkNetworkStatus();
+      setIsOnline(online);
+      
+      console.log(`📊 [EDIT DECK] Deleting deck ${id as string} in ${online ? 'online' : 'offline'} mode`);
+      
       await deleteDeck(id as string);
+      
+      console.log(`✅ [EDIT DECK] Successfully deleted deck`, { 
+        id: id as string,
+        name: deck.name,
+        online
+      });
 
       Toast.show({
         type: 'success',
-        text1: 'Success',
-        text2: 'Deck deleted successfully',
+        text1: online ? 'Deck Deleted' : 'Deck Marked for Deletion',
+        text2: online 
+          ? 'Deck has been deleted' 
+          : 'Deck marked for deletion. It will be removed from the server when you go back online.',
       });
 
-      router.replace('/(app)/flashcards/');
+      router.push('/flashcards');
     } catch (error) {
-      console.error('Error deleting deck:', error);
+      console.error('❌ [EDIT DECK] Error deleting deck:', error);
+      
+      // Determine if it's an offline error
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete deck';
+      const isOfflineError = errorMessage.includes('offline');
+      
       Toast.show({
         type: 'error',
-        text1: 'Error',
-        text2: 'Failed to delete deck',
+        text1: isOfflineError ? 'Offline' : 'Error',
+        text2: errorMessage,
       });
     } finally {
       setDeleting(false);
@@ -219,6 +312,19 @@ export default function EditDeckScreen() {
           <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
             Edit Deck
           </Text>
+          
+          {/* Network status indicator */}
+          <View style={styles.networkIndicator}>
+            <View 
+              style={[
+                styles.statusDot, 
+                { backgroundColor: isOnline ? '#4ade80' : '#f87171' }
+              ]} 
+            />
+            <Text style={[styles.networkStatus, { color: theme.colors.grey4 }]}>
+              {isOnline ? 'Online' : 'Offline'}
+            </Text>
+          </View>
         </View>
 
         <ScrollView
@@ -533,5 +639,22 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderBottomColor: 'transparent',
     borderLeftColor: 'transparent',
+  },
+  networkIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'absolute',
+    right: 16,
+    top: 16,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
+  networkStatus: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 }); 

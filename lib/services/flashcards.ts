@@ -434,8 +434,13 @@ export async function updateDeck(
       return await SupabaseAPI.updateDeck(id, data);
     }
 
+    // Check if the provided ID is a UUID (likely a remote ID)
+    const isRemoteId = id.includes('-') && id.length > 30;
+    console.log(`📊 [SERVICE] Update deck called with ${isRemoteId ? 'remote' : 'local'} ID: ${id}`);
+
     // On mobile, check if online
     const online = await isOnline();
+    console.log(`📡 [SERVICE] Network status for updateDeck: ${online ? 'Online' : 'Offline'}`);
 
     if (online) {
       try {
@@ -455,42 +460,70 @@ export async function updateDeck(
             if (localDeckResult) {
               // If found, update the local deck using its local ID
               await LocalDB.updateLocalDeck(localDeckResult.id, data);
-              console.log(`Updated local deck ${localDeckResult.id} with remote changes`);
+              console.log(`✅ [SERVICE] Updated local deck ${localDeckResult.id} with remote changes`);
             } else {
               // If not found, this might be a deck that exists only remotely
               // We could create a local copy here if needed
-              console.log(`No local deck found with remote_id ${id}, skipping local update`);
+              console.log(`ℹ️ [SERVICE] No local deck found with remote_id ${id}, skipping local update`);
             }
           }
         } catch (localError) {
-          console.error('Error updating deck locally:', localError);
+          console.error('❌ [SERVICE] Error updating deck locally:', localError);
           // Continue anyway since we have the remote update
         }
         
         return remoteDeck;
       } catch (remoteError) {
-        console.error('Error updating deck in Supabase, falling back to local:', remoteError);
+        console.error('❌ [SERVICE] Error updating deck in Supabase, falling back to local:', remoteError);
         // Fall back to local storage if Supabase fails
-        const localDeck = await LocalDB.updateLocalDeck(id, data);
-        return {
-          id: localDeck.id,
-          user_id: localDeck.user_id,
-          name: localDeck.name,
-          description: localDeck.description,
-          language: localDeck.language,
-          settings: localDeck.settings,
-          tags: localDeck.tags,
-          color_preset: localDeck.color_preset,
-          created_at: localDeck.created_at,
-          updated_at: localDeck.updated_at,
-          total_cards: localDeck.total_cards || 0,
-          new_cards: localDeck.new_cards || 0,
-          cards_to_review: localDeck.cards_to_review || 0
-        };
+      }
+    }
+    
+    // Get local deck ID if we have a remote ID
+    let localId = id;
+    if (isRemoteId) {
+      console.log(`🔍 [SERVICE] Looking for local deck with remote ID: ${id}`);
+      try {
+        // Try to find the corresponding local deck ID
+        const localDeck = await LocalDB.getDeckByRemoteId(id);
+        if (localDeck) {
+          localId = localDeck.id;
+          console.log(`✅ [SERVICE] Found local deck ID ${localId} for remote ID ${id}`);
+        } else {
+          console.error(`❌ [SERVICE] No local deck found with remote ID ${id}`);
+          throw new Error('Deck not found');
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error finding local deck with remote ID ${id}:`, error);
+        throw new Error('Deck not found');
       }
     } else {
-      // Offline mode - update locally only
-      const localDeck = await LocalDB.updateLocalDeck(id, data);
+      // Check if the local ID exists
+      try {
+        const deckExists = await LocalDB.getLocalDeck(id);
+        if (!deckExists) {
+          console.error(`❌ [SERVICE] No deck found with local ID ${id}`);
+          throw new Error('Deck not found');
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error checking local deck with ID ${id}:`, error);
+        throw new Error('Deck not found');
+      }
+    }
+    
+    // Offline mode - update locally only
+    console.log(`💾 [SERVICE] Updating local deck with ID: ${localId}`);
+    try {
+      // Use type assertion to add modified_offline flag
+      const updatedData = {
+        ...data,
+        modified_offline: true
+      };
+      
+      const localDeck = await LocalDB.updateLocalDeck(localId, updatedData as any);
+      
+      console.log(`✅ [SERVICE] Successfully updated local deck ${localId}`);
+      
       return {
         id: localDeck.id,
         user_id: localDeck.user_id,
@@ -506,9 +539,12 @@ export async function updateDeck(
         new_cards: localDeck.new_cards || 0,
         cards_to_review: localDeck.cards_to_review || 0
       };
+    } catch (error) {
+      console.error(`❌ [SERVICE] Error updating local deck:`, error);
+      throw error;
     }
   } catch (error) {
-    console.error('Error in updateDeck service:', error);
+    console.error('❌ [SERVICE] Error in updateDeck service:', error);
     throw error;
   }
 }
