@@ -198,15 +198,59 @@ export default function StudyScreen() {
       // Load audio segments when card changes
       const loadAudioSegments = async () => {
         try {
-          console.log('Loading audio segments for card:', currentCard.id);
+          console.log('🔄 [STUDY] Loading audio segments for card:', currentCard.id);
+          
+          // Reset audio segments before loading new ones
+          setFrontAudioSegments([]);
+          setBackAudioSegments([]);
+          
           const segments = await getCardAudioSegments(currentCard.id);
-          console.log('Loaded audio segments:', segments);
-          setFrontAudioSegments(segments.filter(s => s.side === 'front'));
-          setBackAudioSegments(segments.filter(s => s.side === 'back'));
+          console.log('🔄 [STUDY] Loaded audio segments:', segments.length);
+          
+          // Debug each segment in detail
+          console.log('🔍 [STUDY DEBUG] All audio segments:', segments.map(s => ({
+            id: s.id,
+            side: s.side,
+            audioUrl: s.audio_file.url,
+            isOffline: s.id.startsWith('offline_')
+          })));
+          
+          // Filter segments by side and log counts
+          const frontSegs = segments.filter(s => s.side === 'front');
+          const backSegs = segments.filter(s => s.side === 'back');
+          console.log(`🔄 [STUDY] Audio segments by side: front=${frontSegs.length}, back=${backSegs.length}`);
+          
+          // More detailed debug of front segments
+          console.log('🔍 [STUDY DEBUG] Front segments:', frontSegs.map(s => ({
+            id: s.id,
+            audioUrl: s.audio_file.url,
+            isOffline: s.id.startsWith('offline_')
+          })));
+          
+          // More detailed debug of back segments
+          console.log('🔍 [STUDY DEBUG] Back segments:', backSegs.map(s => ({
+            id: s.id,
+            audioUrl: s.audio_file.url,
+            isOffline: s.id.startsWith('offline_')
+          })));
+          
+          setFrontAudioSegments(frontSegs);
+          setBackAudioSegments(backSegs);
+          
+          // Log more details if we have segments
+          if (segments.length > 0) {
+            console.log('🔄 [STUDY] Audio segment details:', segments.map(s => ({
+              id: s.id,
+              side: s.side,
+              audioUrl: s.audio_file.url,
+              isOffline: s.id.startsWith('offline_')
+            })));
+          }
         } catch (error) {
-          console.error('Error loading audio segments:', error);
+          console.error('❌ [STUDY] Error loading audio segments:', error);
         }
       };
+      
       loadAudioSegments();
     }
   }, [currentCard]);

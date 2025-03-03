@@ -76,20 +76,25 @@ export function StudyHeader({
       </View>
 
       <View style={styles.headerRight}>
-        {!isOffline && (
-          <Button
-            type="clear"
-            icon={
-              <MaterialIcons
-                name="headset"
-                size={24}
-                color={theme.colors.grey5}
-              />
+        <Button
+          type="clear"
+          icon={
+            <MaterialIcons
+              name="headset"
+              size={24}
+              color={isOffline ? theme.colors.grey3 : theme.colors.grey5}
+            />
+          }
+          onPress={() => {
+            if (!isOffline) {
+              router.push(`/flashcards/${currentCardId}/recordings`);
+            } else {
+              console.log('Recordings are not available in offline mode');
             }
-            onPress={() => router.push(`/flashcards/${currentCardId}/recordings`)}
-            containerStyle={styles.iconButton}
-          />
-        )}
+          }}
+          containerStyle={styles.iconButton}
+          disabled={isOffline}
+        />
         <Button
           type="clear"
           icon={

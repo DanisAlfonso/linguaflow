@@ -1,8 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Audio } from 'expo-av';
 import { uploadRecording } from '../../api/audio';
+import { saveAudioRecording, syncAudioRecordings } from '../../services/audio';
+import { isOnline } from '../../services/flashcards';
 import type { Recording } from '../../../types/audio';
 import Toast from 'react-native-toast-message';
+import * as FileSystem from 'expo-file-system';
 
 async function configureAudioSession() {
   try {
@@ -55,17 +58,17 @@ export function useAudioManager({
 }: UseAudioManagerProps): UseAudioManagerReturn {
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
-  const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [meterLevel, setMeterLevel] = useState(0);
   const [hasRecording, setHasRecording] = useState(false);
   const [uploadedRecording, setUploadedRecording] = useState<Recording | null>(null);
   const recordingTimer = useRef<NodeJS.Timeout>();
+  const recording = useRef<Audio.Recording | null>(null);
 
   // Playback states
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackProgress, setPlaybackProgress] = useState(0);
-  const sound = useRef<Audio.Sound>();
+  const [sound, setSound] = useState<Audio.Sound | null>(null);
   const playbackTimer = useRef<NodeJS.Timeout>();
 
   // Permission handling
@@ -80,8 +83,8 @@ export function useAudioManager({
       if (playbackTimer.current) {
         clearInterval(playbackTimer.current);
       }
-      if (sound.current) {
-        sound.current.unloadAsync();
+      if (sound) {
+        sound.unloadAsync();
       }
     };
   }, []);
@@ -119,6 +122,13 @@ export function useAudioManager({
         return;
       }
 
+      // Clean up any existing recording
+      if (recording.current) {
+        console.log('Cleaning up previous recording');
+        await recording.current.stopAndUnloadAsync();
+        recording.current = null;
+      }
+
       // Configure audio mode for recording
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
@@ -126,7 +136,7 @@ export function useAudioManager({
       });
 
       console.log('Starting recording..');
-      const { recording } = await Audio.Recording.createAsync(
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         {
           android: {
             extension: '.m4a',
@@ -166,7 +176,8 @@ export function useAudioManager({
         1000 // Update metering every 1000ms
       );
 
-      setRecording(recording);
+      recording.current = newRecording;
+      // Remove setRecording(newRecording) since we're using a ref now
       setIsRecording(true);
       setRecordingDuration(0);
       setMeterLevel(0);
@@ -188,64 +199,105 @@ export function useAudioManager({
   };
 
   const stopRecording = async () => {
+    if (!isRecording || !recording.current) return;
+
     try {
-      if (!recording) return;
-
-      console.log('Stopping recording..');
-      await recording.stopAndUnloadAsync();
-      
-      // Stop and clear duration timer
-      if (recordingTimer.current) {
-        clearInterval(recordingTimer.current);
-      }
-
-      // Reset audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-        playsInSilentModeIOS: true,
-      });
-
-      const uri = recording.getURI();
-      if (!uri) {
-        throw new Error('No recording URI available');
-      }
-
-      console.log('Recording stopped and stored at', uri);
-
-      // Upload the recording
-      const uploaded = await uploadRecording(cardId, {
-        uri,
-        duration: recordingDuration,
-      });
-
-      // Store the uploaded recording
-      setUploadedRecording(uploaded);
-
-      // Reset states but keep duration for display
-      setRecording(null);
+      console.log('Stopping recording...');
       setIsRecording(false);
-      setMeterLevel(0);
-      setHasRecording(true);
+      await recording.current.stopAndUnloadAsync();
+      const status = await recording.current.getStatusAsync();
+      
+      // Check if a valid recording was made
+      if (status.isDoneRecording) {
+        const { sound: recordedSound, status: audioStatus } = await recording.current.createNewLoadedSoundAsync();
+        
+        setSound(recordedSound);
+        setHasRecording(true);
 
-      Toast.show({
-        type: 'success',
-        text1: 'Success',
-        text2: 'Recording saved',
-      });
-    } catch (err) {
-      console.error('Failed to stop recording', err);
+        // Get the URI of the recording
+        const uri = recording.current.getURI() || '';
+        const info = await FileSystem.getInfoAsync(uri);
+        const fileSize = info.exists ? info.size : 0;
+        const fileName = `recording_${Date.now()}.m4a`;
+        
+        // Get network status
+        const networkStatus = await isOnline();
+        console.log(`Network status for audio upload: ${networkStatus ? 'Online' : 'Offline'}`);
+        
+        // Extract duration from audioStatus
+        const duration = audioStatus.isLoaded ? (audioStatus.durationMillis || 0) / 1000 : recordingDuration;
+        
+        try {
+          // Use the service function that supports offline mode
+          const result = await saveAudioRecording({
+            uri,
+            cardId,
+            side: 'front', // Default to front side
+            name: fileName,
+            size: fileSize,
+            duration: duration,
+          });
+          
+          console.log('Recording saved:', result);
+          
+          // Create a recording object that matches what the component expects
+          const newRecording: Recording = {
+            id: result.segmentId,
+            card_id: cardId,
+            user_id: 'offline_user', // Will be replaced with real user ID when synced
+            audio_url: result.audioUrl,
+            created_at: new Date().toISOString(),
+            duration: duration,
+            name: fileName,
+          };
+          
+          setUploadedRecording(newRecording);
+          
+          Toast.show({
+            type: 'success',
+            text1: networkStatus ? 'Recording saved' : 'Recording saved locally',
+            text2: networkStatus ? 'Audio uploaded successfully' : 'Will sync when online',
+          });
+          
+          // If we're online, sync any pending recordings
+          if (networkStatus) {
+            try {
+              await syncAudioRecordings();
+            } catch (syncError) {
+              console.error('Error syncing recordings:', syncError);
+            }
+          }
+        } catch (uploadError) {
+          console.error('Error saving recording:', uploadError);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to save recording',
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error stopping recording:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
-        text2: 'Failed to save recording',
+        text2: 'Failed to process recording',
       });
+    }
+    
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      });
+    } catch (error) {
+      console.log('Error setting audio mode:', error);
     }
   };
 
   const deleteRecording = useCallback(() => {
-    if (sound.current) {
-      sound.current.unloadAsync();
-      sound.current = undefined;
+    if (sound) {
+      sound.unloadAsync();
+      setSound(null);
     }
     setUploadedRecording(null);
     setHasRecording(false);
@@ -262,9 +314,9 @@ export function useAudioManager({
       }
 
       // Unload any existing sound first
-      if (sound.current) {
-        await sound.current.unloadAsync();
-        sound.current = undefined;
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
       }
 
       // Configure audio session for playback
@@ -307,13 +359,13 @@ export function useAudioManager({
         }
       );
 
-      sound.current = newSound;
+      setSound(newSound);
       setIsPlaying(true);
     } catch (error) {
       console.error('Error playing recording:', error);
-      if (sound.current) {
-        await sound.current.unloadAsync();
-        sound.current = undefined;
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
       }
       setIsPlaying(false);
       Toast.show({
@@ -326,10 +378,10 @@ export function useAudioManager({
 
   const stopPlayback = async () => {
     try {
-      if (!sound.current) return;
+      if (!sound) return;
 
-      await sound.current.stopAsync();
-      await sound.current.setPositionAsync(0);
+      await sound.stopAsync();
+      await sound.setPositionAsync(0);
       setIsPlaying(false);
       setPlaybackProgress(0);
 
@@ -343,16 +395,16 @@ export function useAudioManager({
 
   const handleSeek = async (progress: number) => {
     try {
-      if (!sound.current) return;
+      if (!sound) return;
 
-      const status = await sound.current.getStatusAsync();
+      const status = await sound.getStatusAsync();
       if (!status.isLoaded) return;
 
       const durationMillis = status.durationMillis ?? 0;
       if (durationMillis === 0) return;
 
       const position = progress * durationMillis;
-      await sound.current.setPositionAsync(position);
+      await sound.setPositionAsync(position);
       setPlaybackProgress(progress);
     } catch (error) {
       console.error('Error seeking:', error);

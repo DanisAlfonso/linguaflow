@@ -7,6 +7,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Container } from '../../../components/layout/Container';
 import { getDeck, getCards, deleteCard, syncOfflineDecks, syncDeletedCards } from '../../../lib/services/flashcards';
+import { syncOfflineAudioFiles } from '../../../lib/api/offline-audio';
 import type { Card, Deck } from '../../../types/flashcards';
 import Toast from 'react-native-toast-message';
 import { checkNetworkStatus, logOperationMode, isNetworkConnected } from '../../../lib/utils/network';
@@ -184,6 +185,9 @@ export default function DeckScreen() {
             // Sync offline decks
             await syncOfflineDecks(user.id);
             
+            // Sync offline audio files
+            await syncOfflineAudioFiles();
+            
             // Refresh the deck and cards after sync
             await loadDeckAndCards();
             
@@ -309,6 +313,8 @@ export default function DeckScreen() {
   };
 
   const handleCardPress = (cardId: string) => {
+    // Always allow navigation to card details, even in offline mode
+    console.log('🔄 [DECK] Card pressed, navigating to details:', cardId);
     router.push(`/flashcards/${id}/cards/${cardId}`);
   };
 

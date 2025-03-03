@@ -8,10 +8,13 @@ import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { BlurView } from 'expo-blur';
 import { Container } from '../../../../components/layout/Container';
-import { getCardRecordings, deleteRecording } from '../../../../lib/api/audio';
+import { deleteRecording } from '../../../../lib/api/audio';
+import { getCardRecordings, syncAudioRecordings } from '../../../../lib/services/audio';
+import { isOnline } from '../../../../lib/services/flashcards';
 import type { Recording } from '../../../../types/audio';
 import Toast from 'react-native-toast-message';
 import { supabase } from '../../../../lib/supabase';
+import NetInfo from '@react-native-community/netinfo';
 
 export default function RecordingsScreen() {
   const [recordings, setRecordings] = useState<Recording[]>([]);
@@ -22,6 +25,7 @@ export default function RecordingsScreen() {
   const [isRenameModalVisible, setIsRenameModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
+  const [isOffline, setIsOffline] = useState(false);
   const sound = useRef<Audio.Sound>();
   
   const router = useRouter();
@@ -29,10 +33,44 @@ export default function RecordingsScreen() {
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
 
-  // Load recordings when screen comes into focus
+  // Check network status
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      const networkStatus = await NetInfo.fetch();
+      setIsOffline(!(networkStatus.isConnected && networkStatus.isInternetReachable));
+    };
+    
+    checkNetworkStatus();
+    
+    // Subscribe to network status updates
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!(state.isConnected && state.isInternetReachable));
+    });
+    
+    return () => unsubscribe();
+  }, []);
+
+  // Load recordings when screen comes into focus and try to sync if online
   useFocusEffect(
     useCallback(() => {
       loadRecordings();
+      
+      // Try to sync recordings if we're online
+      const syncRecordings = async () => {
+        const networkStatus = await isOnline();
+        if (networkStatus) {
+          try {
+            await syncAudioRecordings();
+            // Reload recordings after sync
+            loadRecordings();
+          } catch (error) {
+            console.error('Error syncing recordings:', error);
+          }
+        }
+      };
+      
+      syncRecordings();
+      
       return () => {
         if (sound.current) {
           sound.current.unloadAsync();
@@ -57,6 +95,7 @@ export default function RecordingsScreen() {
       });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
 

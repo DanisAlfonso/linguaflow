@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Platform, ScrollView } from 'react-native';
-import { Text, Input, Button, useTheme } from '@rneui/themed';
+import { Text, Input, Button, useTheme, Badge } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import { Container } from '../../../../../components/layout/Container';
 import { updateCard, deleteCard } from '../../../../../lib/api/flashcards';
 import { getCard, getDeck } from '../../../../../lib/services/flashcards';
 import { getCardAudioSegments } from '../../../../../lib/services/audio';
+import { getOfflineAudioSegments } from '../../../../../lib/api/offline-audio';
 import { MandarinCardInput } from '../../../../../components/flashcards/MandarinCardInput';
 import { CharacterSizeControl } from '../../../../../components/flashcards/CharacterSizeControl';
 import { MandarinText } from '../../../../../components/flashcards/MandarinText';
@@ -16,6 +17,7 @@ import type { Card, Deck, MandarinCardData } from '../../../../../types/flashcar
 import type { CardAudioSegment } from '../../../../../types/audio';
 import Toast from 'react-native-toast-message';
 import NetInfo from '@react-native-community/netinfo';
+import { AudioAttachButton } from '../../../../../components/flashcards/AudioAttachButton';
 
 export default function CardDetailsScreen() {
   const [card, setCard] = useState<Card | null>(null);
@@ -59,12 +61,14 @@ export default function CardDetailsScreen() {
 
   const loadCard = useCallback(async () => {
     try {
-      const [cardData, deckData, audioSegments] = await Promise.all([
-        getCard(cardId as string),
-        getDeck(id as string),
-        getCardAudioSegments(cardId as string),
-      ]);
-
+      setLoading(true);
+      
+      // Get deck data
+      const deckData = await getDeck(id as string);
+      setDeck(deckData);
+      
+      // Get card data
+      const cardData = await getCard(cardId as string);
       if (!cardData) {
         Toast.show({
           type: 'error',
@@ -74,15 +78,38 @@ export default function CardDetailsScreen() {
         router.back();
         return;
       }
-
+      
       setCard(cardData);
-      setDeck(deckData);
       setFront(cardData.front);
       setBack(cardData.back);
       setNotes(cardData.notes || '');
       setTags(cardData.tags?.join(', ') || '');
-      setFrontAudioSegments(audioSegments.filter(s => s.side === 'front'));
-      setBackAudioSegments(audioSegments.filter(s => s.side === 'back'));
+      
+      // Load audio segments based on network status
+      let audioSegments: CardAudioSegment[] = [];
+      
+      try {
+        if (isOffline) {
+          console.log('🔄 [CARD DETAILS] Loading offline audio segments for card:', cardId);
+          audioSegments = await getOfflineAudioSegments(cardId as string);
+          console.log(`✅ [CARD DETAILS] Loaded ${audioSegments.length} offline audio segments`);
+        } else {
+          console.log('🔄 [CARD DETAILS] Loading online audio segments for card:', cardId);
+          audioSegments = await getCardAudioSegments(cardId as string);
+          console.log(`✅ [CARD DETAILS] Loaded ${audioSegments.length} online audio segments`);
+        }
+      } catch (audioError) {
+        console.error('❌ [CARD DETAILS] Error loading audio segments:', audioError);
+        // Continue even if audio loading fails
+      }
+      
+      // Distribute audio segments by side
+      const frontSegments = audioSegments.filter(s => s.side === 'front');
+      const backSegments = audioSegments.filter(s => s.side === 'back');
+      console.log(`🔄 [CARD DETAILS] Audio segments: ${frontSegments.length} front, ${backSegments.length} back`);
+      
+      setFrontAudioSegments(frontSegments);
+      setBackAudioSegments(backSegments);
 
       if (deckData?.language === 'Mandarin') {
         if (deckData.settings?.defaultCharacterSize) {
@@ -106,7 +133,7 @@ export default function CardDetailsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [cardId, id, router]);
+  }, [cardId, id, router, isOffline]);
 
   useEffect(() => {
     loadCard();
@@ -126,8 +153,9 @@ export default function CardDetailsScreen() {
       Toast.show({
         type: 'info',
         text1: 'Offline Mode',
-        text2: 'Editing cards is not available in offline mode',
+        text2: 'Editing card content is not available in offline mode, but you can still attach audio files.',
       });
+      setIsEditing(false);
       return;
     }
 
@@ -199,6 +227,12 @@ export default function CardDetailsScreen() {
     }
   };
 
+  // Audio attachment handler
+  const handleAudioAttached = useCallback((updatedCardId: string) => {
+    console.log('🔄 [CARD DETAILS] Audio attached to card:', updatedCardId);
+    loadCard(); // Reload card data to show the new audio
+  }, [loadCard]);
+
   if (loading || !card) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -244,6 +278,20 @@ export default function CardDetailsScreen() {
           <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
             {isEditing ? 'Edit Card' : 'Card Details'}
           </Text>
+          
+          {isOffline && (
+            <>
+              <Badge
+                value="OFFLINE"
+                status="warning"
+                containerStyle={styles.offlineBadge}
+                textStyle={styles.offlineBadgeText}
+              />
+              <Text style={styles.offlineInfo}>
+                Audio files can be attached while offline and will sync when you reconnect.
+              </Text>
+            </>
+          )}
         </View>
 
         <ScrollView
@@ -674,5 +722,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: 'white',
+  },
+  offlineBadge: {
+    backgroundColor: '#FFB700',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  offlineBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  offlineInfo: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8a8a8a',
   },
 }); 

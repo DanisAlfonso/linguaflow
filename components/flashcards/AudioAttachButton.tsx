@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, Platform } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { uploadAudioFile, createAudioFile, createAudioSegment } from '../../lib/api/audio';
-import { checkNetworkStatus, isNetworkConnected } from '../../lib/utils/network';
 import { saveAudioFileOffline } from '../../lib/api/offline-audio';
+import { saveAudioRecording } from '../../lib/services/audio';
+import { isOnline as checkNetworkStatus } from '../../lib/services/flashcards';
 import Toast from 'react-native-toast-message';
 
 interface AudioAttachButtonProps {
@@ -30,14 +31,14 @@ export function AudioAttachButton({
     setIsAttaching(true);
     try {
       // Check network connectivity
-      const isOnline = await checkNetworkStatus();
+      const isNetworkAvailable = await checkNetworkStatus();
       
       console.log('🔄 [AUDIO ATTACH] Button pressed', { 
         cardId, 
         side,
         hasCardId: Boolean(cardId),
         hasCreateCardFunction: Boolean(onCreateCard),
-        networkStatus: isOnline ? 'online' : 'offline'
+        networkStatus: isNetworkAvailable ? 'online' : 'offline'
       });
       
       // If no cardId and onCreateCard is provided, create the card first
@@ -72,21 +73,42 @@ export function AudioAttachButton({
         uri: file.uri,
         mimeType: file.mimeType,
         size: file.size,
-        platform: Platform.OS
+        platform: Platform.OS,
+        attachToSide: side
       });
       
-      if (isOnline) {
-        // Online flow - upload to Supabase
-        await handleOnlineAudioAttachment(file, currentCardId);
-      } else {
-        // Offline flow - save locally
-        await handleOfflineAudioAttachment(file, currentCardId);
+      // Use the unified audio service regardless of network status
+      // This will save locally first and then upload if online
+      const savedFile = await saveAudioFileOffline({
+        uri: file.uri,
+        mimeType: file.mimeType || 'audio/mpeg',
+        name: file.name,
+        size: file.size || 0,
+        cardId: currentCardId,
+        side: side
+      });
+      
+      console.log('✅ [AUDIO ATTACH] Audio file saved', { 
+        id: savedFile.id,
+        filePath: savedFile.filePath,
+        side: savedFile.side,
+        networkStatus: isNetworkAvailable ? 'online' : 'offline'
+      });
+      
+      // If online, also create the Supabase record
+      if (isNetworkAvailable) {
+        try {
+          await handleOnlineAudioAttachment(file, currentCardId);
+        } catch (onlineError) {
+          console.error('❌ [AUDIO ATTACH] Error uploading to Supabase, but local file saved:', onlineError);
+          // Continue since we've saved locally already
+        }
       }
       
       Toast.show({
         type: 'success',
         text1: 'Success',
-        text2: isOnline ? 'Audio attached successfully' : 'Audio saved locally for sync later',
+        text2: isNetworkAvailable ? 'Audio attached successfully' : 'Audio saved locally for sync later',
       });
 
       console.log('🔄 [AUDIO ATTACH] Calling onAudioAttached callback with cardId:', currentCardId);
@@ -152,25 +174,6 @@ export function AudioAttachButton({
       side
     );
     console.log('✅ [AUDIO ATTACH] Audio segment created', { id: segment.id });
-  }
-
-  const handleOfflineAudioAttachment = async (file: DocumentPicker.DocumentPickerAsset, currentCardId: string) => {
-    console.log('🔄 [AUDIO ATTACH] Offline mode - saving audio file locally');
-    
-    // Save the audio file locally
-    const savedFile = await saveAudioFileOffline({
-      uri: file.uri,
-      mimeType: file.mimeType || 'audio/mpeg',
-      name: file.name,
-      size: file.size,
-      cardId: currentCardId,
-      side: side
-    });
-    
-    console.log('✅ [AUDIO ATTACH] Audio file saved locally', { 
-      id: savedFile.id,
-      filePath: savedFile.filePath
-    });
   }
 
   return (
