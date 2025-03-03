@@ -269,8 +269,6 @@ export default function FlashcardsScreen() {
         text2: `Deck color has been changed to ${GRADIENT_PRESETS[colorKey].name}`,
       });
 
-      setShowColorPicker(false);
-      handleCloseMenu();
     } catch (error) {
       console.error('❌ [FLASHCARDS] Error changing deck color:', error);
       Toast.show({
@@ -278,6 +276,10 @@ export default function FlashcardsScreen() {
         text1: 'Error',
         text2: 'Failed to update deck color',
       });
+    } finally {
+      // Reset state
+      setShowColorPicker(false);
+      setEditingDeckId(null);
     }
   };
 
@@ -324,9 +326,6 @@ export default function FlashcardsScreen() {
         text2: `Deck has been renamed to "${newDeckName}"`,
       });
 
-      setNewDeckName('');
-      setShowRename(false);
-      handleCloseMenu();
     } catch (error) {
       console.error('❌ [FLASHCARDS] Error renaming deck:', error);
       Toast.show({
@@ -334,6 +333,11 @@ export default function FlashcardsScreen() {
         text1: 'Error',
         text2: 'Failed to rename deck',
       });
+    } finally {
+      // Reset state
+      setNewDeckName('');
+      setShowRename(false);
+      setEditingDeckId(null);
     }
   };
 
@@ -345,23 +349,24 @@ export default function FlashcardsScreen() {
         return;
       }
 
-      // Show confirmation dialog
-      if (confirm(`Are you sure you want to delete "${deckToDelete.name}"? This action cannot be undone.`)) {
-        setLoading(true);
-        
-        console.log(`🔄 [FLASHCARDS] Deleting deck: ${deckId}`);
-        await deleteDeck(deckId);
-        
-        // Update both decks states
-        setDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
-        setDisplayDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+      console.log(`🔄 [FLASHCARDS] Deleting deck: ${deckId} (${deckToDelete.name})`);
+      
+      // Show loading state
+      setLoading(true);
+      
+      // Delete the deck
+      await deleteDeck(deckId);
+      
+      // Update both decks states
+      setDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
+      setDisplayDecks(prevDecks => prevDecks.filter(d => d.id !== deckId));
 
-        Toast.show({
-          type: 'success',
-          text1: 'Deck Deleted',
-          text2: `"${deckToDelete.name}" has been deleted`,
-        });
-      }
+      // Show success message
+      Toast.show({
+        type: 'success',
+        text1: 'Deck Deleted',
+        text2: `"${deckToDelete.name}" has been deleted`,
+      });
     } catch (error) {
       console.error('❌ [FLASHCARDS] Error deleting deck:', error);
       Toast.show({
@@ -370,8 +375,9 @@ export default function FlashcardsScreen() {
         text2: 'Failed to delete deck',
       });
     } finally {
+      // Clean up state
       setLoading(false);
-      handleCloseMenu();
+      setEditingDeckId(null); // This is critical - ensures the menu closes
     }
   };
 
