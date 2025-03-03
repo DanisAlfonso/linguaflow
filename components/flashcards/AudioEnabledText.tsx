@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { View, StyleSheet, Text, TextStyle, StyleProp } from 'react-native';
 import { AudioTextSegment } from './AudioTextSegment';
 import type { CardAudioSegment } from '../../types/audio';
+import Toast from 'react-native-toast-message';
 
 export interface AudioEnabledTextProps {
   text: string;
@@ -18,6 +19,9 @@ export function AudioEnabledText({
   color,
   style,
 }: AudioEnabledTextProps) {
+  const audioRef = useRef<any>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
   // Sort segments by start position to ensure correct order
   const sortedSegments = [...audioSegments].sort((a, b) => a.text_start - b.text_start);
 

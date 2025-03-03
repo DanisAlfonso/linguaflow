@@ -15,6 +15,7 @@ import { AudioEnabledText } from '../../../../../components/flashcards/AudioEnab
 import type { Deck, MandarinCardData } from '../../../../../types/flashcards';
 import type { CardAudioSegment } from '../../../../../types/audio';
 import { getCardAudioSegments } from '../../../../../lib/api/audio';
+import { getOfflineAudioSegments } from '../../../../../lib/api/offline-audio';
 import Toast from 'react-native-toast-message';
 import { checkNetworkStatus, logOperationMode, isNetworkConnected } from '../../../../../lib/utils/network';
 
@@ -234,17 +235,6 @@ export default function CreateCardScreen() {
       networkStatus: isOnline ? 'online' : 'offline'
     });
     
-    if (!isOnline) {
-      console.log('❌ [CREATE CARD] Cannot attach audio while offline');
-      Toast.show({
-        type: 'error',
-        text1: 'Offline Mode',
-        text2: 'Audio attachment is not available offline.',
-      });
-      setLoading(false); // Ensure loading state is reset
-      return;
-    }
-    
     // Always save the card ID received from the audio attachment process
     if (cardId) {
       console.log('🔄 [CREATE CARD] Saving card ID from audio attachment:', cardId);
@@ -257,7 +247,8 @@ export default function CreateCardScreen() {
       console.log('🔄 [CREATE CARD] Fetching audio segments', { 
         cardId: effectiveCardId,
         originalCardId: cardId,
-        savedCardId: createdCard
+        savedCardId: createdCard,
+        networkStatus: isOnline ? 'online' : 'offline'
       });
       
       if (!effectiveCardId) {
@@ -266,7 +257,23 @@ export default function CreateCardScreen() {
         return;
       }
       
-      const segments = await getCardAudioSegments(effectiveCardId);
+      let segments: CardAudioSegment[] = [];
+      if (isOnline) {
+        // Fetch segments from Supabase when online
+        segments = await getCardAudioSegments(effectiveCardId);
+      } else {
+        // Fetch segments from local storage when offline
+        console.log('🔄 [CREATE CARD] Fetching offline audio segments');
+        segments = await getOfflineAudioSegments(effectiveCardId);
+        
+        // Show message to user
+        Toast.show({
+          type: 'info',
+          text1: 'Audio Attached',
+          text2: 'Audio will be synced when you reconnect',
+          position: 'bottom',
+        });
+      }
       
       console.log('✅ [CREATE CARD] Audio segments loaded', { 
         totalSegments: segments.length,
@@ -275,8 +282,9 @@ export default function CreateCardScreen() {
         segments: segments.map(s => ({
           id: s.id,
           side: s.side,
-          url: s.audio_file.url
-        }))
+          url: s.audio_file?.url || 'local file'
+        })),
+        networkMode: isOnline ? 'online' : 'offline'
       });
       
       const frontSegments = segments.filter(s => s.side === 'front');
@@ -439,12 +447,17 @@ export default function CreateCardScreen() {
             Add Cards
           </Text>
           {isOffline && (
-            <Badge
-              value="OFFLINE"
-              status="warning"
-              containerStyle={styles.offlineBadge}
-              textStyle={styles.offlineBadgeText}
-            />
+            <>
+              <Badge
+                value="OFFLINE"
+                status="warning"
+                containerStyle={styles.offlineBadge}
+                textStyle={styles.offlineBadgeText}
+              />
+              <Text style={styles.offlineInfo}>
+                Cards and audio files are saved locally and will sync when you reconnect.
+              </Text>
+            </>
           )}
           {cardsCreated > 0 && (
             <Badge
@@ -1035,5 +1048,10 @@ const styles = StyleSheet.create({
   },
   offlineBadgeText: {
     fontWeight: 'bold',
+  },
+  offlineInfo: {
+    fontSize: 12,
+    color: '#8a8a8a',
+    marginTop: 4,
   },
 }); 

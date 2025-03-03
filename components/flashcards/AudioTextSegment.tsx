@@ -41,10 +41,14 @@ export function AudioTextSegment({
         }
 
         setIsLoading(true);
-        console.log('Loading audio from:', audioUrl);
+        // Check if this is a local file path
+        const isLocalFile = audioUrl.startsWith('file://') || (!audioUrl.startsWith('http') && !audioUrl.startsWith('blob'));
+        console.log('Loading audio from:', audioUrl, isLocalFile ? '(local file)' : '(remote URL)');
 
         if (isWeb) {
           // Web implementation using HTML5 Audio
+          // Local files won't work on web due to security restrictions,
+          // but we'll handle the error gracefully
           const audio = new window.Audio(audioUrl);
           audio.preload = 'auto';
           
@@ -88,36 +92,52 @@ export function AudioTextSegment({
             interruptionModeAndroid: 2,
           });
 
-          const { sound: audioSound } = await Audio.Sound.createAsync(
-            { uri: audioUrl },
-            { 
-              shouldPlay: false,
-              volume: 1.0,
-              isLooping: false,
-              rate: 1.0,
-              isMuted: false,
-              progressUpdateIntervalMillis: 100,
-              positionMillis: 0,
-              androidImplementation: 'MediaPlayer',
-              shouldCorrectPitch: true,
-            },
-            (status) => {
-              if (status.isLoaded && status.didJustFinish) {
-                console.log('Audio playback completed');
-                onAudioComplete?.();
-              }
-            },
-            true
-          );
+          try {
+            console.log('Creating audio object for:', audioUrl);
+            
+            // For both remote and local files, we use the same approach
+            // but with better error handling for local files
+            const { sound: audioSound } = await Audio.Sound.createAsync(
+              { uri: audioUrl },
+              { 
+                shouldPlay: false,
+                volume: 1.0,
+                isLooping: false,
+                rate: 1.0,
+                isMuted: false,
+                progressUpdateIntervalMillis: 100,
+                positionMillis: 0,
+                androidImplementation: 'MediaPlayer',
+                shouldCorrectPitch: true,
+              },
+              (status) => {
+                if (status.isLoaded && status.didJustFinish) {
+                  console.log('Audio playback completed');
+                  onAudioComplete?.();
+                }
+              },
+              true
+            );
 
-          if (!isMounted) {
-            audioSound.unloadAsync();
-            return;
+            if (!isMounted) {
+              audioSound.unloadAsync();
+              return;
+            }
+
+            console.log('Sound loaded successfully');
+            sound.current = audioSound;
+            setIsSoundLoaded(true);
+          } catch (error) {
+            console.error('Error loading sound:', error);
+            if (isMounted) {
+              setIsSoundLoaded(false);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: `Failed to load audio file${isLocalFile ? ' (local)' : ' (remote)'}`,
+              });
+            }
           }
-
-          console.log('Sound loaded successfully');
-          sound.current = audioSound;
-          setIsSoundLoaded(true);
         }
       } catch (error) {
         console.error('Error loading sound:', error);
@@ -170,13 +190,30 @@ export function AudioTextSegment({
       if (!isSoundLoaded) {
         console.log('Sound is not loaded, attempting to reload...');
         setIsLoading(true);
+        
+        // Check if this is a local file path
+        const isLocalFile = audioUrl.startsWith('file://') || (!audioUrl.startsWith('http') && !audioUrl.startsWith('blob'));
+        console.log('Reloading audio from:', audioUrl, isLocalFile ? '(local file)' : '(remote URL)');
+        
         if (isWeb) {
           if (webAudio.current) {
             await webAudio.current.load();
           }
         } else {
           if (sound.current) {
-            await sound.current.loadAsync({ uri: audioUrl });
+            try {
+              await sound.current.loadAsync({ uri: audioUrl });
+              console.log('Successfully reloaded audio');
+            } catch (error) {
+              console.error('Error reloading audio:', error);
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: `Failed to reload audio${isLocalFile ? ' (local)' : ' (remote)'}`,
+              });
+              setIsLoading(false);
+              return;
+            }
           }
         }
         setIsSoundLoaded(true);
@@ -197,11 +234,24 @@ export function AudioTextSegment({
           
           if (!status.isLoaded) {
             console.log('Reloading sound...');
-            await sound.current.loadAsync({ uri: audioUrl });
+            try {
+              await sound.current.loadAsync({ uri: audioUrl });
+              console.log('Successfully reloaded audio before playing');
+            } catch (error) {
+              console.error('Error reloading audio before playing:', error);
+              const isLocalFile = audioUrl.startsWith('file://') || (!audioUrl.startsWith('http') && !audioUrl.startsWith('blob'));
+              Toast.show({
+                type: 'error',
+                text1: 'Error',
+                text2: `Failed to reload audio${isLocalFile ? ' (local)' : ' (remote)'}`,
+              });
+              return;
+            }
           }
           
           await sound.current.setPositionAsync(0);
           await sound.current.playAsync();
+          console.log('Audio playback started');
         }
       }
 
