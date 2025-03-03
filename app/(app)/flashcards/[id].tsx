@@ -23,18 +23,23 @@ export default function DeckScreen() {
   const [editTooltipOpacity] = useState(new Animated.Value(0));
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0, width: 0, height: 0 });
-  const [prevNetworkStatus, setPrevNetworkStatus] = useState(isNetworkConnected());
+  const [networkStatus, setNetworkStatus] = useState<'online'|'offline'>('online');
   
   const router = useRouter();
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { theme } = useTheme();
   const isWeb = Platform.OS === 'web';
   const { user } = useAuth();
+  
+  const onlineStatus = networkStatus === 'online';
 
   const loadDeckAndCards = useCallback(async () => {
     try {
       // Check network status before loading data
       const isOnline = await checkNetworkStatus();
+      setNetworkStatus(isOnline ? 'online' : 'offline');
+      
+      console.log('📡 [NETWORK] Status check:', isOnline ? 'Online' : 'Offline');
       console.log(`📡 [NETWORK] Loading deck and cards in ${isOnline ? 'online' : 'offline'} mode`);
       
       // First try to get the deck
@@ -53,6 +58,16 @@ export default function DeckScreen() {
       }
       
       console.log('✅ [DECK SCREEN] Successfully loaded deck data', { deckId: id, deckName: deckData.name });
+      
+      // Add debug log for deck card counts
+      console.log('📊 [DECK COUNTS] Card counts for deck', { 
+        mode: isOnline ? 'Online' : 'Offline',
+        deckId: id, 
+        total_cards: deckData.total_cards || 0,
+        new_cards: deckData.new_cards || 0,
+        cards_to_review: deckData.cards_to_review || 0
+      });
+      
       setDeck(deckData);
       
       // Then try to get the cards - wrapping in try/catch to handle errors without failing the whole component
@@ -63,6 +78,37 @@ export default function DeckScreen() {
         // If we have cards, show them
         if (cardsData && cardsData.length > 0) {
           console.log(`✅ [DECK SCREEN] Successfully loaded ${cardsData.length} cards`);
+          
+          // Add debug log comparing deck card counts vs actual loaded cards
+          console.log('📊 [DECK vs CARDS] Comparing counts', { 
+            mode: isOnline ? 'Online' : 'Offline',
+            deckId: id,
+            total_cards_from_deck: deck?.total_cards || 0,
+            actual_loaded_cards: cardsData.length,
+            mismatch: (deck?.total_cards || 0) !== cardsData.length
+          });
+          
+          // If we're offline and there's a mismatch between deck.total_cards and actual cards length,
+          // update the deck object with the correct counts
+          if (!isOnline && (deck?.total_cards || 0) !== cardsData.length && deck) {
+            console.log('🔄 [DECK SCREEN] Updating deck metadata from loaded cards', {
+              previous_total: deck.total_cards || 0,
+              new_total: cardsData.length
+            });
+            
+            // Create an updated deck object with corrected counts
+            const updatedDeck = {
+              ...deck,
+              total_cards: cardsData.length,
+              // For simplicity, setting all cards as new in offline mode
+              new_cards: cardsData.length,
+              cards_to_review: 0
+            };
+            
+            // Update the deck state with corrected counts
+            setDeck(updatedDeck);
+          }
+
           setCards(cardsData);
         } else {
           console.log('ℹ️ [DECK SCREEN] No cards found for this deck');
@@ -98,7 +144,7 @@ export default function DeckScreen() {
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id, router, user]);
 
   // Initial load
   useEffect(() => {
@@ -117,41 +163,48 @@ export default function DeckScreen() {
   // Check for network status changes and trigger sync when going from offline to online
   useEffect(() => {
     const checkNetworkChange = async () => {
-      const currentStatus = isNetworkConnected();
-      
-      // If we just came back online and we were previously offline, try to sync
-      if (currentStatus && !prevNetworkStatus && !isWeb && user) {
-        console.log('🔄 [DECK SCREEN] Network connection restored - triggering sync');
+      try {
+        const isOnline = await checkNetworkStatus();
+        setNetworkStatus(isOnline ? 'online' : 'offline');
         
-        try {
-          Toast.show({
-            type: 'info',
-            text1: 'Syncing...',
-            text2: 'Syncing offline changes to the server',
-          });
+        // If we just came back online and we were previously offline, try to sync
+        if (isOnline && !onlineStatus && !isWeb && user) {
+          console.log('🔄 [DECK SCREEN] Network connection restored - triggering sync');
           
-          await syncOfflineDecks(user.id);
-          
-          // Refresh the deck and cards after sync
-          await loadDeckAndCards();
-          
-          Toast.show({
-            type: 'success',
-            text1: 'Sync Complete',
-            text2: 'Your offline changes have been synced',
-          });
-        } catch (error) {
-          console.error('❌ [DECK SCREEN] Error syncing:', error);
-          Toast.show({
-            type: 'error',
-            text1: 'Sync Failed',
-            text2: 'Could not sync offline changes',
-          });
+          try {
+            Toast.show({
+              type: 'info',
+              text1: 'Syncing...',
+              text2: 'Syncing offline changes to the server',
+            });
+            
+            await syncOfflineDecks(user.id);
+            
+            // Refresh the deck and cards after sync
+            await loadDeckAndCards();
+            
+            Toast.show({
+              type: 'success',
+              text1: 'Sync Complete',
+              text2: 'Your offline changes have been synced',
+            });
+          } catch (error) {
+            console.error('❌ [DECK SCREEN] Error syncing:', error);
+            Toast.show({
+              type: 'error',
+              text1: 'Sync Failed',
+              text2: 'Could not sync offline changes',
+            });
+          }
         }
+      } catch (error) {
+        console.error('❌ [DECK SCREEN] Error checking network:', error);
+        Toast.show({
+          type: 'error',
+          text1: 'Error',
+          text2: 'Failed to check network status',
+        });
       }
-      
-      // Update the previous status
-      setPrevNetworkStatus(currentStatus);
     };
     
     // Check on component mount and when the component updates
@@ -161,7 +214,7 @@ export default function DeckScreen() {
     const interval = setInterval(checkNetworkChange, 10000);
     
     return () => clearInterval(interval);
-  }, [user, isWeb, loadDeckAndCards, prevNetworkStatus]);
+  }, [user, isWeb, loadDeckAndCards, onlineStatus]);
 
   const handleStartStudy = () => {
     if (!deck) {
@@ -348,8 +401,27 @@ export default function DeckScreen() {
       card.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const hasCards = (deck?.total_cards ?? 0) > 0;
-  const hasCardsToStudy = hasCards && ((deck?.new_cards ?? 0) + (deck?.cards_to_review ?? 0) > 0);
+  // Update hasCards calculation to account for offline mode where deck.total_cards might be 0 despite having cards
+  const hasCards = ((deck?.total_cards ?? 0) > 0) || cards.length > 0;
+  const hasCardsToStudy = hasCards && (((deck?.new_cards ?? 0) + (deck?.cards_to_review ?? 0) > 0) || cards.length > 0);
+  
+  // For the UI display, use either the deck metadata or the actual card count, whichever is higher
+  const displayTotalCards = Math.max((deck?.total_cards ?? 0), cards.length);
+  const displayNewCards = !onlineStatus && cards.length > 0 ? cards.length : (deck?.new_cards ?? 0);
+  const displayCardsToReview = deck?.cards_to_review ?? 0;
+
+  console.log('🔍 [RENDER] DeckScreen render variables', {
+    hasCards,
+    hasCardsToStudy,
+    total_cards: deck?.total_cards || 0,
+    new_cards: deck?.new_cards || 0,
+    cards_to_review: deck?.cards_to_review || 0,
+    actual_cards_length: cards.length,
+    filtered_cards_length: filteredCards.length,
+    display_total_cards: displayTotalCards,
+    display_new_cards: displayNewCards,
+    display_cards_to_review: displayCardsToReview
+  });
 
   if (loading || !deck) {
     return (
@@ -415,26 +487,28 @@ export default function DeckScreen() {
               {deck?.description}
             </Text>
 
-            <View style={styles.stats}>
+            <View style={styles.statsContainer}>
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: theme.colors.grey5 }]}>
-                  {deck?.total_cards ?? 0}
+                <Text style={[styles.statValue, { color: theme.colors.grey5 }]}>
+                  {displayTotalCards}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
                   Total Cards
                 </Text>
               </View>
+              
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: '#059669' }]}>
-                  {deck?.new_cards ?? 0}
+                <Text style={[styles.statValue, { color: '#059669' }]}>
+                  {displayNewCards}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
                   New
                 </Text>
               </View>
+              
               <View style={styles.statItem}>
-                <Text style={[styles.statNumber, { color: '#4F46E5' }]}>
-                  {deck?.cards_to_review ?? 0}
+                <Text style={[styles.statValue, { color: '#4F46E5' }]}>
+                  {displayCardsToReview}
                 </Text>
                 <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
                   To Review
@@ -792,14 +866,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
   },
-  stats: {
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
   statItem: {
     alignItems: 'center',
   },
-  statNumber: {
+  statValue: {
     fontSize: 24,
     fontWeight: '600',
     marginBottom: 4,
