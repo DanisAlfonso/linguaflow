@@ -121,7 +121,9 @@ export default function CreateCardScreen() {
       andContinue, 
       currentCreatedCard: createdCard,
       frontLength: front.length,
-      backLength: back.length 
+      backLength: back.length,
+      frontAudioSegmentsCount: frontAudioSegments.length,
+      backAudioSegmentsCount: backAudioSegments.length
     });
     
     if (!front.trim() || !back.trim()) {
@@ -141,13 +143,35 @@ export default function CreateCardScreen() {
       // Only create a new card if one doesn't exist
       if (!cardId) {
         console.log('🔄 [CREATE CARD] No existing card ID, creating new card');
-        cardId = await audioButtonProps.onCreateCard();
-        if (!cardId) {
-          console.log('❌ [CREATE CARD] Failed to create card (no ID returned)');
+        try {
+          cardId = await audioButtonProps.onCreateCard();
+          if (!cardId) {
+            console.log('❌ [CREATE CARD] Failed to create card (no ID returned)');
+            setLoading(false);
+            return;
+          }
+          console.log('✅ [CREATE CARD] Card created successfully with ID:', cardId);
+          // Ensure the created card ID is saved in state
+          setCreatedCard(cardId);
+        } catch (error) {
+          console.error('❌ [CREATE CARD] Error creating new card:', error);
+          Toast.show({
+            type: 'error',
+            text1: 'Error',
+            text2: 'Failed to create card',
+          });
+          setLoading(false);
           return;
         }
-        console.log('✅ [CREATE CARD] Card created successfully with ID:', cardId);
+      } else {
+        console.log('🔄 [CREATE CARD] Using existing card ID (already created):', cardId);
       }
+      
+      // Log audio segments that we have so far
+      console.log('🔄 [CREATE CARD] Audio segments before success:', {
+        frontAudioSegments: frontAudioSegments.map(s => ({ id: s.id, url: s.audio_file.url })),
+        backAudioSegments: backAudioSegments.map(s => ({ id: s.id, url: s.audio_file.url }))
+      });
       
       Toast.show({
         type: 'success',
@@ -165,15 +189,19 @@ export default function CreateCardScreen() {
       if (andContinue) {
         console.log('🔄 [CREATE CARD] Clearing form after card creation to add another card');
         clearForm();
+      } else {
+        console.log('🔄 [CREATE CARD] Card created without "add another" - should finish now');
       }
     } catch (error) {
-      console.error('❌ [CREATE CARD] Error creating card:', error);
+      console.error('❌ [CREATE CARD] Error in handleCreateCard:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
         text2: 'Failed to create card',
       });
     } finally {
+      // Always reset loading state in finally block to ensure it happens
+      console.log('🔄 [CREATE CARD] Resetting loading state');
       setLoading(false);
     }
   };
@@ -197,11 +225,12 @@ export default function CreateCardScreen() {
     router.back();
   };
 
-  const handleAudioAttached = async () => {
+  const handleAudioAttached = async (cardId: string) => {
     const isOnline = isNetworkConnected();
     
     console.log('🔄 [CREATE CARD] Audio attachment requested', { 
       currentCreatedCard: createdCard,
+      receivedCardId: cardId,
       networkStatus: isOnline ? 'online' : 'offline'
     });
     
@@ -212,21 +241,57 @@ export default function CreateCardScreen() {
         text1: 'Offline Mode',
         text2: 'Audio attachment is not available offline.',
       });
+      setLoading(false); // Ensure loading state is reset
       return;
+    }
+    
+    // Always save the card ID received from the audio attachment process
+    if (cardId) {
+      console.log('🔄 [CREATE CARD] Saving card ID from audio attachment:', cardId);
+      setCreatedCard(cardId);
     }
     
     try {
       // Load audio segments for the card
-      console.log('🔄 [CREATE CARD] Fetching audio segments', { cardId: createdCard });
-      const segments = await getCardAudioSegments(createdCard!);
-      
-      console.log('✅ [CREATE CARD] Audio segments loaded', { 
-        frontSegments: segments.filter(s => s.side === 'front').length,
-        backSegments: segments.filter(s => s.side === 'back').length
+      const effectiveCardId = cardId || createdCard;
+      console.log('🔄 [CREATE CARD] Fetching audio segments', { 
+        cardId: effectiveCardId,
+        originalCardId: cardId,
+        savedCardId: createdCard
       });
       
-      setFrontAudioSegments(segments.filter(s => s.side === 'front'));
-      setBackAudioSegments(segments.filter(s => s.side === 'back'));
+      if (!effectiveCardId) {
+        console.log('❌ [CREATE CARD] No card ID available for fetching audio segments');
+        setLoading(false); // Ensure loading state is reset
+        return;
+      }
+      
+      const segments = await getCardAudioSegments(effectiveCardId);
+      
+      console.log('✅ [CREATE CARD] Audio segments loaded', { 
+        totalSegments: segments.length,
+        frontSegments: segments.filter(s => s.side === 'front').length,
+        backSegments: segments.filter(s => s.side === 'back').length,
+        segments: segments.map(s => ({
+          id: s.id,
+          side: s.side,
+          url: s.audio_file.url
+        }))
+      });
+      
+      const frontSegments = segments.filter(s => s.side === 'front');
+      const backSegments = segments.filter(s => s.side === 'back');
+      
+      setFrontAudioSegments(frontSegments);
+      setBackAudioSegments(backSegments);
+      
+      console.log('✅ [CREATE CARD] Audio segments state updated', { 
+        frontSegmentsCount: frontSegments.length,
+        backSegmentsCount: backSegments.length
+      });
+      
+      // Ensure loading state is reset after successful audio attachment
+      setLoading(false);
     } catch (error) {
       console.error('❌ [CREATE CARD] Error attaching audio:', error);
       Toast.show({
@@ -234,6 +299,8 @@ export default function CreateCardScreen() {
         text1: 'Error',
         text2: 'Failed to attach audio',
       });
+      // Ensure loading state is reset on error
+      setLoading(false);
     }
   };
 
@@ -315,6 +382,7 @@ export default function CreateCardScreen() {
           pendingSync: !isOnline
         });
         
+        // Important: Update the component state with the new card ID
         setCreatedCard(card.id);
         return card.id;
       } catch (error) {
@@ -334,8 +402,9 @@ export default function CreateCardScreen() {
             text2: 'Card saved locally and will sync when you reconnect.',
           });
           // Return a fake ID to keep the flow going
-          setCreatedCard('offline_temp_id_' + Date.now());
-          return 'offline_temp_id_' + Date.now();
+          const tempId = 'offline_temp_id_' + Date.now();
+          setCreatedCard(tempId);
+          return tempId;
         } else {
           Toast.show({
             type: 'error',

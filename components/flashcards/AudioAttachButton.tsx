@@ -8,7 +8,7 @@ import Toast from 'react-native-toast-message';
 interface AudioAttachButtonProps {
   cardId: string;
   side: 'front' | 'back';
-  onAudioAttached?: () => void;
+  onAudioAttached?: (cardId: string) => void;
   onCreateCard?: () => Promise<string>;
   disabled?: boolean;
 }
@@ -22,61 +22,92 @@ export function AudioAttachButton({
 }: AudioAttachButtonProps) {
   const handlePress = async () => {
     try {
+      console.log('🔄 [AUDIO ATTACH] Button pressed', { 
+        cardId, 
+        side,
+        hasCardId: Boolean(cardId),
+        hasCreateCardFunction: Boolean(onCreateCard)
+      });
+      
       // If no cardId and onCreateCard is provided, create the card first
       let currentCardId = cardId;
       if (!currentCardId && onCreateCard) {
+        console.log('🔄 [AUDIO ATTACH] No cardId, creating card first');
         currentCardId = await onCreateCard();
         if (!currentCardId) {
           // Card creation failed or was cancelled
+          console.log('❌ [AUDIO ATTACH] Card creation failed or was cancelled');
           return;
         }
+        console.log('✅ [AUDIO ATTACH] Card created with ID:', currentCardId);
       }
 
+      console.log('🔄 [AUDIO ATTACH] Opening document picker');
       const result = await DocumentPicker.getDocumentAsync({
         type: 'audio/*',
         copyToCacheDirectory: true,
       });
 
       if (result.canceled) {
+        console.log('🔄 [AUDIO ATTACH] Document picker cancelled');
         return;
       }
 
       const file = result.assets[0];
+      console.log('🔄 [AUDIO ATTACH] File selected', { 
+        name: file.name, 
+        uri: file.uri,
+        mimeType: file.mimeType,
+        size: file.size,
+        platform: Platform.OS
+      });
       
       // Get the actual File object on web platform
       let fileToUpload: File | undefined;
       if (Platform.OS === 'web') {
         // On web, we need to fetch the file to get its content
+        console.log('🔄 [AUDIO ATTACH] Web platform - fetching file content');
         const response = await fetch(file.uri);
         const blob = await response.blob();
         fileToUpload = new File([blob], file.name, {
           type: file.mimeType || 'audio/mpeg'
         });
+        console.log('✅ [AUDIO ATTACH] Web File object created', { size: fileToUpload.size });
       }
       
       // Upload the audio file
+      console.log('🔄 [AUDIO ATTACH] Uploading audio file');
       const uploadResponse = await uploadAudioFile({
         uri: file.uri,
         type: file.mimeType || 'audio/mpeg',
         name: file.name,
         file: fileToUpload,
       });
+      console.log('✅ [AUDIO ATTACH] Audio file uploaded', { path: uploadResponse.path });
 
       // Create audio file record
+      console.log('🔄 [AUDIO ATTACH] Creating audio file record');
       const audioFile = await createAudioFile(
         uploadResponse.path,
         file.name,
         file.mimeType || 'audio/mpeg'
       );
+      console.log('✅ [AUDIO ATTACH] Audio file record created', { id: audioFile.id });
 
       // Create audio segment
-      await createAudioSegment(
+      console.log('🔄 [AUDIO ATTACH] Creating audio segment', { 
+        cardId: currentCardId,
+        audioFileId: audioFile.id,
+        side
+      });
+      const segment = await createAudioSegment(
         currentCardId,
         audioFile.id,
         0,
         1,
         side
       );
+      console.log('✅ [AUDIO ATTACH] Audio segment created', { id: segment.id });
 
       Toast.show({
         type: 'success',
@@ -84,9 +115,12 @@ export function AudioAttachButton({
         text2: 'Audio attached successfully',
       });
 
-      onAudioAttached?.();
+      console.log('🔄 [AUDIO ATTACH] Calling onAudioAttached callback with cardId:', currentCardId);
+      // Pass the card ID back to the parent component
+      onAudioAttached?.(currentCardId);
+      console.log('✅ [AUDIO ATTACH] Audio attachment process completed');
     } catch (error) {
-      console.error('Error attaching audio:', error);
+      console.error('❌ [AUDIO ATTACH] Error attaching audio:', error);
       Toast.show({
         type: 'error',
         text1: 'Error',
