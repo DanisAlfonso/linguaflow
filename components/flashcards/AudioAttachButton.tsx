@@ -7,6 +7,7 @@ import { saveAudioFileOffline } from '../../lib/api/offline-audio';
 import { saveAudioRecording } from '../../lib/services/audio';
 import { isOnline as checkNetworkStatus } from '../../lib/services/flashcards';
 import Toast from 'react-native-toast-message';
+import * as FileSystem from 'expo-file-system';
 
 interface AudioAttachButtonProps {
   cardId: string;
@@ -98,7 +99,9 @@ export function AudioAttachButton({
       // If online, also create the Supabase record
       if (isNetworkAvailable) {
         try {
-          await handleOnlineAudioAttachment(file, currentCardId);
+          // Use the saved file path instead of the original URI for uploading
+          // This ensures the file still exists when we try to upload it
+          await handleOnlineAudioAttachment(file, savedFile.filePath, currentCardId);
         } catch (onlineError) {
           console.error('❌ [AUDIO ATTACH] Error uploading to Supabase, but local file saved:', onlineError);
           // Continue since we've saved locally already
@@ -127,7 +130,11 @@ export function AudioAttachButton({
     }
   };
 
-  const handleOnlineAudioAttachment = async (file: DocumentPicker.DocumentPickerAsset, currentCardId: string) => {
+  const handleOnlineAudioAttachment = async (
+    file: DocumentPicker.DocumentPickerAsset, 
+    savedFilePath: string, 
+    currentCardId: string
+  ) => {
     // Get the actual File object on web platform
     let fileToUpload: File | undefined;
     if (Platform.OS === 'web') {
@@ -141,10 +148,22 @@ export function AudioAttachButton({
       console.log('✅ [AUDIO ATTACH] Web File object created', { size: fileToUpload.size });
     }
     
-    // Upload the audio file
-    console.log('🔄 [AUDIO ATTACH] Uploading audio file to Supabase');
+    // Verify the file exists at the saved path
+    const fileInfo = await FileSystem.getInfoAsync(savedFilePath);
+    console.log('🔍 [AUDIO ATTACH] Checking saved file', { 
+      exists: fileInfo.exists, 
+      uri: fileInfo.uri,
+      ...(fileInfo.exists ? { size: fileInfo.size } : {})
+    });
+    
+    if (!fileInfo.exists) {
+      throw new Error('Saved file does not exist at path: ' + savedFilePath);
+    }
+    
+    // Upload the audio file using the saved file path instead of the original URI
+    console.log('🔄 [AUDIO ATTACH] Uploading audio file to Supabase from saved path');
     const uploadResponse = await uploadAudioFile({
-      uri: file.uri,
+      uri: fileInfo.uri,
       type: file.mimeType || 'audio/mpeg',
       name: file.name,
       file: fileToUpload,
