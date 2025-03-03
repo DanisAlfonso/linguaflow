@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Platform, ScrollView, Pressable, Animated } from 'react-native';
+import { View, StyleSheet, Platform, ScrollView, Pressable, Animated, Alert } from 'react-native';
 import { Text, Input, Button, useTheme } from '@rneui/themed';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -168,50 +168,99 @@ export default function EditDeckScreen() {
   const handleDelete = async () => {
     if (!deck) return;
 
-    // Confirm before deleting
-    if (!confirm(`Are you sure you want to delete "${deck.name}"? This cannot be undone.`)) {
-      return;
-    }
+    // Log the delete attempt to help with debugging
+    console.log('�� [EDIT DECK] Delete button pressed', { 
+      deckId: id, 
+      deckName: deck.name,
+      isWeb
+    });
 
-    setDeleting(true);
-    try {
-      // Check network status before deletion
-      const online = await checkNetworkStatus();
-      setIsOnline(online);
+    const confirmDeletion = () => {
+      setDeleting(true);
       
-      console.log(`📊 [EDIT DECK] Deleting deck ${id as string} in ${online ? 'online' : 'offline'} mode`);
+      // Log the confirmation to help with debugging
+      console.log('📊 [EDIT DECK] Delete confirmed, proceeding with deletion');
       
-      await deleteDeck(id as string);
-      
-      console.log(`✅ [EDIT DECK] Successfully deleted deck`, { 
-        id: id as string,
-        name: deck.name,
-        online
-      });
+      const deleteProcess = async () => {
+        try {
+          // Check network status before deletion
+          const online = await checkNetworkStatus();
+          setIsOnline(online);
+          
+          const deckId = id as string;
+          console.log(`📊 [EDIT DECK] Deleting deck ${deckId} in ${online ? 'online' : 'offline'} mode`);
+          console.log(`📊 [EDIT DECK] Deleting with ID details:`, {
+            id: deckId,
+            isRemoteId: deckId.includes('-') && deckId.length > 30,
+            length: deckId.length,
+            originalDeckId: deck.id
+          });
+          
+          // Use the deck's ID from state if available, otherwise use the route param
+          const idToUse = deck.id || deckId;
+          console.log(`📊 [EDIT DECK] Using ID for deletion:`, idToUse);
+          
+          await deleteDeck(idToUse);
+          
+          console.log(`✅ [EDIT DECK] Successfully deleted deck`, { 
+            id: idToUse,
+            name: deck.name,
+            online
+          });
 
-      Toast.show({
-        type: 'success',
-        text1: online ? 'Deck Deleted' : 'Deck Marked for Deletion',
-        text2: online 
-          ? 'Deck has been deleted' 
-          : 'Deck marked for deletion. It will be removed from the server when you go back online.',
-      });
+          Toast.show({
+            type: 'success',
+            text1: online ? 'Deck Deleted' : 'Deck Marked for Deletion',
+            text2: online 
+              ? 'Deck has been deleted' 
+              : 'Deck marked for deletion. It will be removed from the server when you go back online.',
+          });
 
-      router.push('/flashcards');
-    } catch (error) {
-      console.error('❌ [EDIT DECK] Error deleting deck:', error);
+          router.push('/flashcards');
+        } catch (error) {
+          console.error('❌ [EDIT DECK] Error deleting deck:', error);
+          
+          // Determine if it's an offline error
+          const errorMessage = error instanceof Error ? error.message : 'Failed to delete deck';
+          const isOfflineError = errorMessage.includes('offline');
+          
+          Toast.show({
+            type: 'error',
+            text1: isOfflineError ? 'Offline' : 'Error',
+            text2: errorMessage,
+          });
+        } finally {
+          setDeleting(false);
+        }
+      };
       
-      // Determine if it's an offline error
-      const errorMessage = error instanceof Error ? error.message : 'Failed to delete deck';
-      const isOfflineError = errorMessage.includes('offline');
-      
-      Toast.show({
-        type: 'error',
-        text1: isOfflineError ? 'Offline' : 'Error',
-        text2: errorMessage,
-      });
-    } finally {
-      setDeleting(false);
+      // Execute the deletion process
+      deleteProcess();
+    };
+
+    // Use appropriate confirmation dialog based on platform
+    if (isWeb) {
+      // Web platforms can use the standard confirm dialog
+      if (confirm(`Are you sure you want to delete "${deck.name}"? This cannot be undone.`)) {
+        confirmDeletion();
+      }
+    } else {
+      // React Native Alert for mobile platforms
+      Alert.alert(
+        'Delete Deck',
+        `Are you sure you want to delete "${deck.name}"? This action cannot be undone.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          },
+          {
+            text: 'Delete',
+            onPress: confirmDeletion,
+            style: 'destructive'
+          }
+        ]
+      );
     }
   };
 
@@ -414,7 +463,16 @@ export default function EditDeckScreen() {
                   onHoverOut={() => isWeb && setIsDeleteHovered(false)}
                   onPress={handleDelete}
                   disabled={deleting}
-                  style={[styles.deleteButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                  style={({ pressed }) => [
+                    styles.deleteButton, 
+                    { 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      opacity: pressed ? 0.7 : 1,
+                      backgroundColor: pressed ? '#DC262630' : 'transparent'
+                    }
+                  ]}
                 >
                   <MaterialIcons
                     name="delete"
@@ -455,7 +513,16 @@ export default function EditDeckScreen() {
                   onHoverOut={() => isWeb && setIsSaveHovered(false)}
                   onPress={handleSave}
                   disabled={saving}
-                  style={[styles.saveButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                  style={({ pressed }) => [
+                    styles.saveButton, 
+                    { 
+                      flexDirection: 'row', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      opacity: pressed ? 0.7 : 1,
+                      backgroundColor: pressed ? '#3730A390' : 'transparent'
+                    }
+                  ]}
                 >
                   <MaterialIcons
                     name="save"

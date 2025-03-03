@@ -557,54 +557,132 @@ export async function deleteDeck(id: string): Promise<void> {
       return await SupabaseAPI.deleteDeck(id);
     }
 
+    // Check if the provided ID is a UUID (likely a remote ID)
+    const isRemoteId = id.includes('-') && id.length > 30;
+    console.log(`📊 [SERVICE] Delete deck called with ${isRemoteId ? 'remote' : 'local'} ID: ${id}`);
+
     // On mobile, check if online
     const online = await isOnline();
+    console.log(`📡 [SERVICE] Network status for deleteDeck: ${online ? 'Online' : 'Offline'}`);
 
     if (online) {
       try {
         // Try to delete from Supabase first
-        await SupabaseAPI.deleteDeck(id);
+        if (isRemoteId) {
+          await SupabaseAPI.deleteDeck(id);
+          console.log(`✅ [SERVICE] Successfully deleted remote deck ${id}`);
+        }
         
         // Then delete locally - first find the local deck that corresponds to this remote deck
         try {
           const db = await ensureDatabase();
           if (db) {
-            // Try to find a local deck with this remote_id
-            const localDeckResult = await db.getFirstAsync<{ id: string }>(
-              'SELECT id FROM decks WHERE remote_id = ?',
-              [id]
-            );
+            let localId = id;
             
-            if (localDeckResult) {
-              // If found, delete the local deck using its local ID
-              await LocalDB.deleteLocalDeck(localDeckResult.id);
-              console.log(`Deleted local deck ${localDeckResult.id} with remote ID ${id}`);
-            } else {
-              // If not found, try to delete using the provided ID directly
-              // This handles cases where the local and remote IDs are the same
-              try {
-                await LocalDB.deleteLocalDeck(id);
-                console.log(`Deleted local deck with ID ${id}`);
-              } catch (directDeleteError) {
-                console.log(`No local deck found with ID ${id} or remote_id ${id}`);
+            // If this is a remote ID, find the corresponding local ID
+            if (isRemoteId) {
+              // Try to find a local deck with this remote_id
+              const localDeckResult = await db.getFirstAsync<{ id: string }>(
+                'SELECT id FROM decks WHERE remote_id = ?',
+                [id]
+              );
+              
+              if (localDeckResult) {
+                localId = localDeckResult.id;
+                console.log(`🔍 [SERVICE] Found local ID ${localId} for remote ID ${id}`);
+              } else {
+                console.log(`ℹ️ [SERVICE] No local deck found with remote_id ${id}`);
               }
             }
+            
+            // Delete the local deck using the local ID
+            await LocalDB.deleteLocalDeck(localId);
+            console.log(`✅ [SERVICE] Deleted local deck ${localId}`);
           }
         } catch (localError) {
-          console.error('Error deleting deck locally:', localError);
-          // Continue anyway since we've deleted from Supabase
+          console.error('❌ [SERVICE] Error deleting deck locally:', localError);
+          // We've already deleted from Supabase, so consider it a partial success
         }
       } catch (remoteError) {
-        console.error('Error deleting deck from Supabase, falling back to local:', remoteError);
-        // Fall back to local storage if Supabase fails
-        await LocalDB.deleteLocalDeck(id);
+        console.error('❌ [SERVICE] Error deleting deck from Supabase, falling back to local:', remoteError);
+        
+        // Fall back to local storage if Supabase fails - but still need proper ID mapping
+        let localId = id;
+        
+        // Get local deck ID if we have a remote ID
+        if (isRemoteId) {
+          try {
+            const localDeck = await LocalDB.getDeckByRemoteId(id);
+            if (localDeck) {
+              localId = localDeck.id;
+              console.log(`✅ [SERVICE] Found local deck ID ${localId} for remote ID ${id}`);
+            } else {
+              console.error(`❌ [SERVICE] No local deck found with remote ID ${id}`);
+              throw new Error('Deck not found');
+            }
+          } catch (error) {
+            console.error(`❌ [SERVICE] Error finding local deck with remote ID ${id}:`, error);
+            throw new Error('Deck not found');
+          }
+        }
+        
+        // Delete using the local ID
+        await LocalDB.deleteLocalDeck(localId);
+        console.log(`✅ [SERVICE] Deleted local deck ${localId} after Supabase error`);
       }
     } else {
-      // Offline mode - delete locally only
-      await LocalDB.deleteLocalDeck(id);
+      // Offline mode - mark deck for deletion instead of deleting directly
+      console.log(`💾 [SERVICE] Offline mode - marking deck for deletion: ${id}`);
+      
+      // Get local deck ID if we have a remote ID
+      let localId = id;
+      if (isRemoteId) {
+        try {
+          const localDeck = await LocalDB.getDeckByRemoteId(id);
+          if (localDeck) {
+            localId = localDeck.id;
+            console.log(`✅ [SERVICE] Found local deck ID ${localId} for remote ID ${id}`);
+          } else {
+            console.error(`❌ [SERVICE] No local deck found with remote ID ${id}`);
+            throw new Error('Deck not found');
+          }
+        } catch (error) {
+          console.error(`❌ [SERVICE] Error finding local deck with remote ID ${id}:`, error);
+          throw new Error('Deck not found');
+        }
+      } else {
+        // Check if the local ID exists
+        try {
+          const deckExists = await LocalDB.getLocalDeck(id);
+          if (!deckExists) {
+            console.error(`❌ [SERVICE] No deck found with local ID ${id}`);
+            throw new Error('Deck not found');
+          }
+        } catch (error) {
+          console.error(`❌ [SERVICE] Error checking local deck with ID ${id}:`, error);
+          throw new Error('Deck not found');
+        }
+      }
+      
+      console.log(`💾 [SERVICE] Marking local deck for deletion: ${localId}`);
+      
+      try {
+        // Instead of deleting, mark the deck as deleted_offline
+        const db = await ensureDatabase();
+        if (db) {
+          await db.runAsync(
+            'UPDATE decks SET deleted_offline = 1 WHERE id = ?',
+            [localId]
+          );
+          console.log(`✅ [SERVICE] Successfully marked deck ${localId} as deleted_offline`);
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error marking deck as deleted:`, error);
+        throw error;
+      }
     }
   } catch (error) {
-    console.error('Error in deleteDeck service:', error);
+    console.error('❌ [SERVICE] Error in deleteDeck service:', error);
     throw error;
   }
 }
