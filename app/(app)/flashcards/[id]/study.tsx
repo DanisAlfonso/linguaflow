@@ -5,9 +5,9 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
-import { getDueCards, getDeck } from '../../../../lib/api/flashcards';
+import { getDueCards, getDeck } from '../../../../lib/services/flashcards';
 import { Rating } from '../../../../lib/spaced-repetition/fsrs';
-import { getCardAudioSegments } from '../../../../lib/api/audio';
+import { getCardAudioSegments } from '../../../../lib/services/audio';
 import { RecordingInterface } from '../../../../components/flashcards/RecordingInterface';
 import { StudyCardFront } from '../../../../components/flashcards/study/StudyCardFront';
 import { StudyCardBack } from '../../../../components/flashcards/study/StudyCardBack';
@@ -27,6 +27,7 @@ import { useAudioManager } from '../../../../lib/hooks/study/useAudioManager';
 import { useCardAnimation } from '../../../../lib/hooks/study/useCardAnimation';
 import { useStudySession } from '../../../../lib/hooks/study/useStudySession';
 import { Audio } from 'expo-av';
+import NetInfo from '@react-native-community/netinfo';
 
 export default function StudyScreen() {
   const [deck, setDeck] = useState<Deck | null>(null);
@@ -36,6 +37,7 @@ export default function StudyScreen() {
   const [loading, setLoading] = useState(true);
   const [cardFlipTime, setCardFlipTime] = useState<Date | null>(null);
   const [isRecordingEnabled, setIsRecordingEnabled] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const { autoPlay } = useStudySettings();
   const [frontSound, setFrontSound] = useState<Audio.Sound | null>(null);
   const [backSound, setBackSound] = useState<Audio.Sound | null>(null);
@@ -97,6 +99,23 @@ export default function StudyScreen() {
     cardId: currentCard?.id ?? '',
     onClose: () => setIsRecordingEnabled(false),
   });
+
+  // Check network status
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      const networkStatus = await NetInfo.fetch();
+      setIsOffline(!(networkStatus.isConnected && networkStatus.isInternetReachable));
+    };
+    
+    checkNetworkStatus();
+    
+    // Subscribe to network status updates
+    const unsubscribe = NetInfo.addEventListener(state => {
+      setIsOffline(!(state.isConnected && state.isInternetReachable));
+    });
+    
+    return () => unsubscribe();
+  }, []);
 
   // Effect to handle tab bar visibility
   useEffect(() => {
@@ -334,7 +353,8 @@ export default function StudyScreen() {
           totalCards={cards.length}
           isRecordingEnabled={isRecordingEnabled}
           onRecordingToggle={() => setIsRecordingEnabled(!isRecordingEnabled)}
-          currentCardId={currentCard.id}
+          currentCardId={currentCard?.id || ''}
+          isOffline={isOffline}
         />
 
         {isMandarin && (

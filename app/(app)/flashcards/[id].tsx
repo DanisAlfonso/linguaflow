@@ -469,7 +469,7 @@ export default function DeckScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={styles.container}>
       <Container>
         <View style={styles.header}>
           <Button
@@ -485,16 +485,98 @@ export default function DeckScreen() {
             containerStyle={styles.backButton}
           />
           <Text h1 style={[styles.title, { color: theme.colors.grey5 }]}>
-            {deck.name}
+            {deck?.name || 'Deck'}
           </Text>
-          {!isNetworkConnected() && (
+          {networkStatus === 'offline' && (
             <Badge
               value="OFFLINE"
               status="warning"
               containerStyle={styles.offlineBadge}
-              textStyle={styles.offlineBadgeText}
             />
           )}
+          <Button
+            type="clear"
+            icon={
+              <MaterialIcons
+                name="more-vert"
+                size={24}
+                color={theme.colors.grey5}
+              />
+            }
+            onPress={handleEditDeck}
+            containerStyle={styles.optionsButton}
+          />
+        </View>
+
+        <View style={styles.statsContainer}>
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: theme.colors.grey5 }]}>
+              {displayTotalCards}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
+              Total Cards
+            </Text>
+          </View>
+
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#059669' }]}>
+              {displayNewCards}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
+              New
+            </Text>
+          </View>
+
+          <View style={styles.statItem}>
+            <Text style={[styles.statValue, { color: '#4F46E5' }]}>
+              {displayCardsToReview}
+            </Text>
+            <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
+              To Review
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.actions}>
+          <Button
+            title={hasCards ? (hasCardsToStudy ? "Study Now" : "Nothing to Study") : "Add Cards to Start"}
+            icon={
+              hasCards && hasCardsToStudy ? (
+                <MaterialIcons
+                  name="play-arrow"
+                  size={20}
+                  color="white"
+                  style={styles.buttonIcon}
+                />
+              ) : (
+                <MaterialIcons
+                  name="info-outline"
+                  size={20}
+                  color={hasCards ? theme.colors.grey3 : "white"}
+                  style={styles.buttonIcon}
+                />
+              )
+            }
+            type="clear"
+            disabled={!hasCardsToStudy}
+            buttonStyle={[
+              styles.studyButton,
+              !hasCardsToStudy && { opacity: 0.7 }
+            ]}
+            containerStyle={[
+              styles.studyButtonContainer,
+              { 
+                backgroundColor: hasCards 
+                  ? (hasCardsToStudy ? '#4F46E5' : theme.colors.grey1)
+                  : '#4F46E5'
+              }
+            ]}
+            titleStyle={[
+              styles.studyButtonText,
+              !hasCardsToStudy && hasCards && { color: theme.colors.grey3 }
+            ]}
+            onPress={hasCards ? handleStartStudy : handleAddCard}
+          />
         </View>
 
         <ScrollView
@@ -506,156 +588,86 @@ export default function DeckScreen() {
               {deck?.description}
             </Text>
 
-            <View style={styles.statsContainer}>
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: theme.colors.grey5 }]}>
-                  {displayTotalCards}
-                </Text>
-                <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
-                  Total Cards
-                </Text>
-              </View>
-              
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: '#059669' }]}>
-                  {displayNewCards}
-                </Text>
-                <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
-                  New
-                </Text>
-              </View>
-              
-              <View style={styles.statItem}>
-                <Text style={[styles.statValue, { color: '#4F46E5' }]}>
-                  {displayCardsToReview}
-                </Text>
-                <Text style={[styles.statLabel, { color: theme.colors.grey3 }]}>
-                  To Review
-                </Text>
-              </View>
-            </View>
-
             <View style={styles.actions}>
-              <Button
-                title={hasCards ? (hasCardsToStudy ? "Study Now" : "Nothing to Study") : "Add Cards to Start"}
-                icon={
-                  hasCards && hasCardsToStudy ? (
-                    <MaterialIcons
-                      name="play-arrow"
-                      size={20}
-                      color="white"
-                      style={styles.buttonIcon}
-                    />
-                  ) : (
-                    <MaterialIcons
-                      name="info-outline"
-                      size={20}
-                      color={hasCards ? theme.colors.grey3 : "white"}
-                      style={styles.buttonIcon}
-                    />
-                  )
-                }
-                type="clear"
-                disabled={!hasCardsToStudy}
-                buttonStyle={[
-                  styles.studyButton,
-                  !hasCardsToStudy && { opacity: 0.7 }
-                ]}
-                containerStyle={[
-                  styles.studyButtonContainer,
-                  { 
-                    backgroundColor: hasCards 
-                      ? (hasCardsToStudy ? '#4F46E5' : theme.colors.grey1)
-                      : '#4F46E5'
-                  }
-                ]}
-                titleStyle={[
-                  styles.studyButtonText,
-                  !hasCardsToStudy && hasCards && { color: theme.colors.grey3 }
-                ]}
-                onPress={hasCards ? handleStartStudy : handleAddCard}
-              />
-              <View style={styles.secondaryActions}>
-                <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
-                  <Pressable
-                    onHoverIn={() => isWeb && setIsAddCardHovered(true)}
-                    onHoverOut={() => isWeb && setIsAddCardHovered(false)}
-                    onPress={handleAddCard}
-                    style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
-                  >
-                    <MaterialIcons
-                      name="add"
-                      size={20}
-                      color="#4F46E5"
-                      style={styles.buttonIcon}
-                    />
-                    <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
-                      Add Card
-                    </Text>
-                    {isWeb && (
-                      <Animated.View
-                        style={[
-                          styles.tooltip,
-                          { opacity: tooltipOpacity }
-                        ]}
-                      >
-                        <View style={styles.tooltipContent}>
-                          <View style={styles.tooltipIconContainer}>
-                            <MaterialIcons
-                              name="keyboard"
-                              size={16}
-                              color="#A5B4FC"
-                            />
-                          </View>
-                          <Text style={styles.tooltipText}>
-                            Press <Text style={styles.tooltipShortcut}>A</Text>
-                          </Text>
+              <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
+                <Pressable
+                  onHoverIn={() => isWeb && setIsAddCardHovered(true)}
+                  onHoverOut={() => isWeb && setIsAddCardHovered(false)}
+                  onPress={handleAddCard}
+                  style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                >
+                  <MaterialIcons
+                    name="add"
+                    size={20}
+                    color="#4F46E5"
+                    style={styles.buttonIcon}
+                  />
+                  <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
+                    Add Card
+                  </Text>
+                  {isWeb && (
+                    <Animated.View
+                      style={[
+                        styles.tooltip,
+                        { opacity: tooltipOpacity }
+                      ]}
+                    >
+                      <View style={styles.tooltipContent}>
+                        <View style={styles.tooltipIconContainer}>
+                          <MaterialIcons
+                            name="keyboard"
+                            size={16}
+                            color="#A5B4FC"
+                          />
                         </View>
-                        <View style={styles.tooltipArrow} />
-                      </Animated.View>
-                    )}
-                  </Pressable>
-                </View>
-                <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
-                  <Pressable
-                    onHoverIn={() => isWeb && setIsEditDeckHovered(true)}
-                    onHoverOut={() => isWeb && setIsEditDeckHovered(false)}
-                    onPress={handleEditDeck}
-                    style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
-                  >
-                    <MaterialIcons
-                      name="edit"
-                      size={20}
-                      color="#4F46E5"
-                      style={styles.buttonIcon}
-                    />
-                    <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
-                      Edit Deck
-                    </Text>
-                    {isWeb && (
-                      <Animated.View
-                        style={[
-                          styles.tooltip,
-                          { opacity: editTooltipOpacity }
-                        ]}
-                      >
-                        <View style={styles.tooltipContent}>
-                          <View style={styles.tooltipIconContainer}>
-                            <MaterialIcons
-                              name="keyboard"
-                              size={16}
-                              color="#A5B4FC"
-                            />
-                          </View>
-                          <Text style={styles.tooltipText}>
-                            Press <Text style={styles.tooltipShortcut}>E</Text>
-                          </Text>
+                        <Text style={styles.tooltipText}>
+                          Press <Text style={styles.tooltipShortcut}>A</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.tooltipArrow} />
+                    </Animated.View>
+                  )}
+                </Pressable>
+              </View>
+              <View style={[styles.secondaryButtonContainer, { backgroundColor: '#4F46E515' }]}>
+                <Pressable
+                  onHoverIn={() => isWeb && setIsEditDeckHovered(true)}
+                  onHoverOut={() => isWeb && setIsEditDeckHovered(false)}
+                  onPress={handleEditDeck}
+                  style={[styles.secondaryButton, { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }]}
+                >
+                  <MaterialIcons
+                    name="edit"
+                    size={20}
+                    color="#4F46E5"
+                    style={styles.buttonIcon}
+                  />
+                  <Text style={{ color: '#4F46E5', fontWeight: '600', fontSize: 16 }}>
+                    Edit Deck
+                  </Text>
+                  {isWeb && (
+                    <Animated.View
+                      style={[
+                        styles.tooltip,
+                        { opacity: editTooltipOpacity }
+                      ]}
+                    >
+                      <View style={styles.tooltipContent}>
+                        <View style={styles.tooltipIconContainer}>
+                          <MaterialIcons
+                            name="keyboard"
+                            size={16}
+                            color="#A5B4FC"
+                          />
                         </View>
-                        <View style={styles.tooltipArrow} />
-                      </Animated.View>
-                    )}
-                  </Pressable>
-                </View>
+                        <Text style={styles.tooltipText}>
+                          Press <Text style={styles.tooltipShortcut}>E</Text>
+                        </Text>
+                      </View>
+                      <View style={styles.tooltipArrow} />
+                    </Animated.View>
+                  )}
+                </Pressable>
               </View>
             </View>
           </View>
@@ -885,44 +897,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 24,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 14,
-  },
   actions: {
     gap: 16,
   },
   buttonIcon: {
     marginRight: 8,
-  },
-  studyButton: {
-    height: 56,
-    borderWidth: 0,
-    ...Platform.select({
-      web: {
-        transition: 'all 0.2s ease',
-      },
-    }),
-  },
-  studyButtonContainer: {
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  studyButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'white',
   },
   secondaryActions: {
     flexDirection: 'row',
@@ -1118,18 +1097,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   offlineBadge: {
-    position: 'absolute',
-    right: 20,
-    top: 20,
-    backgroundColor: '#FFB11B',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  offlineBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'white',
+    marginLeft: 8,
   },
   emptySearchState: {
     alignItems: 'center',
@@ -1139,5 +1107,45 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     maxWidth: 240,
+  },
+  statsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  statLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  studyButton: {
+    height: 56,
+    borderWidth: 0,
+    ...Platform.select({
+      web: {
+        transition: 'all 0.2s ease',
+      },
+    }),
+  },
+  studyButtonContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  studyButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: 'white',
+  },
+  optionsButton: {
+    marginLeft: 'auto',
   },
 }); 

@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Text } from 'react-native';
-import { Button, useTheme } from '@rneui/themed';
+import { Button, useTheme, Badge } from '@rneui/themed';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
@@ -10,6 +10,7 @@ interface StudyHeaderProps {
   isRecordingEnabled: boolean;
   onRecordingToggle: () => void;
   currentCardId: string;
+  isOffline?: boolean;
 }
 
 export function StudyHeader({
@@ -18,6 +19,7 @@ export function StudyHeader({
   isRecordingEnabled,
   onRecordingToggle,
   currentCardId,
+  isOffline = false,
 }: StudyHeaderProps) {
   const { theme } = useTheme();
   const router = useRouter();
@@ -30,57 +32,77 @@ export function StudyHeader({
           type="clear"
           icon={
             <MaterialIcons
-              name="close"
+              name="arrow-back"
               size={24}
               color={theme.colors.grey5}
             />
           }
           onPress={() => router.back()}
+          containerStyle={styles.backButton}
         />
       </View>
-      <View style={styles.progress}>
-        <View 
+
+      <View style={styles.headerCenter}>
+        <View style={styles.titleContainer}>
+          <Text style={[styles.title, { color: theme.colors.grey5 }]}>
+            {currentIndex + 1} / {totalCards}
+          </Text>
+          
+          {isOffline && (
+            <Badge
+              value="OFFLINE"
+              status="warning"
+              containerStyle={styles.offlineBadge}
+            />
+          )}
+        </View>
+        
+        <View
           style={[
-            styles.progressBar, 
-            { backgroundColor: theme.colors.grey2 }
+            styles.progressBar,
+            { backgroundColor: theme.colors.grey3 },
           ]}
         >
-          <View 
+          <View
             style={[
               styles.progressFill,
-              { 
-                backgroundColor: '#4F46E5',
+              {
                 width: `${progress}%`,
+                backgroundColor: theme.colors.primary,
               },
-            ]} 
+            ]}
           />
         </View>
-        <Text style={[styles.progressText, { color: theme.colors.grey4 }]}>
-          {currentIndex + 1} / {totalCards}
-        </Text>
       </View>
+
       <View style={styles.headerRight}>
+        {!isOffline && (
+          <Button
+            type="clear"
+            icon={
+              <MaterialIcons
+                name="headset"
+                size={24}
+                color={theme.colors.grey5}
+              />
+            }
+            onPress={() => router.push(`/flashcards/${currentCardId}/recordings`)}
+            containerStyle={styles.iconButton}
+          />
+        )}
         <Button
           type="clear"
           icon={
             <MaterialIcons
-              name="headset"
+              name={isRecordingEnabled ? 'mic' : 'mic-none'}
               size={24}
-              color={theme.colors.grey5}
-            />
-          }
-          onPress={() => router.push(`/flashcards/${currentCardId}/recordings`)}
-        />
-        <Button
-          type="clear"
-          icon={
-            <MaterialIcons
-              name={isRecordingEnabled ? "mic" : "mic-none"}
-              size={24}
-              color={isRecordingEnabled ? theme.colors.primary : theme.colors.grey5}
+              color={
+                isRecordingEnabled ? theme.colors.primary : theme.colors.grey5
+              }
             />
           }
           onPress={onRecordingToggle}
+          containerStyle={styles.iconButton}
         />
       </View>
     </View>
@@ -101,10 +123,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  progress: {
+  headerCenter: {
     flex: 1,
     marginHorizontal: 16,
     gap: 8,
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '500',
   },
   progressBar: {
     height: 4,
@@ -115,8 +145,13 @@ const styles = StyleSheet.create({
     height: '100%',
     borderRadius: 2,
   },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '500',
+  backButton: {
+    marginRight: 16,
+  },
+  offlineBadge: {
+    marginLeft: 8,
+  },
+  iconButton: {
+    marginLeft: 16,
   },
 }); 

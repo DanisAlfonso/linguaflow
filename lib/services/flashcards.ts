@@ -5,7 +5,7 @@ import * as LocalDB from '../db/flashcards';
 import { initFlashcardsDatabase } from '../db/flashcards';
 import { ensureDatabase } from '../db/index';
 import NetInfo from '@react-native-community/netinfo';
-import { createNewCard } from '@/lib/spaced-repetition/fsrs';
+import { createNewCard, Rating } from '@/lib/spaced-repetition/fsrs';
 import { getLocalCards, getDeckByRemoteId } from '../db/flashcards';
 import { supabase } from '../supabase';
 
@@ -1694,6 +1694,286 @@ export async function getCard(id: string): Promise<Card | null> {
     return null;
   } catch (error) {
     console.error(`❌ [SERVICE] Error in getCard:`, error);
+    throw error;
+  }
+}
+
+// Get due cards for a deck with offline support
+export async function getDueCards(deckId: string, limit: number = 20): Promise<Card[]> {
+  try {
+    console.log(`📡 [SERVICE] Getting due cards for deck: ${deckId}`);
+    
+    // Check if we're online
+    const networkStatus = await isOnline();
+    console.log(`📡 [SERVICE] Network status for getDueCards: ${networkStatus ? 'Online' : 'Offline'}`);
+    
+    // Check if this is a local ID
+    const isLocalId = deckId.startsWith('local_') || deckId.startsWith('offline_');
+    let effectiveDeckId = deckId;
+    
+    // If we're online and not a local ID, try to get from Supabase
+    if (networkStatus && !isLocalId) {
+      try {
+        console.log(`📡 [SERVICE] Fetching due cards from Supabase: ${deckId}`);
+        const cards = await SupabaseAPI.getDueCards(deckId, limit);
+        
+        if (cards && cards.length > 0) {
+          console.log(`📡 [SERVICE] Found ${cards.length} due cards in Supabase`);
+          
+          // Store cards locally for offline access
+          try {
+            await storeCardsLocally(cards);
+            console.log(`📡 [SERVICE] Stored ${cards.length} cards locally for offline access`);
+          } catch (localError) {
+            console.error(`❌ [SERVICE] Error storing cards locally:`, localError);
+            // Continue even if local storage fails
+          }
+          
+          return cards;
+        } else {
+          console.log(`📡 [SERVICE] No due cards found in Supabase, checking local storage`);
+        }
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error fetching due cards from Supabase:`, error);
+        console.log(`📡 [SERVICE] Falling back to local storage`);
+      }
+    }
+    
+    // Get from local database if offline or if Supabase fetch failed
+    console.log(`📡 [SERVICE] Fetching due cards from local storage: ${deckId}`);
+    const localCards = await LocalDB.getLocalDueCards(deckId, limit);
+    
+    console.log(`📡 [SERVICE] Found ${localCards.length} due cards in local storage`);
+    return localCards;
+  } catch (error) {
+    console.error(`❌ [SERVICE] Error in getDueCards:`, error);
+    throw error;
+  }
+}
+
+// Create a study session with offline support
+export async function createStudySession(deckId: string): Promise<any> {
+  try {
+    console.log(`📡 [SERVICE] Creating study session for deck: ${deckId}`);
+    
+    // Check if we're online
+    const networkStatus = await isOnline();
+    console.log(`📡 [SERVICE] Network status for createStudySession: ${networkStatus ? 'Online' : 'Offline'}`);
+    
+    let userId: string;
+    
+    // Get current user - with offline fallback
+    if (networkStatus) {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError) {
+          console.error(`❌ [SERVICE] Error getting user:`, userError);
+          // Not throwing, will use fallback
+        }
+        
+        if (user) {
+          userId = user.id;
+          console.log(`📡 [SERVICE] Got user ID from Supabase: ${userId}`);
+        } else {
+          // Fallback to stored user ID or default
+          userId = await getStoredUserId();
+          console.log(`📡 [SERVICE] Using stored user ID: ${userId}`);
+        }
+      } catch (error) {
+        // Fallback to stored user ID or default
+        userId = await getStoredUserId();
+        console.log(`📡 [SERVICE] Error getting Supabase user, using stored user ID: ${userId}`);
+      }
+    } else {
+      // Offline mode - use stored user ID
+      userId = await getStoredUserId();
+      console.log(`📡 [SERVICE] Offline mode, using stored user ID: ${userId}`);
+    }
+    
+    // If online, create session in Supabase
+    if (networkStatus) {
+      try {
+        console.log(`📡 [SERVICE] Creating study session in Supabase: ${deckId}`);
+        const session = await SupabaseAPI.createStudySession(deckId);
+        console.log(`📡 [SERVICE] Created study session in Supabase: ${session.id}`);
+        return session;
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error creating study session in Supabase:`, error);
+        console.log(`📡 [SERVICE] Falling back to local storage`);
+      }
+    }
+    
+    // Create in local database if offline or if Supabase creation failed
+    console.log(`📡 [SERVICE] Creating study session in local storage: ${deckId}`);
+    const localSession = await LocalDB.createLocalStudySession(deckId, userId);
+    
+    if (!localSession) {
+      console.error(`❌ [SERVICE] Failed to create local study session`);
+      // Return a minimal session object instead of throwing
+      return {
+        id: `temp_session_${Date.now()}`,
+        user_id: userId,
+        deck_id: deckId,
+        started_at: new Date().toISOString(),
+        ended_at: null,
+        duration: null,
+        cards_reviewed: 0,
+        created_at: new Date().toISOString()
+      };
+    }
+    
+    console.log(`📡 [SERVICE] Created study session in local storage: ${localSession.id}`);
+    return localSession;
+  } catch (error) {
+    console.error(`❌ [SERVICE] Error in createStudySession:`, error);
+    // Return a minimal session object instead of throwing
+    return {
+      id: `fallback_session_${Date.now()}`,
+      user_id: 'offline_user',
+      deck_id: deckId,
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      duration: null,
+      cards_reviewed: 0,
+      created_at: new Date().toISOString()
+    };
+  }
+}
+
+// Helper function to get user ID from storage or use default
+async function getStoredUserId(): Promise<string> {
+  try {
+    // Try to get user ID from AsyncStorage if available
+    if (Platform.OS !== 'web') {
+      try {
+        // Check if we can get the user ID from Supabase's local storage
+        const db = await ensureDatabase();
+        if (db) {
+          // Try to get the user session from the database
+          console.log('Attempting to get user ID from local DB');
+          // Just return a default for now - we're not actually storing user sessions locally yet
+        }
+      } catch (e) {
+        console.error('Error accessing local database:', e);
+      }
+    }
+    
+    // Default fallback
+    return 'offline_user';
+  } catch (error) {
+    console.error('Error getting stored user ID:', error);
+    return 'offline_user';
+  }
+}
+
+// Update a study session with offline support
+export async function updateStudySession(
+  sessionId: string,
+  data: {
+    ended_at: string;
+    duration: string;
+    cards_reviewed: number;
+  }
+): Promise<any> {
+  try {
+    console.log(`📡 [SERVICE] Updating study session: ${sessionId}`);
+    
+    // Check if we're online
+    const networkStatus = await isOnline();
+    console.log(`📡 [SERVICE] Network status for updateStudySession: ${networkStatus ? 'Online' : 'Offline'}`);
+    
+    // Check if this is a local ID
+    const isLocalId = sessionId.startsWith('local_') || sessionId.startsWith('offline_');
+    
+    // If online and not a local ID, update in Supabase
+    if (networkStatus && !isLocalId) {
+      try {
+        console.log(`📡 [SERVICE] Updating study session in Supabase: ${sessionId}`);
+        const session = await SupabaseAPI.updateStudySession(sessionId, data);
+        console.log(`📡 [SERVICE] Updated study session in Supabase: ${session.id}`);
+        return session;
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error updating study session in Supabase:`, error);
+        console.log(`📡 [SERVICE] Falling back to local storage`);
+      }
+    }
+    
+    // For local database, we can be more flexible with the parameters
+    const localUpdateData = {
+      ended_at: data.ended_at,
+      duration: data.duration,
+      cards_reviewed: data.cards_reviewed
+    };
+    
+    // Update in local database if offline or if Supabase update failed
+    console.log(`📡 [SERVICE] Updating study session in local storage: ${sessionId}`);
+    const localSession = await LocalDB.updateLocalStudySession(sessionId, localUpdateData);
+    
+    if (!localSession) {
+      console.error(`❌ [SERVICE] Failed to update local study session`);
+      throw new Error('Failed to update local study session');
+    }
+    
+    console.log(`📡 [SERVICE] Updated study session in local storage: ${localSession.id}`);
+    return localSession;
+  } catch (error) {
+    console.error(`❌ [SERVICE] Error in updateStudySession:`, error);
+    throw error;
+  }
+}
+
+// Review a card with offline support
+export async function reviewCard(
+  id: string,
+  rating: Rating,
+  responseTimeMs?: number
+): Promise<Card> {
+  try {
+    console.log(`📡 [SERVICE] Reviewing card: ${id}, rating: ${rating}`);
+    
+    // Check if we're online
+    const networkStatus = await isOnline();
+    console.log(`📡 [SERVICE] Network status for reviewCard: ${networkStatus ? 'Online' : 'Offline'}`);
+    
+    // Check if this is a local ID
+    const isLocalId = id.startsWith('local_') || id.startsWith('offline_');
+    
+    // If online and not a local ID, review in Supabase
+    if (networkStatus && !isLocalId) {
+      try {
+        console.log(`📡 [SERVICE] Reviewing card in Supabase: ${id}`);
+        const card = await SupabaseAPI.reviewCard(id, rating, responseTimeMs);
+        
+        // Store updated card locally for offline access
+        try {
+          await storeCardsLocally([card]);
+          console.log(`📡 [SERVICE] Stored updated card locally for offline access`);
+        } catch (localError) {
+          console.error(`❌ [SERVICE] Error storing updated card locally:`, localError);
+          // Continue even if local storage fails
+        }
+        
+        console.log(`📡 [SERVICE] Reviewed card in Supabase: ${id}`);
+        return card;
+      } catch (error) {
+        console.error(`❌ [SERVICE] Error reviewing card in Supabase:`, error);
+        console.log(`📡 [SERVICE] Falling back to local storage`);
+      }
+    }
+    
+    // Review in local database if offline or if Supabase review failed
+    console.log(`📡 [SERVICE] Reviewing card in local storage: ${id}`);
+    const localCard = await LocalDB.reviewCardLocally(id, rating, responseTimeMs);
+    
+    if (!localCard) {
+      console.error(`❌ [SERVICE] Failed to review local card`);
+      throw new Error('Failed to review local card');
+    }
+    
+    console.log(`📡 [SERVICE] Reviewed card in local storage: ${id}`);
+    return localCard;
+  } catch (error) {
+    console.error(`❌ [SERVICE] Error in reviewCard:`, error);
     throw error;
   }
 } 

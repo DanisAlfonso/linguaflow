@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import { ensureDatabase } from './index';
 import type { Deck, Card } from '../../types/flashcards';
+import { Rating, scheduleReview } from '../spaced-repetition/fsrs';
 
 // Define SQLiteDatabase type to match the one in index.ts
 type SQLiteDatabase = {
@@ -20,6 +21,20 @@ export interface LocalDeck extends Deck {
 
 // Local card type with sync status
 export interface LocalCard extends Card {
+  synced: boolean;
+  remote_id: string | null;
+}
+
+// Local study session type
+export interface LocalStudySession {
+  id: string;
+  user_id: string;
+  deck_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration: string | null;
+  cards_reviewed: number;
+  created_at: string;
   synced: boolean;
   remote_id: string | null;
 }
@@ -1105,5 +1120,459 @@ export async function removeDeletedCards(cardIds: string[]): Promise<void> {
   } catch (error) {
     console.error('❌ [DB] Error removing deleted cards:', error);
     throw error;
+  }
+}
+
+// Get due cards for a deck from local database
+export async function getLocalDueCards(deckId: string, limit: number = 20): Promise<LocalCard[]> {
+  // On web platform, return empty array
+  if (Platform.OS === 'web') return [];
+
+  try {
+    const database = await ensureDatabase();
+    if (!database) return [];
+
+    let cards: any[] = [];
+    let effectiveDeckId = deckId;
+    
+    console.log(`🔍 [DB] Getting due cards for deck ID: ${deckId}`);
+    
+    // Check if this is a local ID or a remote ID and handle mapping
+    if (deckId.startsWith('local_')) {
+      // This is a local ID, but we also check for cards with the corresponding remote ID
+      console.log(`🔍 [DB] Fetching due cards by local deck ID: ${deckId}`);
+      
+      // First, get the deck to check if it has a remote ID
+      const deck = await database.getFirstAsync<{remote_id: string}>(
+        'SELECT remote_id FROM decks WHERE id = ?',
+        [deckId]
+      );
+      
+      const remoteId = deck?.remote_id;
+      
+      // Get current date/time in ISO format
+      const now = new Date().toISOString();
+      
+      if (remoteId) {
+        // Get cards from both local and remote IDs, prioritizing local
+        console.log(`🔍 [DB] Deck has remote ID: ${remoteId}, querying both IDs`);
+        cards = await database.getAllAsync<any>(
+          `SELECT * FROM cards 
+           WHERE (deck_id = ? OR deck_id = ?) 
+           AND (deleted_offline = 0 OR deleted_offline IS NULL)
+           AND (
+             (next_review_at IS NULL) OR 
+             (next_review_at <= ?) OR
+             (queue = 'new')
+           )
+           ORDER BY 
+             CASE WHEN queue = 'new' THEN 0 ELSE 1 END, 
+             CASE WHEN next_review_at IS NULL THEN 0 ELSE 1 END,
+             next_review_at ASC,
+             created_at ASC
+           LIMIT ?`,
+          [deckId, remoteId, now, limit]
+        );
+      } else {
+        // Only get cards with the local deck ID
+        cards = await database.getAllAsync<any>(
+          `SELECT * FROM cards 
+           WHERE deck_id = ? 
+           AND (deleted_offline = 0 OR deleted_offline IS NULL)
+           AND (
+             (next_review_at IS NULL) OR 
+             (next_review_at <= ?) OR
+             (queue = 'new')
+           )
+           ORDER BY 
+             CASE WHEN queue = 'new' THEN 0 ELSE 1 END, 
+             CASE WHEN next_review_at IS NULL THEN 0 ELSE 1 END,
+             next_review_at ASC,
+             created_at ASC
+           LIMIT ?`,
+          [deckId, now, limit]
+        );
+      }
+    } else {
+      // This is a remote ID, check for both remote and local mapping
+      console.log(`🔍 [DB] Fetching due cards by remote deck ID: ${deckId}`);
+      
+      // Try to find a corresponding local deck
+      const localDecks = await database.getAllAsync<{id: string}>(
+        'SELECT id FROM decks WHERE remote_id = ?',
+        [deckId]
+      );
+      
+      const localId = localDecks?.[0]?.id;
+      
+      // Get current date/time in ISO format
+      const now = new Date().toISOString();
+      
+      if (localId) {
+        // Get cards from both local and remote IDs
+        console.log(`🔍 [DB] Found corresponding local ID: ${localId}, querying both IDs`);
+        cards = await database.getAllAsync<any>(
+          `SELECT * FROM cards 
+           WHERE (deck_id = ? OR deck_id = ?) 
+           AND (deleted_offline = 0 OR deleted_offline IS NULL)
+           AND (
+             (next_review_at IS NULL) OR 
+             (next_review_at <= ?) OR
+             (queue = 'new')
+           )
+           ORDER BY 
+             CASE WHEN queue = 'new' THEN 0 ELSE 1 END, 
+             CASE WHEN next_review_at IS NULL THEN 0 ELSE 1 END,
+             next_review_at ASC,
+             created_at ASC
+           LIMIT ?`,
+          [deckId, localId, now, limit]
+        );
+      } else {
+        // Only get cards with the remote deck ID
+        cards = await database.getAllAsync<any>(
+          `SELECT * FROM cards 
+           WHERE deck_id = ? 
+           AND (deleted_offline = 0 OR deleted_offline IS NULL)
+           AND (
+             (next_review_at IS NULL) OR 
+             (next_review_at <= ?) OR
+             (queue = 'new')
+           )
+           ORDER BY 
+             CASE WHEN queue = 'new' THEN 0 ELSE 1 END, 
+             CASE WHEN next_review_at IS NULL THEN 0 ELSE 1 END,
+             next_review_at ASC,
+             created_at ASC
+           LIMIT ?`,
+          [deckId, now, limit]
+        );
+      }
+    }
+    
+    console.log(`🔍 [DB] Found ${cards.length} due cards for deck ${deckId}`);
+
+    // Transform the raw data into card objects
+    return cards.map(item => ({
+      id: item.id,
+      deck_id: item.deck_id,
+      front: item.front,
+      back: item.back,
+      notes: item.notes || null,
+      tags: item.tags ? JSON.parse(item.tags) : [],
+      language_specific_data: item.language_specific_data ? JSON.parse(item.language_specific_data) : undefined,
+      created_at: new Date(item.created_at),
+      last_reviewed_at: item.last_reviewed_at ? new Date(item.last_reviewed_at) : null,
+      next_review_at: item.next_review_at ? new Date(item.next_review_at) : null,
+      review_count: item.review_count || 0,
+      consecutive_correct: item.consecutive_correct || 0,
+      state: item.state || 0,
+      difficulty: item.difficulty || 0,
+      stability: item.stability || 0,
+      retrievability: item.retrievability || 0,
+      elapsed_days: item.elapsed_days || 0,
+      scheduled_days: item.scheduled_days || 0,
+      reps: item.reps || 0,
+      lapses: item.lapses || 0,
+      scheduled_in_minutes: item.scheduled_in_minutes,
+      step_index: item.step_index || 0,
+      queue: item.queue || 'new',
+      synced: Boolean(item.synced),
+      remote_id: item.remote_id || null
+    }));
+  } catch (error) {
+    console.error('Error getting local due cards:', error);
+    return [];
+  }
+}
+
+// Review a card in the local database
+export async function reviewCardLocally(
+  id: string,
+  rating: Rating,
+  responseTimeMs?: number
+): Promise<LocalCard | null> {
+  // On web platform, return null
+  if (Platform.OS === 'web') return null;
+
+  try {
+    console.log(`🔍 [DB] Reviewing local card with ID: ${id}, rating: ${rating}`);
+    
+    const database = await ensureDatabase();
+    if (!database) return null;
+
+    // First, get the current card data
+    const currentCard = await getLocalCardById(id);
+    if (!currentCard) {
+      console.error(`❌ [DB] Card not found with ID: ${id}`);
+      return null;
+    }
+
+    // Calculate new scheduling parameters based on the rating
+    const now = new Date();
+
+    // Parse current scheduling info from the card
+    const cardForFSRS = {
+      state: currentCard.state ?? 0,
+      difficulty: currentCard.difficulty ?? 0,
+      stability: currentCard.stability ?? 0,
+      retrievability: currentCard.retrievability ?? 0,
+      elapsed_days: currentCard.elapsed_days ?? 0,
+      last_reviewed_at: currentCard.last_reviewed_at,
+      reps: currentCard.reps ?? 0,
+      lapses: currentCard.lapses ?? 0,
+      step_index: currentCard.step_index ?? 0,
+    };
+
+    // Define default learning steps (in minutes)
+    const deckSettings = {
+      learning_steps: [1, 10],
+      relearning_steps: [10],
+    };
+
+    // Apply the FSRS algorithm to get new scheduling parameters
+    const schedulingResult = scheduleReview(cardForFSRS, rating, deckSettings);
+    
+    console.log(`🔍 [DB] Calculated new scheduling for card:`, schedulingResult);
+
+    // Compute the next review date
+    let nextReviewDate: Date;
+    if (schedulingResult.scheduled_in_minutes !== undefined) {
+      // For learning/relearning cards, schedule in minutes
+      nextReviewDate = new Date(now.getTime() + schedulingResult.scheduled_in_minutes * 60 * 1000);
+    } else {
+      // For review cards, schedule in days
+      nextReviewDate = new Date(now.getTime() + schedulingResult.scheduled_days * 24 * 60 * 60 * 1000);
+    }
+
+    // FSRS doesn't return these values directly, need to calculate them
+    const newReps = (currentCard.reps ?? 0) + 1;
+    const newLapses = rating === Rating.Again ? (currentCard.lapses ?? 0) + 1 : (currentCard.lapses ?? 0);
+    const newElapsedDays = currentCard.elapsed_days ?? 0; // This should be updated based on days since last review
+    const newQueue = rating === Rating.Again ? 'learning' : 
+                     (schedulingResult.scheduled_in_minutes ? 'learning' : 'review');
+    
+    // Update card with new scheduling parameters
+    const updateResult = await database.runAsync(`
+      UPDATE cards SET
+        state = ?,
+        difficulty = ?,
+        stability = ?,
+        retrievability = ?,
+        elapsed_days = ?,
+        scheduled_days = ?,
+        reps = ?,
+        lapses = ?,
+        review_count = review_count + 1,
+        consecutive_correct = ?,
+        last_reviewed_at = ?,
+        next_review_at = ?,
+        scheduled_in_minutes = ?,
+        step_index = ?,
+        queue = ?,
+        modified_offline = 1,
+        updated_at = ?
+      WHERE id = ?
+    `, [
+      schedulingResult.state,
+      schedulingResult.difficulty,
+      schedulingResult.stability,
+      schedulingResult.retrievability,
+      newElapsedDays,
+      schedulingResult.scheduled_days,
+      newReps,
+      newLapses,
+      rating === Rating.Again ? 0 : (currentCard.consecutive_correct || 0) + 1,
+      now.toISOString(),
+      nextReviewDate.toISOString(),
+      schedulingResult.scheduled_in_minutes,
+      schedulingResult.step_index ?? 0,
+      newQueue,
+      now.toISOString(),
+      id
+    ]);
+
+    if (updateResult.changes === 0) {
+      console.error(`❌ [DB] Failed to update card with ID: ${id}`);
+      return null;
+    }
+
+    console.log(`✅ [DB] Successfully reviewed card: ${id}`);
+
+    // Get the updated card
+    return await getLocalCardById(id);
+  } catch (error) {
+    console.error('Error reviewing local card:', error);
+    return null;
+  }
+}
+
+// Create a new study session in local database
+export async function createLocalStudySession(
+  deckId: string,
+  userId: string
+): Promise<LocalStudySession | null> {
+  // On web platform, return null
+  if (Platform.OS === 'web') return null;
+
+  try {
+    console.log(`🔍 [DB] Creating local study session for deck: ${deckId}`);
+    
+    const database = await ensureDatabase();
+    if (!database) return null;
+
+    // Check if the table exists
+    const tableExists = await database.getFirstAsync<{name: string}>(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='study_sessions';`
+    );
+
+    // Create the table if it doesn't exist
+    if (!tableExists) {
+      console.log('🔍 [DB] Creating study_sessions table');
+      await database.execAsync(`
+        CREATE TABLE study_sessions (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          deck_id TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          ended_at TEXT,
+          duration TEXT,
+          cards_reviewed INTEGER DEFAULT 0,
+          created_at TEXT NOT NULL,
+          synced INTEGER DEFAULT 0,
+          remote_id TEXT,
+          FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
+        );
+        
+        CREATE INDEX idx_study_sessions_deck ON study_sessions(deck_id);
+        CREATE INDEX idx_study_sessions_user ON study_sessions(user_id);
+        CREATE INDEX idx_study_sessions_synced ON study_sessions(synced);
+      `);
+    }
+
+    const sessionId = generateId();
+    const timestamp = new Date().toISOString();
+
+    const result = await database.runAsync(`
+      INSERT INTO study_sessions (
+        id, user_id, deck_id, started_at, ended_at, duration, cards_reviewed, created_at, synced, remote_id
+      ) VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, 0, NULL);
+    `, [
+      sessionId, userId, deckId, timestamp, timestamp
+    ]);
+
+    if (result.changes === 0) {
+      console.error(`❌ [DB] Failed to create study session for deck: ${deckId}`);
+      return null;
+    }
+
+    console.log(`✅ [DB] Successfully created study session: ${sessionId}`);
+
+    return {
+      id: sessionId,
+      user_id: userId,
+      deck_id: deckId,
+      started_at: timestamp,
+      ended_at: null,
+      duration: null,
+      cards_reviewed: 0,
+      created_at: timestamp,
+      synced: false,
+      remote_id: null
+    };
+  } catch (error) {
+    console.error('Error creating local study session:', error);
+    return null;
+  }
+}
+
+// Update a study session in local database
+export async function updateLocalStudySession(
+  sessionId: string,
+  data: {
+    ended_at?: string;
+    duration?: string;
+    cards_reviewed?: number;
+  }
+): Promise<LocalStudySession | null> {
+  // On web platform, return null
+  if (Platform.OS === 'web') return null;
+
+  try {
+    console.log(`🔍 [DB] Updating local study session: ${sessionId}`);
+    
+    const database = await ensureDatabase();
+    if (!database) return null;
+
+    // Build the update query dynamically
+    const updateFields: string[] = [];
+    const values: any[] = [];
+
+    if (data.ended_at !== undefined) {
+      updateFields.push('ended_at = ?');
+      values.push(data.ended_at);
+    }
+
+    if (data.duration !== undefined) {
+      updateFields.push('duration = ?');
+      values.push(data.duration);
+    }
+
+    if (data.cards_reviewed !== undefined) {
+      updateFields.push('cards_reviewed = ?');
+      values.push(data.cards_reviewed);
+    }
+
+    if (updateFields.length === 0) {
+      console.log('🔍 [DB] No fields to update for study session');
+      return null;
+    }
+
+    // Add modified flags and sessionId to values
+    updateFields.push('synced = ?');
+    values.push(0); // Mark as not synced
+    values.push(sessionId); // For the WHERE clause
+
+    const query = `
+      UPDATE study_sessions 
+      SET ${updateFields.join(', ')} 
+      WHERE id = ?
+    `;
+
+    const result = await database.runAsync(query, values);
+
+    if (result.changes === 0) {
+      console.error(`❌ [DB] Failed to update study session: ${sessionId}`);
+      return null;
+    }
+
+    console.log(`✅ [DB] Successfully updated study session: ${sessionId}`);
+
+    // Get the updated session
+    const session = await database.getFirstAsync<any>(
+      'SELECT * FROM study_sessions WHERE id = ?',
+      [sessionId]
+    );
+
+    if (!session) {
+      console.error(`❌ [DB] Session not found after update: ${sessionId}`);
+      return null;
+    }
+
+    return {
+      id: session.id,
+      user_id: session.user_id,
+      deck_id: session.deck_id,
+      started_at: session.started_at,
+      ended_at: session.ended_at,
+      duration: session.duration,
+      cards_reviewed: session.cards_reviewed,
+      created_at: session.created_at,
+      synced: Boolean(session.synced),
+      remote_id: session.remote_id
+    };
+  } catch (error) {
+    console.error('Error updating local study session:', error);
+    return null;
   }
 } 
