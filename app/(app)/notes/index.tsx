@@ -17,6 +17,7 @@ import { CreateFolderModal } from '../../../components/notes/CreateFolderModal';
 import { NoteCard } from '../../../components/notes/NoteCard';
 import { FolderCard } from '../../../components/notes/FolderCard';
 import { NotesHeader } from '../../../components/notes/NotesHeader';
+import { CreateNoteFAB } from '../../../components/notes/CreateNoteFAB';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1573,33 +1574,28 @@ export default function NotesScreen() {
             style={styles.scrollView}
             contentContainerStyle={styles.scrollContent}
             refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
+              <RefreshControl 
+                refreshing={isRefreshing} 
                 onRefresh={handleRefresh}
-                tintColor={theme.mode === 'dark' ? 'white' : theme.colors.primary}
-                colors={[theme.colors.primary]}
-                progressBackgroundColor={theme.mode === 'dark' ? '#1F1F1F' : theme.colors.grey0}
+                colors={['#4F46E5']}
+                tintColor={theme.mode === 'dark' ? '#818CF8' : '#4F46E5'}
               />
             }
           >
             <View style={[styles.notesContainer, view === 'grid' && gridContainer]}>
-              {sortedFolders.length === 0 && sortedAndFilteredNotes.length === 0 ? (
+              {folders.length === 0 && filteredNotes.length === 0 ? (
                 <View style={styles.emptyState}>
                   <MaterialIcons name="folder-open" size={64} color={theme.colors.grey3}/>
                   <Text h4 style={[styles.emptyStateTitle, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>
-                    {searchQuery 
-                      ? 'No matching notes or folders' 
-                      : currentFolder === '/' 
-                        ? 'No notes yet' 
-                        : 'This folder is empty'
+                    {searchQuery
+                      ? 'No results found'
+                      : 'No notes yet'
                     }
                   </Text>
-                  <Text style={[styles.emptyStateText, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]}>
-                    {searchQuery 
-                      ? 'Try a different search term'
-                      : currentFolder === '/' 
-                        ? 'Create your first note to get started' 
-                        : 'Create a note in this folder'
+                  <Text style={[styles.emptyStateText, { color: theme.colors.grey3 }]}>
+                    {searchQuery
+                    ? 'Try a different search term'
+                    : 'Create a note to get started'
                     }
                   </Text>
                 </View>
@@ -1611,27 +1607,12 @@ export default function NotesScreen() {
               )}
             </View>
           </ScrollView>
-          <View style={styles.fabWrapper}>
-            <LinearGradient
-              colors={['#4F46E5', '#818CF8']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.fabGradient}
-            >
-              <Pressable
-                style={({ pressed }) => [
-                  styles.fabPressable,
-                  pressed && { transform: [{ scale: 0.96 }] },
-                ]}
-                onPress={() => router.push({
-                  pathname: '/notes/new',
-                  params: { folder: currentFolder }
-                })}
-              >
-                <MaterialIcons name="add" size={32} color="white" style={styles.fabIcon}/>
-              </Pressable>
-            </LinearGradient>
-          </View>
+          <CreateNoteFAB 
+            onPress={() => router.push({
+              pathname: '/notes/new',
+              params: { folder: currentFolder }
+            })}
+          />
         </View>
       </Container>
     </SafeAreaView>
