@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { FolderNavigation } from '../../../components/notes/FolderNavigation';
 import { CreateFolderModal } from '../../../components/notes/CreateFolderModal';
 import { NoteCard } from '../../../components/notes/NoteCard';
+import { FolderCard } from '../../../components/notes/FolderCard';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -685,14 +686,7 @@ export default function NotesScreen() {
 
   const renderFolderCard = (folder: typeof folders[0]) => {
     const isWeb = Platform.OS === 'web';
-    const colorStyle = getColorStyle(folder.color);
     const isHovered = hoveredNoteId === folder.id;
-
-    const cardStyle = {
-      backgroundColor: theme.mode === 'dark' ? '#1F1F1F' : theme.colors.grey0,
-      borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-    };
 
     return (
       <Animated.View 
@@ -702,60 +696,15 @@ export default function NotesScreen() {
           view === 'grid' && { width: '46%' }
         ]}
       >
-        <Pressable
-          style={[
-            styles.noteCard,
-            styles.folderCard,
-            view === 'grid' ? styles.gridCard : styles.listCard,
-            cardStyle,
-            isWeb && isHovered && {
-              transform: [{ translateY: -4 }],
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.15,
-              shadowRadius: 12,
-              borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
-            },
-          ]}
+        <FolderCard
+          folder={folder}
+          view={view}
+          isHovered={isHovered}
           onPress={() => setCurrentFolder(folder.path)}
           onLongPress={(event) => handleLongPressNote(folder.id, event, 'folder')}
           onHoverIn={() => isWeb && setHoveredNoteId(folder.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
-        >
-          <LinearGradient
-            colors={[
-              theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.02)',
-              'transparent'
-            ]}
-            style={styles.folderGradient}
-          />
-          <View style={[styles.colorStrip, colorStyle]}/>
-          <View style={styles.folderTab}>
-            <View style={[styles.folderTabInner, { backgroundColor: colorStyle.backgroundColor }]} />
-          </View>
-          <View style={styles.noteContent}>
-            <View style={styles.noteHeader}>
-              <View style={styles.folderIconContainer}>
-                <MaterialIcons 
-                  name="folder" 
-                  size={28}
-                  color={colorStyle.backgroundColor || (theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3)}
-                  style={styles.folderIcon}
-                />
-              </View>
-              <Text style={[styles.noteTitle, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]} numberOfLines={2}>
-                {folder.name}
-              </Text>
-            </View>
-            <Text style={[styles.notePreview, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]}>
-              {folder.itemCount} {folder.itemCount === 1 ? 'item' : 'items'}
-            </Text>
-            <View style={styles.noteFooter}>
-              <Text style={[styles.noteDate, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]}>
-                {format(new Date(folder.lastModified), 'MMM d, yyyy')}
-              </Text>
-            </View>
-          </View>
-        </Pressable>
+        />
 
         {editingNoteId === folder.id && (
           <Overlay
