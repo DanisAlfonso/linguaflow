@@ -443,17 +443,24 @@ export async function uploadRecording(cardId: string, file: RecordingFile): Prom
     // Read the file data
     const fileInfo = await FileSystem.getInfoAsync(file.uri);
     if (!fileInfo.exists) {
-      throw new Error('Recording file not found');
+      console.error(`Recording file not found at location: ${file.uri}`);
+      // Create more descriptive error with the URI information for debugging
+      throw new Error(`Recording file not found at location: ${file.uri}`);
     }
 
     let fileData;
     if (Platform.OS === 'web') {
       fileData = file.uri;
     } else {
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      fileData = base64ToUint8Array(base64);
+      try {
+        const base64 = await FileSystem.readAsStringAsync(file.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        fileData = base64ToUint8Array(base64);
+      } catch (readError: any) {
+        console.error('Error reading file as base64:', readError);
+        throw new Error(`Failed to read recording file: ${readError.message}`);
+      }
     }
 
     // Upload the recording file to storage
@@ -465,6 +472,7 @@ export async function uploadRecording(cardId: string, file: RecordingFile): Prom
       });
 
     if (uploadError) {
+      console.error('Error uploading to Supabase storage:', uploadError);
       throw uploadError;
     }
 
@@ -479,6 +487,25 @@ export async function uploadRecording(cardId: string, file: RecordingFile): Prom
       throw new Error('Failed to get current user');
     }
 
+    // Convert duration to integer for Supabase
+    // This fixes the "invalid input syntax for type integer" error
+    let durationMs: number;
+    if (typeof file.duration === 'string') {
+      // Parse the string and convert to milliseconds
+      durationMs = Math.round(parseFloat(file.duration) * 1000);
+    } else {
+      // Already a number, just convert to milliseconds if needed
+      // Check if the duration seems to be in seconds (less than 1000)
+      if (file.duration < 1000) {
+        durationMs = Math.round(file.duration * 1000);
+      } else {
+        // Already in milliseconds
+        durationMs = Math.round(file.duration);
+      }
+    }
+
+    console.log(`Converting duration from ${file.duration} to integer: ${durationMs}`);
+
     // Create the recording record in the database with the user-friendly name
     const { data: recording, error: dbError } = await supabase
       .from('recordings')
@@ -486,13 +513,14 @@ export async function uploadRecording(cardId: string, file: RecordingFile): Prom
         card_id: cardId,
         user_id: user.id,
         audio_url: publicUrl,
-        duration: file.duration,
+        duration: durationMs,
         name: defaultName,
       })
       .select()
       .single();
 
     if (dbError) {
+      console.error('Error inserting recording in database:', dbError);
       throw dbError;
     }
 

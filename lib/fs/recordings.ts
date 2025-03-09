@@ -46,11 +46,33 @@ export async function saveRecordingFile(uri: string, targetPath: string): Promis
       reader.readAsDataURL(blob);
     });
   } else {
-    // For mobile, move the temporary file to permanent storage
-    await FileSystem.moveAsync({
-      from: uri,
-      to: targetPath,
-    });
+    // For mobile, copy the temporary file to permanent storage instead of moving it
+    // This ensures the original file remains intact for uploading to Supabase
+    try {
+      console.log(`Copying file from ${uri} to ${targetPath}`);
+      await FileSystem.copyAsync({
+        from: uri,
+        to: targetPath,
+      });
+      console.log(`Successfully copied file to ${targetPath}`);
+    } catch (copyError) {
+      console.error('Error copying recording file:', copyError);
+      
+      // If copying fails, try to read and write as fallback
+      try {
+        console.log('Attempting fallback file save method');
+        const content = await FileSystem.readAsStringAsync(uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        await FileSystem.writeAsStringAsync(targetPath, content, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        console.log('Fallback method successful');
+      } catch (fallbackError) {
+        console.error('Fallback save method failed:', fallbackError);
+        throw fallbackError;
+      }
+    }
   }
 }
 

@@ -3,7 +3,8 @@ import * as SupabaseAPI from '../api/audio';
 import * as OfflineAPI from '../api/offline-audio';
 import { isOnline } from './flashcards';
 import { syncRecordings } from '../sync/recordings';
-import type { CardAudioSegment, Recording } from '../../types/audio';
+import { getLocalRecordings } from '../db';
+import type { CardAudioSegment, Recording, LocalRecording } from '../../types/audio';
 
 /**
  * Get audio segments for a card with offline support
@@ -96,9 +97,11 @@ export async function saveAudioRecording(params: {
     if (networkStatus) {
       try {
         console.log(`📡 [AUDIO SERVICE] Uploading audio to Supabase`);
+        // Use the local copy of the file instead of the original URI
+        // which may be a temporary file that could be deleted
         const uploadResult = await SupabaseAPI.uploadRecording(params.cardId, {
-          uri: params.uri,
-          duration: params.duration,
+          uri: offlineResult.filePath, // Use the saved offline file path
+          duration: Number(params.duration), // Ensure duration is a number
         });
         
         console.log(`📡 [AUDIO SERVICE] Uploaded to Supabase successfully`);
@@ -156,29 +159,65 @@ export async function getCardRecordings(cardId: string): Promise<Recording[]> {
   try {
     console.log(`📡 [AUDIO SERVICE] Getting recordings for card: ${cardId}`);
     
+    const results: Recording[] = [];
+    
     // Check if we're online
     const networkStatus = await isOnline();
     console.log(`📡 [AUDIO SERVICE] Network status: ${networkStatus ? 'Online' : 'Offline'}`);
     
+    // Get online recordings if connected
     if (networkStatus) {
       try {
         console.log(`📡 [AUDIO SERVICE] Fetching recordings from Supabase: ${cardId}`);
-        const recordings = await SupabaseAPI.getCardRecordings(cardId);
+        const onlineRecordings = await SupabaseAPI.getCardRecordings(cardId);
         
-        if (recordings && recordings.length > 0) {
-          console.log(`📡 [AUDIO SERVICE] Found ${recordings.length} recordings in Supabase`);
-          return recordings;
+        if (onlineRecordings && onlineRecordings.length > 0) {
+          console.log(`📡 [AUDIO SERVICE] Found ${onlineRecordings.length} recordings in Supabase`);
+          results.push(...onlineRecordings);
         }
       } catch (error) {
         console.error(`❌ [AUDIO SERVICE] Error fetching recordings from Supabase:`, error);
       }
     }
     
-    // No recordings found online or offline - return empty array
-    console.log(`📡 [AUDIO SERVICE] No recordings found`);
-    return [];
+    // Always try to get offline recordings too
+    try {
+      const localRecordings = await getLocalRecordings(cardId);
+      if (localRecordings && localRecordings.length > 0) {
+        console.log(`📡 [AUDIO SERVICE] Found ${localRecordings.length} recordings in local storage`);
+        
+        // Convert local recordings to the Recording type format
+        const formattedLocalRecordings: Recording[] = localRecordings.map((rec: LocalRecording) => ({
+          id: rec.remote_id || rec.id,
+          card_id: rec.card_id,
+          user_id: rec.user_id,
+          audio_url: rec.audio_url || rec.file_path,
+          created_at: rec.created_at,
+          duration: rec.duration,
+          name: `Recording ${new Date(rec.created_at).toLocaleString()}`
+        }));
+        
+        // Filter out any local recordings that might duplicate online ones
+        const onlineIds = new Set(results.map(r => r.id));
+        const uniqueLocalRecordings = formattedLocalRecordings.filter(
+          rec => !onlineIds.has(rec.id)
+        );
+        
+        results.push(...uniqueLocalRecordings);
+      }
+    } catch (error) {
+      console.error(`❌ [AUDIO SERVICE] Error fetching local recordings:`, error);
+    }
+    
+    if (results.length === 0) {
+      console.log(`📡 [AUDIO SERVICE] No recordings found (online or offline)`);
+    } else {
+      console.log(`📡 [AUDIO SERVICE] Found total of ${results.length} recordings`);
+    }
+    
+    return results;
   } catch (error) {
     console.error(`❌ [AUDIO SERVICE] Error in getCardRecordings:`, error);
     return [];
   }
-} 
+}

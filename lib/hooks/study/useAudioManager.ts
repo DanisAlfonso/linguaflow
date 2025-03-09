@@ -235,7 +235,7 @@ export function useAudioManager({
             side: 'front', // Default to front side
             name: fileName,
             size: fileSize,
-            duration: duration,
+            duration: duration / 1000, // Convert from milliseconds to seconds for consistency
           });
           
           console.log('Recording saved:', result);

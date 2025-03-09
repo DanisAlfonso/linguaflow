@@ -114,7 +114,7 @@ export async function saveAudioFileOffline(params: OfflineAudioParams): Promise<
       console.error('❌ [OFFLINE AUDIO] Error estimating duration, using default:', durationError);
     }
     
-    // Create a record in the database
+    // Create a record in the database - ensure duration is an integer
     console.log('🔄 [OFFLINE AUDIO] Creating audio file record in database');
     const audioFile = await saveAudioFileToDb({
       folder_id: null,
@@ -409,8 +409,8 @@ export async function syncOfflineAudioFiles(): Promise<void> {
           const segment = await createAudioSegment(
             effectiveCardId,
             audioFile.id,
-            0, // start time
-            file.duration || 1, // duration
+            0, // text_start
+            Math.round(Number(file.duration) || 1), // text_end (not duration)
             side
           );
           
