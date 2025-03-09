@@ -14,6 +14,7 @@ import Toast from 'react-native-toast-message';
 import { BlurView } from 'expo-blur';
 import { FolderNavigation } from '../../../components/notes/FolderNavigation';
 import { CreateFolderModal } from '../../../components/notes/CreateFolderModal';
+import { NoteCard } from '../../../components/notes/NoteCard';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1024,19 +1025,7 @@ export default function NotesScreen() {
 
   const renderNoteCard = (note: NoteWithAttachments) => {
     const isWeb = Platform.OS === 'web';
-    const colorStyle = getColorStyle(note.color_preset);
     const isHovered = hoveredNoteId === note.id;
-
-    const cardStyle = {
-      backgroundColor: theme.mode === 'dark' ? '#1F1F1F' : theme.colors.grey0,
-      borderWidth: 1,
-      borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-    };
-
-    console.log('=== Card Debug ===');
-    console.log('Note ID:', note.id);
-    console.log('Window Width:', windowWidth);
-    console.log('View Mode:', view);
 
     return (
       <Animated.View 
@@ -1046,39 +1035,15 @@ export default function NotesScreen() {
           view === 'grid' && { width: '46%' }  // Increase width to 48%
         ]}
       >
-        <Pressable
-          style={[
-            styles.noteCard,
-            view === 'grid' ? styles.gridCard : styles.listCard,
-            cardStyle,
-            isWeb && isHovered && {
-              transform: [{ translateY: -4 }],
-              shadowOffset: { width: 0, height: 8 },
-              shadowOpacity: 0.15,
-              shadowRadius: 12,
-              borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.08)',
-            },
-          ]}
+        <NoteCard
+          note={note}
+          view={view}
+          isHovered={isHovered}
           onPress={() => router.push(`/notes/${note.id}`)}
           onLongPress={(event) => handleLongPressNote(note.id, event, 'note')}
           onHoverIn={() => isWeb && setHoveredNoteId(note.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
-        >
-          <View style={[styles.colorStrip, colorStyle]}/>
-          <View style={styles.noteContent}>
-            <View style={styles.noteHeader}>
-              <Text style={[styles.noteTitle, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]} numberOfLines={2}>{note.title}</Text>
-              {note.is_pinned && <MaterialIcons name="push-pin" size={16} color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3}/>}
-            </View>
-            {note.content && (
-              <Text style={[styles.notePreview, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]} numberOfLines={3}>{note.content}</Text>
-            )}
-            <View style={styles.noteFooter}>
-              <Text style={[styles.noteDate, { color: theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3 }]}>{format(new Date(note.updated_at), 'MMM d, yyyy')}</Text>
-              {note.attachments.length > 0 && <MaterialIcons name="attachment" size={16} color={theme.mode === 'dark' ? theme.colors.grey5 : theme.colors.grey3}/>}
-            </View>
-          </View>
-        </Pressable>
+        />
 
         {editingNoteId === note.id && (
           <Overlay
@@ -1233,7 +1198,7 @@ export default function NotesScreen() {
                         </Pressable>
                       </>
                     ) : (
-                      // Note Menu Options (existing code)
+                      // Note Menu Options
                       <>
                         <Pressable
                           style={({ pressed }) => [
