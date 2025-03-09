@@ -16,6 +16,7 @@ import { FolderNavigation } from '../../../components/notes/FolderNavigation';
 import { CreateFolderModal } from '../../../components/notes/CreateFolderModal';
 import { NoteCard } from '../../../components/notes/NoteCard';
 import { FolderCard } from '../../../components/notes/FolderCard';
+import { NotesHeader } from '../../../components/notes/NotesHeader';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1435,75 +1436,16 @@ export default function NotesScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
       <Container noPadding>
         <View style={[styles.content, { paddingHorizontal: 12 }]}>
-          <View style={styles.header}>
-            <View style={styles.headerTop}>
-              <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>Notes</Text>
-              <View style={styles.headerActions}>
-                <Button
-                  type="clear"
-                  icon={<MaterialIcons name={view === 'grid' ? 'grid-view' : 'view-list'} size={24} color={theme.colors.primary}/>}
-                  onPress={toggleView}
-                />
-                <Button
-                  type="clear"
-                  icon={<MaterialIcons name="create-new-folder" size={24} color={theme.colors.primary}/>}
-                  onPress={() => setShowCreateFolder(true)}
-                />
-              </View>
-            </View>
-
-            <View style={styles.searchContainer}>
-              <View style={[
-                styles.searchInputContainer,
-                { 
-                  backgroundColor: theme.mode === 'dark' ? theme.colors.grey1 : theme.colors.grey5,
-                  borderColor: theme.mode === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-                }
-              ]}>
-                <MaterialIcons 
-                  name="search" 
-                  size={20} 
-                  color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
-                />
-                <TextInput
-                  style={[
-                    styles.searchInput,
-                    { color: theme.mode === 'dark' ? 'white' : theme.colors.black }
-                  ]}
-                  value={searchQuery}
-                  onChangeText={setSearchQuery}
-                  placeholder="Search notes and folders..."
-                  placeholderTextColor={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
-                />
-                {searchQuery ? (
-                  <Pressable
-                    onPress={() => setSearchQuery('')}
-                    style={({ pressed }) => [
-                      styles.clearButton,
-                      pressed && styles.clearButtonPressed
-                    ]}
-                  >
-                    <MaterialIcons 
-                      name="close" 
-                      size={20} 
-                      color={theme.mode === 'dark' ? theme.colors.grey4 : theme.colors.grey3}
-                    />
-                  </Pressable>
-                ) : null}
-              </View>
-              <Button
-                type="clear"
-                icon={
-                  <MaterialIcons 
-                    name="sort" 
-                    size={24} 
-                    color={theme.colors.primary}
-                  />
-                }
-                onPress={() => setShowSortMenu(true)}
-              />
-            </View>
-          </View>
+          <NotesHeader
+            currentFolder={currentFolder}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            view={view}
+            onViewChange={toggleView}
+            onSortMenuPress={() => setShowSortMenu(true)}
+            onCreateFolderPress={() => setShowCreateFolder(true)}
+            isOffline={false} // You can add offline state handling here if needed
+          />
 
           <FolderNavigation
             currentPath={currentFolder}
@@ -1518,9 +1460,10 @@ export default function NotesScreen() {
               { 
                 backgroundColor: theme.mode === 'dark' 
                   ? theme.colors.grey0 
-                  : 'white' 
+                  : theme.colors.white
               }
             ]}
+            backdropStyle={styles.backdrop}
           >
             <View style={styles.sortMenuHeader}>
               <Text style={[
