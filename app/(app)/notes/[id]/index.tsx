@@ -16,7 +16,7 @@ export default function NoteScreen() {
   const { theme } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, folder } = useLocalSearchParams<{ id: string; folder: string }>();
   const [note, setNote] = useState<NoteWithAttachments | null>(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -25,6 +25,7 @@ export default function NoteScreen() {
   const [lastSavedContent, setLastSavedContent] = useState('');
   const [lastSavedTitle, setLastSavedTitle] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
 
   useEffect(() => {
     if (user && id) {
@@ -56,17 +57,29 @@ export default function NoteScreen() {
 
     try {
       setIsSaving(true);
+      
+      // Check if title has changed, as that's what needs a refresh of the notes list
+      const titleHasChanged = title.trim() !== lastSavedTitle;
+      
       await updateNote(note.id, {
         title: title.trim(),
         content: content.trim(),
       });
+      
+      setLastSavedTitle(title.trim());
+      setLastSavedContent(content.trim());
       setHasChanges(false);
+      
+      // If the title changed, we need to trigger a refresh when navigating back
+      if (titleHasChanged) {
+        setNeedsRefresh(true);
+      }
     } catch (error) {
       console.error('Error auto-saving note:', error);
     } finally {
       setIsSaving(false);
     }
-  }, [note, title, content, hasChanges]);
+  }, [note, title, content, hasChanges, lastSavedTitle]);
 
   // Set up auto-save timer
   useEffect(() => {
@@ -83,11 +96,11 @@ export default function NoteScreen() {
   useEffect(() => {
     if (note) {
       setHasChanges(
-        title.trim() !== note.title || 
-        content.trim() !== note.content
+        title.trim() !== lastSavedTitle || 
+        content.trim() !== lastSavedContent
       );
     }
-  }, [title, content, note]);
+  }, [title, content, lastSavedTitle, lastSavedContent]);
 
   const handleDelete = async () => {
     if (!note) return;
@@ -97,6 +110,18 @@ export default function NoteScreen() {
       router.back();
     } catch (error) {
       console.error('Error deleting note:', error);
+    }
+  };
+  
+  const handleBack = () => {
+    // If title was changed, navigate back with refresh parameter
+    if (needsRefresh) {
+      router.push({
+        pathname: '/notes',
+        params: { refresh: Date.now().toString() }
+      });
+    } else {
+      router.back();
     }
   };
 
@@ -167,7 +192,7 @@ export default function NoteScreen() {
           <Button
             type="clear"
             icon={<MaterialIcons name="arrow-back" size={24} color={theme.colors.primary} />}
-            onPress={() => router.back()}
+            onPress={handleBack}
           />
           <View style={styles.headerActions}>
             <Button

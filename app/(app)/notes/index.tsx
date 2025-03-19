@@ -18,6 +18,7 @@ import { NoteCard } from '../../../components/notes/NoteCard';
 import { FolderCard } from '../../../components/notes/FolderCard';
 import { NotesHeader } from '../../../components/notes/NotesHeader';
 import { CreateNoteFAB } from '../../../components/notes/CreateNoteFAB';
+import { NoteContextMenu } from '../../../components/notes/NoteContextMenu';
 
 // Enable LayoutAnimation for Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -503,11 +504,11 @@ export default function NotesScreen() {
     }
   };
 
-  const handleRenameNote = async () => {
-    if (!editingNoteId || !newNoteName.trim()) return;
+  const handleRenameNote = async (noteId: string, newName: string) => {
+    if (!noteId || !newName.trim()) return;
 
     try {
-      const note = notes.find(n => n.id === editingNoteId);
+      const note = notes.find(n => n.id === noteId);
       if (!note) return;
 
       if (selectedItemType === 'folder') {
@@ -515,55 +516,40 @@ export default function NotesScreen() {
         // 1. Keep the .folder title
         // 2. Update the folder_path to the new name
         const currentPathParts = note.folder_path.split('/');
-        const newPath = [...currentPathParts.slice(0, -1), newNoteName.trim()].join('/');
+        const newPath = [...currentPathParts.slice(0, -1), newName.trim()].join('/');
         
-        await updateNote(editingNoteId, {
+        await updateNote(noteId, {
           title: '.folder',
           folder_path: newPath
         });
 
-        // Update local state
-        setNotes(prevNotes => 
-          prevNotes.map(n => {
-            // Update the folder note itself
-            if (n.id === editingNoteId) {
-              return { ...n, folder_path: newPath };
-            }
-            // Update paths of all notes inside this folder
-            if (n.folder_path.startsWith(note.folder_path + '/')) {
-              const newNotePath = newPath + n.folder_path.substring(note.folder_path.length);
-              return { ...n, folder_path: newNotePath };
-            }
-            return n;
-          })
-        );
+        // Refresh the notes list to ensure UI is updated
+        await handleRefresh();
+
+        Toast.show({
+          type: 'success',
+          text1: 'Folder renamed successfully',
+        });
       } else {
         // For regular notes, just update the title
-        await updateNote(editingNoteId, {
-          title: newNoteName.trim()
+        await updateNote(noteId, {
+          title: newName.trim()
         });
 
-        // Update local state
-        setNotes(prevNotes => 
-          prevNotes.map(n => 
-            n.id === editingNoteId ? { ...n, title: newNoteName.trim() } : n
-          )
-        );
-      }
+        // Refresh the notes list to ensure UI is updated
+        await handleRefresh();
 
-      Toast.show({
-        type: 'success',
-        text1: `${selectedItemType === 'folder' ? 'Folder' : 'Note'} renamed successfully`,
-      });
+        Toast.show({
+          type: 'success',
+          text1: 'Note renamed successfully',
+        });
+      }
     } catch (error) {
       console.error('Error renaming:', error);
       Toast.show({
         type: 'error',
         text1: `Failed to rename ${selectedItemType === 'folder' ? 'folder' : 'note'}`,
       });
-    } finally {
-      setShowRename(false);
-      setEditingNoteId(null);
     }
   };
 
@@ -707,269 +693,6 @@ export default function NotesScreen() {
           onHoverIn={() => isWeb && setHoveredNoteId(folder.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
         />
-
-        {editingNoteId === folder.id && (
-          <Overlay
-            isVisible={true}
-            onBackdropPress={handleCloseMenu}
-            overlayStyle={styles.overlayContainer}
-            backdropStyle={styles.backdrop}
-            animationType="fade"
-          >
-            <Pressable 
-              style={StyleSheet.absoluteFill}
-              onPress={handleCloseMenu}
-            >
-              <View style={StyleSheet.absoluteFill}>
-                <BlurView 
-                  intensity={30} 
-                  style={StyleSheet.absoluteFill}
-                  tint={theme.mode === 'dark' ? 'dark' : 'light'}
-                />
-              </View>
-            </Pressable>
-            <View 
-              style={[
-                styles.contextMenu,
-                {
-                  position: 'absolute',
-                  left: menuPosition.x,
-                  top: menuPosition.y,
-                  width: menuPosition.width,
-                  opacity: 1,
-                  backgroundColor: Platform.OS === 'ios' 
-                    ? 'rgba(250, 250, 250, 0.8)' 
-                    : theme.mode === 'dark' 
-                      ? 'rgba(30, 30, 30, 0.95)'
-                      : 'rgba(255, 255, 255, 0.95)',
-                },
-              ]}
-            >
-              <Pressable onPress={(e) => e.stopPropagation()}>
-                {!showColorPicker && !showRename ? (
-                  // Main Menu
-                  <>
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('color')}
-                    >
-                      <MaterialIcons 
-                        name="palette" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                      />
-                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                        Choose Color
-                      </Text>
-                      <MaterialIcons 
-                        name="chevron-right" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                        style={styles.menuOptionIcon} 
-                      />
-                    </Pressable>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('rename')}
-                    >
-                      <MaterialIcons 
-                        name="drive-file-rename-outline" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                      />
-                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                        Rename Folder
-                      </Text>
-                    </Pressable>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('duplicate')}
-                    >
-                      <MaterialIcons 
-                        name="file-copy" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                      />
-                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                        Duplicate Folder
-                      </Text>
-                    </Pressable>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('share')}
-                    >
-                      <MaterialIcons 
-                        name="share" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                      />
-                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                        Share Folder
-                      </Text>
-                    </Pressable>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('info')}
-                    >
-                      <MaterialIcons 
-                        name="info-outline" 
-                        size={20} 
-                        color={theme.colors.grey4}
-                      />
-                      <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                        Folder Info
-                      </Text>
-                    </Pressable>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <Pressable
-                      style={({ pressed }) => [
-                        styles.menuOption,
-                        pressed && styles.menuOptionPressed,
-                      ]}
-                      onPress={() => handleMenuOptionPress('delete')}
-                    >
-                      <MaterialIcons 
-                        name="delete-outline" 
-                        size={20} 
-                        color="#DC2626" 
-                      />
-                      <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
-                        Delete Folder
-                      </Text>
-                    </Pressable>
-                  </>
-                ) : showColorPicker ? (
-                  // Color Picker
-                  <>
-                    <View style={styles.colorPickerHeader}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.backButton,
-                          pressed && styles.backButtonPressed,
-                        ]}
-                        onPress={() => setShowColorPicker(false)}
-                      >
-                        <MaterialIcons 
-                          name="arrow-back" 
-                          size={20} 
-                          color={theme.colors.grey4} 
-                        />
-                      </Pressable>
-                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
-                        Choose Color
-                      </Text>
-                    </View>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    {Object.keys(COLOR_PRESETS).map((colorKey) => {
-                      const isSelected = folder.color === colorKey;
-                      return (
-                        <Pressable
-                          key={colorKey}
-                          style={({ pressed }) => [
-                            styles.colorOption,
-                            pressed && styles.colorOptionPressed,
-                          ]}
-                          onPress={() => handleChangeColor(folder.id, colorKey as ColorPreset)}
-                        >
-                          <View style={styles.colorPreviewContainer}>
-                            <View style={[styles.colorPreview, getColorStyle(colorKey as ColorPreset)]} />
-                          </View>
-                          <Text style={[
-                            styles.colorName,
-                            { color: theme.colors.grey4 },
-                            isSelected && styles.colorNameSelected
-                          ]}>
-                            {COLOR_PRESETS[colorKey as ColorPreset].name}
-                          </Text>
-                          {isSelected && (
-                            <MaterialIcons 
-                              name="check" 
-                              size={20} 
-                              color={theme.colors.grey4}
-                              style={styles.checkIcon} 
-                            />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </>
-                ) : (
-                  // Rename Interface
-                  <>
-                    <View style={styles.colorPickerHeader}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.backButton,
-                          pressed && styles.backButtonPressed,
-                        ]}
-                        onPress={() => setShowRename(false)}
-                      >
-                        <MaterialIcons 
-                          name="arrow-back" 
-                          size={20} 
-                          color={theme.colors.grey4} 
-                        />
-                      </Pressable>
-                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
-                        Rename Folder
-                      </Text>
-                    </View>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <View style={styles.renameContainer}>
-                      <Input
-                        value={newNoteName}
-                        onChangeText={setNewNoteName}
-                        placeholder="Enter folder name"
-                        autoFocus
-                        returnKeyType="done"
-                        onSubmitEditing={handleRenameNote}
-                        containerStyle={styles.renameInput}
-                        inputContainerStyle={[
-                          styles.renameInputContainer,
-                          { borderColor: theme.colors.grey2 }
-                        ]}
-                        inputStyle={[
-                          styles.renameInputText,
-                          { color: theme.colors.grey4 }
-                        ]}
-                      />
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.renameButton,
-                          pressed && styles.renameButtonPressed,
-                        ]}
-                        onPress={handleRenameNote}
-                      >
-                        <Text style={styles.renameButtonText}>
-                          Save
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </>
-                )}
-              </Pressable>
-            </View>
-          </Overlay>
-        )}
       </Animated.View>
     );
   };
@@ -995,430 +718,19 @@ export default function NotesScreen() {
           onHoverIn={() => isWeb && setHoveredNoteId(note.id)}
           onHoverOut={() => isWeb && setHoveredNoteId(null)}
         />
-
-        {editingNoteId === note.id && (
-          <Overlay
-            isVisible={true}
-            onBackdropPress={handleCloseMenu}
-            overlayStyle={styles.overlayContainer}
-            backdropStyle={styles.backdrop}
-            animationType="fade"
-          >
-            <Pressable 
-              style={StyleSheet.absoluteFill}
-              onPress={handleCloseMenu}
-            >
-              <View style={StyleSheet.absoluteFill}>
-                <BlurView 
-                  intensity={30} 
-                  style={StyleSheet.absoluteFill}
-                  tint={theme.mode === 'dark' ? 'dark' : 'light'}
-                />
-              </View>
-            </Pressable>
-            <View 
-              style={[
-                styles.contextMenu,
-                {
-                  position: 'absolute',
-                  left: menuPosition.x,
-                  top: menuPosition.y,
-                  width: menuPosition.width,
-                  opacity: 1,
-                  backgroundColor: Platform.OS === 'ios' 
-                    ? 'rgba(250, 250, 250, 0.8)' 
-                    : theme.mode === 'dark' 
-                      ? 'rgba(30, 30, 30, 0.95)'
-                      : 'rgba(255, 255, 255, 0.95)',
-                },
-              ]}
-            >
-              <Pressable onPress={(e) => e.stopPropagation()}>
-                {!showColorPicker && !showRename && !showMoveToFolder ? (
-                  // Main Menu
-                  <>
-                    {selectedItemType === 'folder' ? (
-                      // Folder Menu Options
-                      <>
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('color')}
-                        >
-                          <MaterialIcons 
-                            name="palette" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Choose Color
-                          </Text>
-                          <MaterialIcons 
-                            name="chevron-right" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                            style={styles.menuOptionIcon} 
-                          />
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('rename')}
-                        >
-                          <MaterialIcons 
-                            name="drive-file-rename-outline" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Rename Folder
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('duplicate')}
-                        >
-                          <MaterialIcons 
-                            name="file-copy" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Duplicate Folder
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('share')}
-                        >
-                          <MaterialIcons 
-                            name="share" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Share Folder
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('info')}
-                        >
-                          <MaterialIcons 
-                            name="info-outline" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Folder Info
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('delete')}
-                        >
-                          <MaterialIcons 
-                            name="delete-outline" 
-                            size={20} 
-                            color="#DC2626" 
-                          />
-                          <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
-                            Delete Folder
-                          </Text>
-                        </Pressable>
-                      </>
-                    ) : (
-                      // Note Menu Options
-                      <>
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('color')}
-                        >
-                          <MaterialIcons 
-                            name="palette" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Choose Color
-                          </Text>
-                          <MaterialIcons 
-                            name="chevron-right" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                            style={styles.menuOptionIcon} 
-                          />
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('edit')}
-                        >
-                          <MaterialIcons 
-                            name="edit" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Edit Note
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('rename')}
-                        >
-                          <MaterialIcons 
-                            name="drive-file-rename-outline" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Rename Note
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('move')}
-                        >
-                          <MaterialIcons 
-                            name="drive-file-move" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.menuOptionText, { color: theme.colors.grey4 }]}>
-                            Move to Folder
-                          </Text>
-                        </Pressable>
-                        <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                        <Pressable
-                          style={({ pressed }) => [
-                            styles.menuOption,
-                            pressed && styles.menuOptionPressed,
-                          ]}
-                          onPress={() => handleMenuOptionPress('delete')}
-                        >
-                          <MaterialIcons 
-                            name="delete-outline" 
-                            size={20} 
-                            color="#DC2626" 
-                          />
-                          <Text style={[styles.menuOptionText, { color: "#DC2626" }]}>
-                            Delete Note
-                          </Text>
-                        </Pressable>
-                      </>
-                    )}
-                  </>
-                ) : showMoveToFolder ? (
-                  // Move to Folder Interface
-                  <>
-                    <View style={styles.colorPickerHeader}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.backButton,
-                          pressed && styles.backButtonPressed,
-                        ]}
-                        onPress={() => setShowMoveToFolder(false)}
-                      >
-                        <MaterialIcons 
-                          name="arrow-back" 
-                          size={20} 
-                          color={theme.colors.grey4} 
-                        />
-                      </Pressable>
-                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
-                        Move to Folder
-                      </Text>
-                    </View>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <ScrollView style={styles.folderList}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.folderOption,
-                          pressed && styles.folderOptionPressed,
-                        ]}
-                        onPress={() => handleMoveToFolder(editingNoteId, '/')}
-                      >
-                        <MaterialIcons 
-                          name="folder" 
-                          size={20} 
-                          color={theme.colors.grey4}
-                        />
-                        <Text style={[styles.folderOptionText, { color: theme.colors.grey4 }]}>
-                          Root
-                        </Text>
-                      </Pressable>
-                      {folders.map(folder => (
-                        <Pressable
-                          key={folder.id}
-                          style={({ pressed }) => [
-                            styles.folderOption,
-                            pressed && styles.folderOptionPressed,
-                          ]}
-                          onPress={() => handleMoveToFolder(editingNoteId, folder.path)}
-                        >
-                          <MaterialIcons 
-                            name="folder" 
-                            size={20} 
-                            color={theme.colors.grey4}
-                          />
-                          <Text style={[styles.folderOptionText, { color: theme.colors.grey4 }]}>
-                            {folder.name}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </ScrollView>
-                  </>
-                ) : showRename ? (
-                  // Rename Interface
-                  <>
-                    <View style={styles.colorPickerHeader}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.backButton,
-                          pressed && styles.backButtonPressed,
-                        ]}
-                        onPress={() => setShowRename(false)}
-                      >
-                        <MaterialIcons 
-                          name="arrow-back" 
-                          size={20} 
-                          color={theme.colors.grey4} 
-                        />
-                      </Pressable>
-                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
-                        Rename Note
-                      </Text>
-                    </View>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    <View style={styles.renameContainer}>
-                      <Input
-                        value={newNoteName}
-                        onChangeText={setNewNoteName}
-                        placeholder="Enter note title"
-                        autoFocus
-                        returnKeyType="done"
-                        onSubmitEditing={handleRenameNote}
-                        containerStyle={styles.renameInput}
-                        inputContainerStyle={[
-                          styles.renameInputContainer,
-                          { borderColor: theme.colors.grey2 }
-                        ]}
-                        inputStyle={[
-                          styles.renameInputText,
-                          { color: theme.colors.grey4 }
-                        ]}
-                      />
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.renameButton,
-                          pressed && styles.renameButtonPressed,
-                        ]}
-                        onPress={handleRenameNote}
-                      >
-                        <Text style={styles.renameButtonText}>
-                          Save
-                        </Text>
-                      </Pressable>
-                    </View>
-                  </>
-                ) : (
-                  // Color Picker
-                  <>
-                    <View style={styles.colorPickerHeader}>
-                      <Pressable
-                        style={({ pressed }) => [
-                          styles.backButton,
-                          pressed && styles.backButtonPressed,
-                        ]}
-                        onPress={() => setShowColorPicker(false)}
-                      >
-                        <MaterialIcons 
-                          name="arrow-back" 
-                          size={20} 
-                          color={theme.colors.grey4} 
-                        />
-                      </Pressable>
-                      <Text style={[styles.colorPickerTitle, { color: theme.colors.grey4 }]}>
-                        Choose Color
-                      </Text>
-                    </View>
-                    <View style={[styles.menuDivider, { backgroundColor: theme.colors.grey2 }]} />
-                    {Object.keys(COLOR_PRESETS).map((colorKey) => {
-                      const isSelected = notes.find(n => n.id === editingNoteId)?.color_preset === colorKey;
-                      return (
-                        <Pressable
-                          key={colorKey}
-                          style={({ pressed }) => [
-                            styles.colorOption,
-                            pressed && styles.colorOptionPressed,
-                          ]}
-                          onPress={() => handleChangeColor(editingNoteId, colorKey as ColorPreset)}
-                        >
-                          <View style={styles.colorPreviewContainer}>
-                            <View style={[styles.colorPreview, getColorStyle(colorKey as ColorPreset)]} />
-                          </View>
-                          <Text style={[
-                            styles.colorName,
-                            { color: theme.colors.grey4 },
-                            isSelected && styles.colorNameSelected
-                          ]}>
-                            {COLOR_PRESETS[colorKey as ColorPreset].name}
-                          </Text>
-                          {isSelected && (
-                            <MaterialIcons 
-                              name="check" 
-                              size={20} 
-                              color={theme.colors.grey4}
-                              style={styles.checkIcon} 
-                            />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </>
-                )}
-              </Pressable>
-            </View>
-          </Overlay>
-        )}
       </Animated.View>
     );
+  };
+
+  // Get the current note or folder for the context menu
+  const getEditingItem = () => {
+    if (!editingNoteId) return null;
+    
+    if (selectedItemType === 'folder') {
+      return folders.find(f => f.id === editingNoteId) || null;
+    } else {
+      return notes.find(n => n.id === editingNoteId) || null;
+    }
   };
 
   if (isLoading) {
@@ -1569,6 +881,22 @@ export default function NotesScreen() {
               />
             </Dialog.Actions>
           </Dialog>
+
+          {/* Integrate the NoteContextMenu component */}
+          <NoteContextMenu
+            isVisible={!!editingNoteId}
+            noteId={editingNoteId}
+            itemType={selectedItemType}
+            position={menuPosition}
+            item={getEditingItem()}
+            colorPresets={COLOR_PRESETS}
+            folders={folders}
+            onClose={handleCloseMenu}
+            onColorChange={handleChangeColor}
+            onMenuOptionPress={handleMenuOptionPress}
+            onRename={handleRenameNote}
+            onMoveToFolder={handleMoveToFolder}
+          />
 
           <ScrollView 
             style={styles.scrollView}
