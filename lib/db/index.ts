@@ -118,10 +118,49 @@ export async function initDatabase(): Promise<void> {
         UNIQUE(file_path)
       );
 
+      -- New tables for notes
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT,
+        language TEXT,
+        tags TEXT,
+        is_pinned BOOLEAN DEFAULT 0,
+        folder_path TEXT NOT NULL DEFAULT '/',
+        color_preset TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_accessed_at TEXT NOT NULL,
+        synced BOOLEAN DEFAULT 0,
+        remote_id TEXT,
+        UNIQUE(user_id, folder_path, title)
+      );
+
+      CREATE TABLE IF NOT EXISTS note_attachments (
+        id TEXT PRIMARY KEY,
+        note_id TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        file_type TEXT NOT NULL,
+        original_filename TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        synced BOOLEAN DEFAULT 0,
+        remote_id TEXT,
+        remote_url TEXT,
+        FOREIGN KEY (note_id) REFERENCES notes(id) ON DELETE CASCADE,
+        UNIQUE(note_id, file_path)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_audio_folders_parent ON audio_folders(parent_id);
       CREATE INDEX IF NOT EXISTS idx_audio_folders_path ON audio_folders(path);
       CREATE INDEX IF NOT EXISTS idx_audio_files_folder ON audio_files(folder_id);
       CREATE INDEX IF NOT EXISTS idx_audio_files_synced ON audio_files(synced);
+      CREATE INDEX IF NOT EXISTS idx_notes_folder_path ON notes(folder_path);
+      CREATE INDEX IF NOT EXISTS idx_notes_user_id ON notes(user_id);
+      CREATE INDEX IF NOT EXISTS idx_notes_synced ON notes(synced);
+      CREATE INDEX IF NOT EXISTS idx_note_attachments_note_id ON note_attachments(note_id);
+      CREATE INDEX IF NOT EXISTS idx_note_attachments_synced ON note_attachments(synced);
     `);
 
     db = database;

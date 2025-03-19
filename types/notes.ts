@@ -23,6 +23,7 @@ export interface NoteWithAttachments extends Note {
   updated_at: string;
   last_accessed_at: string;
   attachments: NoteAttachment[];
+  remote_id?: string | null;
 }
 
 export interface NotesState {

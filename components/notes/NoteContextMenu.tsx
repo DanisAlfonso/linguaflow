@@ -509,10 +509,12 @@ export const NoteContextMenu: React.FC<NoteContextMenuProps> = ({
               <MaterialIcons 
                 name="folder" 
                 size={20} 
-                color={theme.colors.grey4}
+                color={folder.color ? colorPresets[folder.color].colors : theme.colors.grey4}
               />
               <Text style={[styles.folderOptionText, { color: theme.colors.grey4 }]}>
-                {folder.name}
+                {folder.path === '/' 
+                  ? 'Root' 
+                  : folder.path.split('/').filter(Boolean).join(' / ')}
               </Text>
             </Pressable>
           ))}

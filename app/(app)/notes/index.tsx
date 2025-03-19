@@ -5,7 +5,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../components/layout/Container';
 import { useAuth } from '../../../contexts/AuthContext';
-import { getNotes, updateNote, deleteNote, createNote } from '../../../lib/db/notes';
+import { getNotes, updateNote, deleteNote, createNote } from '../../../lib/db/notes-hybrid';
+import { syncNotes } from '../../../lib/sync/notes';
+import { isOnline } from '../../../lib/network';
 import { NoteWithAttachments, ColorPreset } from '../../../types/notes';
 import { format } from 'date-fns';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -53,6 +55,75 @@ export default function NotesScreen() {
   const [sortBy, setSortBy] = useState<'created' | 'updated' | 'accessed' | 'title'>('updated');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
+  
+  // Check online status
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      const online = await isOnline();
+      setIsOffline(!online);
+    };
+    
+    // Check on mount
+    checkNetworkStatus();
+    
+    // Set up interval to check network status
+    const interval = setInterval(checkNetworkStatus, 10000); // Check every 10 seconds
+    
+    return () => clearInterval(interval);
+  }, []);
+  
+  // Check online status and sync when coming back online
+  useEffect(() => {
+    const checkNetworkStatus = async () => {
+      try {
+        const online = await isOnline();
+        const wasOffline = isOffline;
+        setIsOffline(!online);
+        
+        // If we're transitioning from offline to online, sync notes
+        if (wasOffline && online && user) {
+          console.log('📱 [NOTES] Back online, triggering sync...');
+          Toast.show({
+            type: 'info',
+            text1: 'Back online',
+            text2: 'Syncing your notes...',
+            position: 'bottom',
+          });
+          
+          try {
+            await syncNotes();
+            const fetchedNotes = await getNotes(user.id);
+            setNotes(fetchedNotes);
+            
+            Toast.show({
+              type: 'success',
+              text1: 'Notes synced successfully',
+              position: 'bottom',
+            });
+          } catch (syncError) {
+            console.error('Error syncing notes after coming online:', syncError);
+            Toast.show({
+              type: 'error',
+              text1: 'Sync failed',
+              text2: 'Some changes may not be saved to the cloud',
+              position: 'bottom',
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Error checking network status:', error);
+      }
+    };
+    
+    // Check on mount
+    checkNetworkStatus();
+    
+    // Set up interval to check network status
+    const interval = setInterval(checkNetworkStatus, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [isOffline, user]);
   
   // Separate folders and notes
   const { folders, notes: filteredNotes } = useMemo(() => {
@@ -103,6 +174,27 @@ export default function NotesScreen() {
       notes: regularNotes
     };
   }, [notes, currentFolder]);
+  
+  // Create a list of all folders for the move functionality
+  const allFolders = useMemo(() => {
+    // Get all notes that are folder markers
+    const folderNotes = notes.filter(note => note.title === '.folder');
+    
+    // Convert to folder objects
+    return folderNotes.map(note => {
+      const folderPath = note.folder_path;
+      const folderName = folderPath.split('/').pop() || '';
+      
+      return {
+        id: note.id,
+        name: folderName,
+        path: folderPath,
+        color: note.color_preset,
+        itemCount: 0, // We don't need the item count for the move menu
+        lastModified: note.updated_at
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [notes]);
 
   // Add this after the folders/notes separation
   const sortedAndFilteredNotes = useMemo(() => {
@@ -218,10 +310,36 @@ export default function NotesScreen() {
     if (!user) return;
     setIsRefreshing(true);
     try {
+      // Check online status
+      const online = await isOnline();
+      setIsOffline(!online);
+      
+      // If online, sync notes first
+      if (online) {
+        try {
+          await syncNotes();
+          console.log('✅ Notes synced successfully');
+        } catch (syncError) {
+          console.error('Error syncing notes:', syncError);
+          Toast.show({
+            type: 'error',
+            text1: 'Sync failed',
+            text2: 'Some changes may not be saved to the cloud',
+            position: 'bottom',
+          });
+        }
+      }
+      
+      // Get notes (will use local storage first)
       const fetchedNotes = await getNotes(user.id);
       setNotes(fetchedNotes);
     } catch (error) {
       console.error('Error refreshing notes:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Failed to refresh notes',
+        position: 'bottom',
+      });
     } finally {
       setIsRefreshing(false);
     }
@@ -757,7 +875,7 @@ export default function NotesScreen() {
             onViewChange={toggleView}
             onSortMenuPress={() => setShowSortMenu(true)}
             onCreateFolderPress={() => setShowCreateFolder(true)}
-            isOffline={false} // You can add offline state handling here if needed
+            isOffline={isOffline}
           />
 
           <FolderNavigation
@@ -890,7 +1008,7 @@ export default function NotesScreen() {
             position={menuPosition}
             item={getEditingItem()}
             colorPresets={COLOR_PRESETS}
-            folders={folders}
+            folders={allFolders}
             onClose={handleCloseMenu}
             onColorChange={handleChangeColor}
             onMenuOptionPress={handleMenuOptionPress}

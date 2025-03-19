@@ -29,10 +29,35 @@ export function NotesHeader({
   return (
     <View style={styles.header}>
       <View style={styles.headerTop}>
-        <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>
-          Notes
-          {isOffline && <Text style={{ color: theme.colors.error }}> (Offline)</Text>}
-        </Text>
+        <View style={styles.titleContainer}>
+          <Text h1 style={[styles.title, { color: theme.mode === 'dark' ? 'white' : theme.colors.black }]}>
+            Notes
+          </Text>
+          {isOffline && (
+            <View style={[
+              styles.offlineIndicator, 
+              { 
+                backgroundColor: theme.mode === 'dark' 
+                  ? 'rgba(255, 255, 255, 0.1)' 
+                  : 'rgba(0, 0, 0, 0.05)' 
+              }
+            ]}>
+              <MaterialIcons 
+                name="cloud-off" 
+                size={14} 
+                color={theme.mode === 'dark' ? '#A1A1AA' : '#71717A'} 
+              />
+              <Text style={[
+                styles.offlineText, 
+                { 
+                  color: theme.mode === 'dark' ? '#A1A1AA' : '#71717A' 
+                }
+              ]}>
+                Offline
+              </Text>
+            </View>
+          )}
+        </View>
         <View style={styles.headerActions}>
           <Button
             type="clear"
@@ -112,8 +137,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   title: {
     fontSize: 32,
+  },
+  offlineIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 16,
+    gap: 4,
+  },
+  offlineText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',

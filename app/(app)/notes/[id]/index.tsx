@@ -6,7 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Container } from '../../../../components/layout/Container';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { getNoteById, updateNote, deleteNote } from '../../../../lib/db/notes';
+import { getNoteById, updateNote, deleteNote } from '../../../../lib/db/notes-hybrid';
 import { NoteWithAttachments, ColorPreset } from '../../../../types/notes';
 import { format } from 'date-fns';
 import { LinearGradient } from 'expo-linear-gradient';
